@@ -1,0 +1,24 @@
+
+
+services:
+
+  admin-graphql:
+    build:
+      context: .
+      dockerfile: services/admin-graphql/Dockerfile
+    container_name: thrico-admin-graphql
+    env_file:
+      - .env
+    volumes:
+      - /app/node_modules
+      - ./logs:/app/logs
+    networks:
+      - thrico-network
+ 
+    restart: unless-stopped
+
+networks:
+  thrico-network:
+    driver: bridge
+
+

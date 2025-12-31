@@ -1,0 +1,341 @@
+syntax = "proto3";
+
+package subscription;
+
+// =========================
+// GET PLAN OVERVIEW
+// =========================
+
+message GetPlanOverviewRequest {
+  string entityId = 1;
+}
+
+message PlanOverviewResponse {
+  string planName = 1;
+  string status = 2;
+  string billingCycle = 3;
+  string nextPaymentDate = 4;
+  double price = 5;
+
+  message Usage {
+    int32 used = 1;
+    int32 limit = 2;
+    int32 percent = 3;
+  }
+
+  Usage adminUsers = 6;
+  Usage modulesUsed = 7;
+  string userLimit = 8;
+  string subscriptionType = 9;
+
+  Package package = 10;
+}
+
+message Package {
+  repeated string benefits = 1;
+  double yearlyPrice = 2;
+  string packageId = 3;
+  string type = 4;
+  double monthlyPrice = 5;
+  repeated string modules = 6;
+  int32 numberDaysFreeTrial = 7;
+  int32 adminUsers = 8;
+  string accessType = 9;
+  string createdAt = 10;
+  string subscriptionType = 11;
+  string countryCode = 12;
+  int32 numberOfUsers = 13;
+  string name = 14;
+  bool isPopular = 15;
+  bool status = 16;
+  int32 order = 17;
+  string updatedAt = 18;
+}
+
+// =========================
+// SUBSCRIBE TRIAL
+// =========================
+
+message SubscribeTrialRequest {
+  string entityId = 1;
+  string countryCode = 2;
+}
+
+message SubscribeTrialResponse {
+  string subscriptionId = 1;
+  string packageId = 2;
+  string planName = 3;
+  string planType = 4;
+  string billingCycle = 5;
+  float price = 6;
+  string startDate = 7;
+  string endDate = 8;
+  bool status = 9;
+}
+
+// =========================
+// CHECK SUBSCRIPTION
+// =========================
+
+message CheckSubscriptionRequest {
+  string entityId = 1;
+}
+
+message CheckSubscriptionResponse {
+  string subscriptionId = 1;
+  string packageId = 2;
+  string planName = 3;
+  string planType = 4;
+  string billingCycle = 5;
+  float price = 6;
+  string startDate = 7;
+  string endDate = 8;
+  bool status = 9;
+  string subscriptionType = 10;
+  string graceUntil = 11;
+  repeated Module modules = 12;
+}
+
+message Module {
+  string id = 1;
+  string name = 2;
+  string icon = 3;
+  bool showInMobileNavigation = 4;
+  bool showInWebNavigation = 5;
+  bool enabled = 6;
+  bool isPopular = 7;
+  int32 showInMobileNavigationSortNumber = 8;
+}
+
+// =========================
+// UPDATE TRIAL TO PAID PACKAGE
+// =========================
+
+message UpdateTrialToPackageRequest {
+  string entityId = 1;
+  string packageId = 2;
+  string countryCode = 3;
+  string billingCycle = 4; // "monthly" | "yearly"
+}
+
+message RazorpayOrder {
+  string id = 1;
+  string entity = 2;
+  int64 amount = 3;
+  string currency = 4;
+  string receipt = 5;
+  string status = 6;
+  int64 created_at = 7;
+  map<string, string> notes = 8;
+}
+
+message UpdateTrialToPackageResponse {
+  string subscriptionId = 1;
+  string packageId = 2;
+  string planName = 3;
+  string planType = 4;
+  string billingCycle = 5;
+  float price = 6;
+  string startDate = 7;
+  string endDate = 8;
+  bool status = 9;
+  string billingId = 10;
+  string billStatus = 11;
+  float billAmount = 12;
+  RazorpayOrder razorpayOrder = 13;
+}
+
+// =========================
+// VERIFY PAYMENT
+// =========================
+
+message VerifyRazorpayPaymentRequest {
+  string razorpayOrderId = 1;
+  string razorpayPaymentId = 2;
+  string razorpaySignature = 3;
+}
+
+message VerifyRazorpayPaymentResponse {
+  bool success = 1;
+  string message = 2;
+  string subscriptionId = 3;
+  string billingId = 4;
+  string paymentId = 5;
+  string paymentDetails = 6;
+}
+
+// =========================
+// UPGRADE PLAN SUMMARY
+// =========================
+
+message UpgradePlanSummaryRequest {
+  string entityId = 1;
+  string newPackageId = 2;
+}
+
+message UpgradePlanSummaryResponse {
+  double monthlyPrice = 1;
+  double yearlyPrice = 2;
+  double creditApplied = 3;
+  int32 monthsCovered = 4;
+  string upgradeSummaryText = 5;
+  string yearlyNextBillingDate = 6;
+  string monthlyBillingDate = 7;
+  int64 finalMonthlyPrice = 8;
+  int64 finalYearlyPrice = 9;
+  int64 creditAppliedMonthly = 10;
+  int64 creditAppliedYearly = 11;
+}
+
+// =========================
+// UPDATE TO YEARLY
+// =========================
+
+message UpdateToYearlyRequest {
+  string entityId = 1;
+  string packageId = 2;
+  string countryCode = 3;
+}
+
+message UpdateToYearlyResponse {
+  string subscriptionId = 1;
+  string packageId = 2;
+  string planName = 3;
+  string planType = 4;
+  string billingCycle = 5;
+  double price = 6;
+  string startDate = 7;
+  string endDate = 8;
+  bool status = 9;
+  string billingId = 10;
+  string billStatus = 11;
+  double billAmount = 12;
+  RazorpayOrder razorpayOrder = 13;
+}
+
+// =========================
+// UPGRADE PLAN IMMEDIATELY
+// =========================
+
+message UpgradePlanRequest {
+  string entityId = 1;
+  string newPackageId = 2;
+  string billingCycle = 3;
+  string countryCode = 4;
+}
+
+message UpgradePlanResponse {
+  string subscriptionId = 1;
+  string packageId = 2;
+  string planName = 3;
+  string planType = 4;
+  string billingCycle = 5;
+  double price = 6;
+  string startDate = 7;
+  string endDate = 8;
+  bool status = 9;
+  string billingId = 10;
+  string billStatus = 11;
+  double billAmount = 12;
+  RazorpayOrder razorpayOrder = 13;
+}
+
+// =========================
+// UPDATE ENTITY MODULES
+// =========================
+
+message UpdateEntityModulesRequest {
+  string entityId = 1;
+  repeated ModuleItem modules = 2;
+}
+
+message ModuleItem {
+  string id = 1;
+  string name = 2;
+  bool enabled = 3;
+  bool required = 4;
+  bool showInMobileNavigation = 5;
+  bool isEnabled = 6;
+  bool showInWebNavigation = 7;
+  bool isPopular = 8;
+  int32 showInMobileNavigationSortNumber = 9;
+}
+
+message UpdateEntityModulesResponse {
+  bool success = 1;
+}
+
+// =========================
+// UPDATE INVOICE PDF URL
+// =========================
+
+message updateBillingInvoicePdfUrlRequest {
+  string billingId = 1;
+  string invoicePdfUrl = 2;
+}
+
+message updateBillingInvoicePdfUrlResponse {
+  string billingId = 1;
+  string invoicePdfUrl = 2;
+}
+
+// =====================================================================
+// BILLING INVOICE MESSAGES
+// =====================================================================
+
+message ProrationDetails {
+  string oldpackageId = 1;
+  string oldPlanName = 2;
+  double oldPlanProratedCost = 3;
+  string newpackageId = 4;
+  string newPlanName = 5;
+  double newPlanProratedCost = 6;
+  double creditApplied = 7;
+  double chargeAmount = 8;
+}
+
+message Invoice {
+  string billingId = 1;
+  string subscriptionId = 2;
+  string entityId = 3;
+  string packageId = 4;
+  string planName = 5;
+  string billingCycle = 6;
+  double amount = 7;
+  double taxAmount = 8;
+  double totalAmount = 9;
+  string notes = 10;
+  string currency = 11;
+  string status = 12;
+  ProrationDetails prorationDetails = 13;
+  string invoiceUrl = 14;
+  string createdAt = 15;
+  string updatedAt = 16;
+  string paidAt = 17;
+}
+
+message GetAllEntityInvoiceRequest {
+  string entityId = 1;
+}
+
+message GetAllEntityInvoiceResponse {
+  repeated Invoice invoices = 1;
+}
+
+// =========================
+// SERVICE DECLARATION
+// =========================
+
+service SubscriptionService {
+  rpc SubscribeTrial(SubscribeTrialRequest) returns (SubscribeTrialResponse);
+  rpc CheckEntitySubscription(CheckSubscriptionRequest) returns (CheckSubscriptionResponse);
+  rpc UpdateTrialToPackage(UpdateTrialToPackageRequest) returns (UpdateTrialToPackageResponse);
+  rpc VerifyRazorpayPayment(VerifyRazorpayPaymentRequest) returns (VerifyRazorpayPaymentResponse);
+  rpc GetPlanOverview(GetPlanOverviewRequest) returns (PlanOverviewResponse);
+  rpc upgradePlanSummary(UpgradePlanSummaryRequest) returns (UpgradePlanSummaryResponse);
+  rpc UpdateToYearly(UpdateToYearlyRequest) returns (UpdateToYearlyResponse);
+  rpc UpgradePlan(UpgradePlanRequest) returns (UpgradePlanResponse);
+  rpc UpdateEntityModules(UpdateEntityModulesRequest) returns (UpdateEntityModulesResponse);
+  rpc updateBillingInvoicePdfUrl(updateBillingInvoicePdfUrlRequest) returns (updateBillingInvoicePdfUrlResponse);
+  rpc GetAllEntityInvoice(GetAllEntityInvoiceRequest) returns (GetAllEntityInvoiceResponse);
+}

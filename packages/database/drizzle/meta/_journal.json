@@ -1,0 +1,20 @@
+{
+  "version": "5",
+  "dialect": "pg",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1766463773608,
+      "tag": "0000_overconfident_synch",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1767073150410,
+      "tag": "0001_flashy_firebrand",
+      "breakpoints": true
+    }
+  ]
+}

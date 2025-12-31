@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package packageapi;
+
+// Request to fetch packages by country
+message CountryPackagesRequest {
+  string country = 1;
+  string entityId = 2;
+}
+
+message Module {
+  string name = 1;
+  string icon = 2; // Optional icon for the module
+}
+
+// Individual package structure
+message Package {
+  string packageId = 1;
+  string name = 2;
+  string accessType = 3;
+  float monthlyPrice = 4;
+  float yearlyPrice = 5;
+  int32 adminUsers = 6;
+  int32 numberOfUsers = 7;
+  bool isPopular = 8;
+  repeated string benefits = 9;
+  string currency = 10;
+  repeated Module modules = 11;
+}
+
+// Response containing list of packages
+message CountryPackagesResponse {
+  repeated Package packages = 1;
+}
+
+// Service definition
+service PackageService {
+  rpc GetCountryPackages (CountryPackagesRequest) returns (CountryPackagesResponse);
+}

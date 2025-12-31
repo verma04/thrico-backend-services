@@ -1,0 +1,52 @@
+{
+  "name": "thrico-backend",
+  "version": "1.0.0",
+  "description": "Multi-client Node.js backend with GraphQL, gRPC, PostgreSQL, DynamoDB, and Redis",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "services/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:user\" \"npm run dev:mobile\" \"npm run dev:admin\" \"npm run dev:grpc\"",
+    "dev:user": "npm run dev -w services/user-graphql",
+    "dev:mobile": "npm run dev -w services/mobile-graphql",
+    "dev:admin": "npm run dev -w services/admin-graphql",
+    "dev:grpc": "npm run dev -w services/grpc-service",
+    "build": "pnpm -r build",
+    "migrate": "npm run migrate -w packages/database",
+    "test": "npm run test --workspaces",
+    "test:db": "npm run test:db -w packages/database",
+    "test:schema": "npm run test:schema --workspaces --if-present",
+    "test:grpc": "npm run test -w packages/grpc",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:build": "docker-compose build",
+    "docker:logs": "docker-compose logs -f",
+    "clean": "npm run clean --workspaces && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "@types/pg": "^8.16.0",
+    "@types/uuid": "^9.0.7",
+    "concurrently": "^8.2.2",
+    "drizzle-kit": "^0.20.18",
+    "nodemon": "^3.0.2",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "drizzle-orm": "^0.29.1",
+    "graphql": "^16.8.1",
+    "graphql-upload-minimal": "^1.6.4",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.16.3",
+    "uuid": "^9.0.1"
+  }
+}

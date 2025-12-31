@@ -1,0 +1,203 @@
+export declare const paymentsTypeEnum: import("drizzle-orm/pg-core").PgEnum<["events", "mentorship"]>;
+export declare const paymentMerchant: import("drizzle-orm/pg-core").PgEnum<["razorpay", "stripe"]>;
+export declare const paymentStatus: import("drizzle-orm/pg-core").PgEnum<["refunded", "captured", "Failed"]>;
+export declare const payments: import("drizzle-orm/pg-core").PgTableWithColumns<{
+    name: "payments";
+    schema: undefined;
+    columns: {
+        id: import("drizzle-orm/pg-core").PgColumn<{
+            name: "id";
+            tableName: "payments";
+            dataType: "string";
+            columnType: "PgUUID";
+            data: string;
+            driverParam: string;
+            notNull: true;
+            hasDefault: true;
+            enumValues: undefined;
+            baseColumn: never;
+        }, {}, {}>;
+        paymentStatus: import("drizzle-orm/pg-core").PgColumn<{
+            name: "paymentStatus";
+            tableName: "payments";
+            dataType: "string";
+            columnType: "PgEnumColumn";
+            data: "refunded" | "captured" | "Failed";
+            driverParam: string;
+            notNull: true;
+            hasDefault: false;
+            enumValues: ["refunded", "captured", "Failed"];
+            baseColumn: never;
+        }, {}, {}>;
+        paymentsType: import("drizzle-orm/pg-core").PgColumn<{
+            name: "paymentsType";
+            tableName: "payments";
+            dataType: "string";
+            columnType: "PgEnumColumn";
+            data: "events" | "mentorship";
+            driverParam: string;
+            notNull: true;
+            hasDefault: false;
+            enumValues: ["events", "mentorship"];
+            baseColumn: never;
+        }, {}, {}>;
+        user: import("drizzle-orm/pg-core").PgColumn<{
+            name: "user_id";
+            tableName: "payments";
+            dataType: "string";
+            columnType: "PgUUID";
+            data: string;
+            driverParam: string;
+            notNull: true;
+            hasDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+        }, {}, {}>;
+        entity: import("drizzle-orm/pg-core").PgColumn<{
+            name: "entity_id";
+            tableName: "payments";
+            dataType: "string";
+            columnType: "PgUUID";
+            data: string;
+            driverParam: string;
+            notNull: false;
+            hasDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+        }, {}, {}>;
+        createdAt: import("drizzle-orm/pg-core").PgColumn<{
+            name: "created_at";
+            tableName: "payments";
+            dataType: "date";
+            columnType: "PgTimestamp";
+            data: Date;
+            driverParam: string;
+            notNull: false;
+            hasDefault: true;
+            enumValues: undefined;
+            baseColumn: never;
+        }, {}, {}>;
+        updatedAt: import("drizzle-orm/pg-core").PgColumn<{
+            name: "updated_at";
+            tableName: "payments";
+            dataType: "date";
+            columnType: "PgTimestamp";
+            data: Date;
+            driverParam: string;
+            notNull: false;
+            hasDefault: true;
+            enumValues: undefined;
+            baseColumn: never;
+        }, {}, {}>;
+        razorpay_order_id: import("drizzle-orm/pg-core").PgColumn<{
+            name: "razorpay_order_id";
+            tableName: "payments";
+            dataType: "string";
+            columnType: "PgText";
+            data: string;
+            driverParam: string;
+            notNull: false;
+            hasDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+        }, {}, {}>;
+        razorpay_payment_id: import("drizzle-orm/pg-core").PgColumn<{
+            name: "razorpay_payment_id";
+            tableName: "payments";
+            dataType: "string";
+            columnType: "PgText";
+            data: string;
+            driverParam: string;
+            notNull: false;
+            hasDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+        }, {}, {}>;
+        razorpay_signature: import("drizzle-orm/pg-core").PgColumn<{
+            name: "razorpay_signature";
+            tableName: "payments";
+            dataType: "string";
+            columnType: "PgText";
+            data: string;
+            driverParam: string;
+            notNull: false;
+            hasDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+        }, {}, {}>;
+        razorpay_refund_id: import("drizzle-orm/pg-core").PgColumn<{
+            name: "razorpay_refund_id";
+            tableName: "payments";
+            dataType: "string";
+            columnType: "PgText";
+            data: string;
+            driverParam: string;
+            notNull: false;
+            hasDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+        }, {}, {}>;
+        isRefund: import("drizzle-orm/pg-core").PgColumn<{
+            name: "isRefund";
+            tableName: "payments";
+            dataType: "boolean";
+            columnType: "PgBoolean";
+            data: boolean;
+            driverParam: boolean;
+            notNull: true;
+            hasDefault: true;
+            enumValues: undefined;
+            baseColumn: never;
+        }, {}, {}>;
+        refundGeneratedAt: import("drizzle-orm/pg-core").PgColumn<{
+            name: "refundGeneratedAt";
+            tableName: "payments";
+            dataType: "date";
+            columnType: "PgTimestamp";
+            data: Date;
+            driverParam: string;
+            notNull: false;
+            hasDefault: false;
+            enumValues: undefined;
+            baseColumn: never;
+        }, {}, {}>;
+        amount: import("drizzle-orm/pg-core").PgColumn<{
+            name: "amount";
+            tableName: "payments";
+            dataType: "string";
+            columnType: "PgText";
+            data: string;
+            driverParam: string;
+            notNull: true;
+            hasDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+        }, {}, {}>;
+        currency: import("drizzle-orm/pg-core").PgColumn<{
+            name: "currency";
+            tableName: "payments";
+            dataType: "string";
+            columnType: "PgText";
+            data: string;
+            driverParam: string;
+            notNull: true;
+            hasDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+        }, {}, {}>;
+        currencySymbol: import("drizzle-orm/pg-core").PgColumn<{
+            name: "currencySymbol";
+            tableName: "payments";
+            dataType: "string";
+            columnType: "PgText";
+            data: string;
+            driverParam: string;
+            notNull: true;
+            hasDefault: false;
+            enumValues: [string, ...string[]];
+            baseColumn: never;
+        }, {}, {}>;
+    };
+    dialect: "pg";
+}>;
+//# sourceMappingURL=index.d.ts.map

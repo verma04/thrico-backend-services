@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
+    "outDir": "./dist",
+    "rootDir": "./",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "moduleResolution": "node",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@thrico/shared": ["./packages/shared/src"],
+      "@thrico/shared/*": ["./packages/shared/src/*"],
+      "@thrico/database": ["./packages/database/src"],
+      "@thrico/database/*": ["./packages/database/src/*"],
+      "@thrico/grpc": ["./packages/grpc/src"],
+      "@thrico/grpc/*": ["./packages/grpc/src/*"],
+      "@thrico/logging": ["./packages/logging/src"],
+      "@thrico/logging/*": ["./packages/logging/src/*"]
+    }
+  },
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+}

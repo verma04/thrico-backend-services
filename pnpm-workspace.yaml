@@ -1,0 +1,9 @@
+lockfileVersion: '9.0'
+
+packages:
+  - 'packages/*'
+  - 'services/*'
+
+settings:
+  autoInstallPeers: true
+  excludeLinksFromLockfile: false

@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package page;
+
+// Location message for nested location data
+message Location {
+  string name = 1;
+  double latitude = 2;
+  double longitude = 3;
+  string address = 4;
+}
+
+// Page message matching your requirements
+message Page {
+  string id = 1;
+  string name = 2;
+  string logo = 3;
+  Location location = 4;
+  string type = 5;
+  string industry = 6;
+  string website = 7;
+  string pageType = 8;
+  string size = 9;
+  string tagline = 10;
+  string url = 11;
+}
+
+// Input for adding a page
+message AddPageRequest {
+  string name = 1;
+  string logo = 2;      // Use a URL or file token after upload
+  Location location = 3;
+  string type = 4;
+  string industry = 5;
+  string website = 6;
+  string pageType = 7;
+  string size = 8;
+  string tagline = 9;
+  string url = 10;
+  bool agreement = 11;
+}
+
+// Response for add page mutation
+message AddPageResponse {
+  Page page = 1;
+}
+
+// Input for search/filter
+message GetAllPagesRequest {
+  string value = 1;
+  uint32 limit = 2;
+}
+
+// Response for getAllPages query
+message GetAllPagesResponse {
+  repeated Page pages = 1;
+}
+
+// The PageService definition
+service PageService {
+  rpc AddPage(AddPageRequest) returns (AddPageResponse);
+  rpc GetAllPages(GetAllPagesRequest) returns (GetAllPagesResponse);
+}

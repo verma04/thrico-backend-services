@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package countryapi;
+
+// Country message with code and name
+message Country {
+  string code = 1;
+  string name = 2;
+}
+
+// Empty request message for GetAllCountries
+message GetAllCountriesRequest {}
+
+// Response message containing repeated countries
+message GetAllCountriesResponse {
+  repeated Country countries = 1;
+}
+
+// CountryService with GetAllCountries RPC
+service CountryService {
+  rpc GetAllCountries(GetAllCountriesRequest) returns (GetAllCountriesResponse);
+}

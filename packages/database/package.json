@@ -1,0 +1,30 @@
+{
+  "name": "@thrico/database",
+  "version": "1.0.0",
+  "description": "Database models and connections",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "migrate": "tsx src/postgres/migrate.ts",
+    "generate": "drizzle-kit generate:pg --config=../../drizzle.config.ts",
+    "studio": "drizzle-kit studio --config=../../drizzle.config.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.478.0",
+    "drizzle-orm": "^0.29.1",
+    "dynamoose": "^4.0.1",
+    "ioredis": "^5.3.2",
+    "postgres": "^3.4.3",
+    "uuid": "^9.0.1",
+    "@thrico/shared": "*",
+    "@thrico/logging": "*"
+  },
+  "devDependencies": {
+    "@types/uuid": "^9.0.7",
+    "drizzle-kit": "^0.20.18",
+    "tsx": "^4.7.0"
+  }
+}
