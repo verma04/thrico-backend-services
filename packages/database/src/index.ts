@@ -28,6 +28,8 @@ export {
   ENTITY_THEME,
 } from "./dynamodb/models/admin";
 
+export { USER, USER_OTP, USER_LOGIN_SESSION } from "./dynamodb/models/user";
+
 // Redis exports
 export {
   default as redis,

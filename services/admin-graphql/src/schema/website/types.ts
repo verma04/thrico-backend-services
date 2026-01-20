@@ -1,10 +1,11 @@
 export const websiteTypes = `#graphql
   type Website {
-    id: ID!
-    entityId: ID!
-    theme: String!
-    font: String!
-    isPublished: Boolean!
+    id: ID
+    entityId: ID
+    theme: String
+    font: String
+    customColors: CustomThemeColors
+    isPublished: Boolean
     customDomain: String
     navbar: Navbar
     footer: Footer
@@ -15,7 +16,31 @@ export const websiteTypes = `#graphql
   type websiteSeo {
     title: String
     description: String
-    keywords: [String!]
+    keywords: JSON
+    schemaMarkup: JSON
+  }
+
+  input CustomThemeColorsInput {
+    primary: String
+    secondary: String
+    accent: String
+    background: String
+    muted: String
+    border: String
+    borderRadius: Int
+    spacing: Float
+    fontSize: Int
+  }
+  type CustomThemeColors {
+    primary: String
+    secondary: String
+    accent: String
+    background: String
+    muted: String
+    border: String
+    borderRadius: Int
+    spacing: Float
+    fontSize: Int
   }
 
   type Navbar {
@@ -40,30 +65,19 @@ export const websiteTypes = `#graphql
     type: String!
   }
 
+
   type Page {
-    id: ID!
+    id: ID
     websiteId: ID!
     name: String!
     slug: String!
     isEnabled: Boolean!
     order: Int!
-    modules: [Modules!]!
+    modules: [WebsiteModule!]!
     createdAt: Date!
     updatedAt: Date!
     seo: websiteSeo
-  }
-
-  type Modules {
-    id: ID!
-    pageId: ID!
-    type: String!
-    name: String!
-    layout: String!
-    isEnabled: Boolean!
-    isCustomized: Boolean!
-    order: Int!
-    content: JSON!
-    updatedAt: Date!
+    includeInSitemap: Boolean!
   }
 
   # Queries
@@ -71,6 +85,8 @@ export const websiteTypes = `#graphql
     getWebsite: Website
     getWebsiteBySlug(slug: String!): Website
     getPage(pageId: ID!): Page
+    getPageBySlug(websiteId: ID!, slug: String!): Page
+    getAllPagesSeo(websiteId: ID!): [Page!]!
   }
 
   # Mutations
@@ -78,6 +94,7 @@ export const websiteTypes = `#graphql
     # Website mutations
     updateWebsiteTheme(websiteId: ID!, theme: String!): Website!
     updateWebsiteFont(websiteId: ID!, font: String!): Website!
+    updateWebsiteCustomColors(websiteId: ID!, customColors: CustomThemeColorsInput!):  CustomThemeColors!
     publishWebsite(websiteId: ID!): Website!
 
     # Navbar mutations
@@ -103,6 +120,19 @@ export const websiteTypes = `#graphql
       name: String
       slug: String
       isEnabled: Boolean
+      title: String
+      description: String
+      keywords: [String!]
+      schemaMarkup: JSON
+      includeInSitemap: Boolean
+    ): Page!
+    updatePageSeo(
+      pageId: ID!
+      title: String
+      description: String
+      keywords: [String!]
+      schemaMarkup: JSON
+      includeInSitemap: Boolean
     ): Page!
     deletePage(pageId: ID!): Boolean!
     reorderPages(websiteId: ID!, pageIds: [ID!]!): [Page!]!
@@ -114,19 +144,21 @@ export const websiteTypes = `#graphql
       name: String!
       layout: String!
       content: JSON!
-    ): Module!
+    ): WebsiteModule!
     updateModule(
       moduleId: ID!
       name: String
       layout: String
       content: JSON
       isEnabled: Boolean
-    ): Module!
+    ): WebsiteModule!
     deleteModule(moduleId: ID!): Boolean!
-    reorderModules(pageId: ID!, moduleIds: [ID!]!): [Module!]!
+    reorderModules(pageId: ID!, moduleIds: [ID!]!): [WebsiteModule!]!
+    toggleModule(moduleId: ID!, isEnabled: Boolean!): WebsiteModule!
   }
   
-  type Module {
+  
+  type WebsiteModule {
      id: ID!
     pageId: ID!
     type: String!

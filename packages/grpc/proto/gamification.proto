@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package gamification;
+
+message GamificationModule {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string icon = 4;
+}
+
+message ModuleTrigger {
+  string id = 1;
+  string moduleId = 2;
+  string name = 3;
+  string description = 4;
+  string type = 5;
+}
+
+message GetGamificationModulesRequest {}
+
+message GetGamificationModulesResponse {
+  repeated GamificationModule modules = 1;
+}
+
+message GetModuleTriggersRequest {
+  string moduleId = 1; // Optional filter
+}
+
+message GetModuleTriggersResponse {
+  repeated ModuleTrigger triggers = 1;
+}
+
+message GetEntityGamificationModulesRequest {
+  string entityId = 1;
+}
+
+message GetEntityGamificationModulesResponse {
+  repeated GamificationModule modules = 1;
+  repeated ModuleTrigger triggers = 2;
+}
+
+service GamificationService {
+  rpc GetGamificationModules(GetGamificationModulesRequest) returns (GetGamificationModulesResponse);
+  rpc GetModuleTriggers(GetModuleTriggersRequest) returns (GetModuleTriggersResponse);
+  rpc GetEntityGamificationModules(GetEntityGamificationModulesRequest) returns (GetEntityGamificationModulesResponse);
+}

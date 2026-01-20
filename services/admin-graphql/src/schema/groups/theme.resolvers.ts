@@ -94,6 +94,9 @@ const themeResolvers = {
         const theme = await db.query.groupTheme.findFirst({
           where: and(eq(groupTheme.id, input.id)),
         });
+        if (!theme) {
+          throw new Error("Theme not found");
+        }
 
         const newTheme = await db
           .insert(groupTheme)

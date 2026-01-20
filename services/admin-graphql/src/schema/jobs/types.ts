@@ -27,13 +27,17 @@ export const jobsTypes = `#graphql
     viewsThisWeek: Int
     viewsLastWeek: Int
     viewsWeeklyChange: Float
+    totalJobsChange: Float
+    activeJobsChange: Float
+    applicationsChange: Float
+    viewsChange: Float
   }
 
   extend type Query {
     getJob(input: GetJobInput): [Job]
     getJobCompany(input: JobSearchInput): [Job]
     getAllJobs(input: GetAllJobsInput): [JobWithMeta]
-    getJobStats(input: JobSearchInput): getJobStats
+    getJobStats(timeRange: TimeRange!): getJobStats
   }
   input ChangeJobStatusInput {
     action: String

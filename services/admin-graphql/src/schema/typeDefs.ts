@@ -20,6 +20,7 @@ import { mentorShipTypes } from "./mentorship/types";
 import { paymentsTypes } from "./payment/types";
 import groupsTypes from "./groups/types";
 import { eventTypes } from "./events/types";
+import { offersTypes } from "./offers/types";
 
 const mainTypeDefs = `#graphql
   # User Types
@@ -325,4 +326,5 @@ export const typeDefs = [
   givingTypes,
   pageTypes,
   dashboardTypes,
+  offersTypes,
 ];

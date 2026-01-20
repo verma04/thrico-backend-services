@@ -3,6 +3,7 @@ export const gamificationTypes = `#graphql
   # scalar JSON
 
   # Enums
+
   enum TriggerType {
     FIRST_TIME
     RECURRING
@@ -19,18 +20,39 @@ export const gamificationTypes = `#graphql
     HYBRID
   }
 
-  enum Module {
-    FEED
-    LISTING
+
+
+  # Core Gamification Modules
+  type GamificationModule {
+    id: ID!
+    name: String!
+    description: String
+    icon: String
+  }
+
+  type ModuleTrigger {
+    id: ID!
+    moduleId: ID!
+    name: String!
+    description: String
+    type: String
+  }
+  
+  type EntityGamificationData {
+    modules: [GamificationModule!]!
+    triggers: [ModuleTrigger!]!
   }
 
   # Point Rules
   type PointRule {
     id: ID!
-    module: Module!
+    module: String!
     action: String!
     trigger: TriggerType!
     points: Int!
+    dailyCap: Int
+    weeklyCap: Int
+    monthlyCap: Int
     description: String
     isActive: Boolean!
     createdAt: Date!
@@ -38,15 +60,21 @@ export const gamificationTypes = `#graphql
   }
 
   input CreatePointRuleInput {
-    module: Module!
+    module: String!
     action: String!
     trigger: TriggerType!
     points: Int!
+    dailyCap: Int
+    weeklyCap: Int
+    monthlyCap: Int
     description: String
   }
 
   input UpdatePointRuleInput {
     points: Int
+    dailyCap: Int
+    weeklyCap: Int
+    monthlyCap: Int
     description: String
     isActive: Boolean
     id: ID
@@ -57,12 +85,12 @@ export const gamificationTypes = `#graphql
     id: ID!
     name: String!
     type: BadgeType!
-    module: Module
+    module: String
     action: String
     targetValue: Int!
     icon: String
     description: String
-    condition: String!
+    condition: String
     isActive: Boolean!
     createdAt: Date!
     updatedAt: Date!
@@ -77,21 +105,21 @@ export const gamificationTypes = `#graphql
     earnedAt: Date
   }
 
-  input CreateBadgeInput {
+  input BadgeInput {
     name: String!
-    type: BadgeType!
-    module: Module
-    action: String
-    targetValue: Int!
-    icon: String
     description: String
-    condition: String!
+    type: BadgeType!
+    module: String
+    action: String
+    count: Int
+    points: Int
+    icon: String
   }
 
   input UpdateBadgeInput {
     name: String
     type: BadgeType
-    module: Module
+    module: String
     action: String
     targetValue: Int
     icon: String
@@ -104,11 +132,8 @@ export const gamificationTypes = `#graphql
   type Rank {
     id: ID!
     name: String!
-    type: RankType!
-    minPoints: Int
+    minPoints: Int!
     maxPoints: Int
-    minBadges: Int
-    maxBadges: Int
     color: String!
     icon: String
     order: Int!
@@ -121,11 +146,8 @@ export const gamificationTypes = `#graphql
 
   input CreateRankInput {
     name: String!
-    type: RankType!
-    minPoints: Int
+    minPoints: Int!
     maxPoints: Int
-    minBadges: Int
-    maxBadges: Int
     color: String!
     icon: String
     order: Int!
@@ -133,11 +155,8 @@ export const gamificationTypes = `#graphql
 
   input UpdateRankInput {
     name: String
-    type: RankType
     minPoints: Int
     maxPoints: Int
-    minBadges: Int
-    maxBadges: Int
     color: String
     icon: String
     order: Int
@@ -182,7 +201,7 @@ export const gamificationTypes = `#graphql
 
   type UserActivity {
     id: ID!
-    module: Module!
+    module: String!
     action: String!
     pointsEarned: Int
     metadata: JSON
@@ -191,7 +210,7 @@ export const gamificationTypes = `#graphql
 
   # Leaderboard
   type LeaderboardEntry {
-    user: User!
+    user: User
     rank: Int!
     totalPoints: Int!
     badgesCount: Int!
@@ -201,50 +220,59 @@ export const gamificationTypes = `#graphql
   type Leaderboard {
     entries: [LeaderboardEntry!]!
     totalUsers: Int!
-    userPosition: Int
   }
 
   # Filters
   input PointRuleFilter {
-    module: Module
+    module: String
     trigger: TriggerType
     isActive: Boolean
   }
 
   input BadgeFilter {
     type: BadgeType
-    module: Module
+    module: String
     isActive: Boolean
     isCompleted: Boolean # For user-specific queries
   }
 
   input RankFilter {
-    type: RankType
     isActive: Boolean
   }
 
   # Queries
   extend type Query {
-    pointRules: [PointRule!]!
-    pointRule(id: ID!): PointRule
+    # Core Gamification Ops
+    getEntityGamificationModules: EntityGamificationData!
+    getGamificationModules: [GamificationModule!]!
+    getModuleTriggers(moduleId: ID): [ModuleTrigger!]!
+    getBadges(filter: BadgeFilter, pagination: PaginationInput): [Badge!]!
+    getPointRules(filter: PointRuleFilter): [PointRule!]!
+    getPointRuleStats: PointRuleStats!
+    getRanks(filter: RankFilter): [Rank!]!
+    getLeaderboard(pagination: PaginationInput): Leaderboard!
+    getGamificationStats: GamificationStats!
+    getGamificationActivityLog(input: GamificationActivityLogInput): [GamificationActivityEntry!]!
+  }
 
-    badges(filter: BadgeFilter, pagination: PaginationInput, userId: ID): [Badge!]!
-    badge(id: ID!, userId: ID): Badge
-    userBadges(userId: ID!, filter: BadgeFilter): [Badge!]!
+  input GamificationActivityLogInput {
+    limit: Int
+    offset: Int
+  }
 
-    ranks(filter: RankFilter, pagination: PaginationInput): [Rank!]!
-    rank(id: ID!): Rank
-
-    userGamification(userId: ID!): User
-    userPointsHistory(
-      userId: ID!
-      pagination: PaginationInput
-    ): [UserPointsHistory!]!
-    userRankHistory(userId: ID!): [UserRankHistory!]!
-
-    leaderboard(pagination: PaginationInput, userId: ID): Leaderboard!
-
-    gamificationStats: GamificationStats!
+  type GamificationActivityEntry {
+    id: ID!
+    type: String! # 'POINTS' or 'BADGE'
+    points: Int
+    createdAt: Date!
+    user: User
+    # Points specific
+    ruleAction: String
+    ruleDescription: String
+    # Badge specific
+    badgeName: String
+    badgeDescription: String
+    badgeIcon: String
   }
 
   type GamificationStats {
@@ -258,38 +286,33 @@ export const gamificationTypes = `#graphql
     mostPopularBadge: Badge
   }
 
-  # Mutations
-  extend type Mutation {
-    # Point Rules
-    createPointRule(input: CreatePointRuleInput!): PointRule!
-    updatePointRule(input: UpdatePointRuleInput!): PointRule!
-    deletePointRule(id: ID!): Boolean!
-
-    # Badges
-    createBadge(input: CreateBadgeInput!): Badge!
-    updateBadge(id: ID!, input: UpdateBadgeInput!): Badge!
-    deleteBadge(id: ID!): Boolean!
-
-    # Ranks
-    createRank(input: CreateRankInput!): Rank!
-    updateRank(id: ID!, input: UpdateRankInput!): Rank!
-    deleteRank(id: ID!): Boolean!
-
-    # User Actions (for testing/manual awarding)
-    awardPoints(
-      userId: ID!
-      pointRuleId: ID!
-      metadata: JSON
-    ): UserPointsHistory!
-    awardBadge(userId: ID!, badgeId: ID!): UserBadgeProgress!
-    promoteUser(userId: ID!, rankId: ID!): UserRankHistory!
+  type PointRuleStats {
+    totalRules: Int!
+    activeRules: Int!
+    firstTimeRules: Int!
+    recurringRules: Int!
   }
 
-  # Subscriptions (for real-time updates)
-  # extend type Subscription {
-  #   pointsAwarded(userId: ID!): UserPointsHistory!
-  #   badgeEarned(userId: ID!): UserBadgeProgress!
-  #   rankPromoted(userId: ID!): UserRankHistory!
-  #   leaderboardUpdated: LeaderboardEntry!
-  # }
+  extend type Mutation {
+    createBadge(input: BadgeInput!): Badge!
+    updateBadge(id: ID!, input: UpdateBadgeInput!): Badge!
+    toggleBadge(id: ID!): Badge!
+    deleteBadge(id: ID!): Boolean!
+
+    createPointRule(input: CreatePointRuleInput!): PointRule!
+    updatePointRule(id: ID!, input: UpdatePointRuleInput!): PointRule!
+    togglePointRule(id: ID!): PointRule!
+    deletePointRule(id: ID!): Boolean!
+
+    createRank(input: CreateRankInput!): Rank!
+    updateRank(id: ID!, input: UpdateRankInput!): Rank!
+    toggleRank(id: ID!): Rank!
+    updateRankOrder(rankOrders: [RankOrderInput!]!): [Rank!]!
+    deleteRank(id: ID!): Boolean!
+  }
+
+  input RankOrderInput {
+    id: ID!
+    order: Int!
+  }
 `;

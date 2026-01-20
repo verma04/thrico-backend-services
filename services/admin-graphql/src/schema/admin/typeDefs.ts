@@ -58,18 +58,36 @@ export const adminTypeDefs = `#graphql
     showInMobileNavigationSortNumber: Int
   }
 
+   type HealthStatus {
+    status: String!
+    timestamp: String!
+  }
+
   extend type Query {
+     health: HealthStatus!
     getUser: AdminUser
     adminProfile: AdminProfile
   }
 
+
+  input inputUpdateEntityModule {
+    id: ID!
+    name: String
+    icon: String
+    required: Boolean
+    showInMobileNavigation: Boolean
+    showInWebNavigation: Boolean
+    isEnabled: Boolean
+    isPopular: Boolean
+    showInMobileNavigationSortNumber: Int
+  }
   extend type Mutation {
     logoutAdmin: SuccessResponse
     logoutAdminAllDevices: SuccessResponse
     loginAsAdmin(input: AdminLoginInput): AdminToken
     otpLogin(input: AdminOtpInput): JwtToken
     registerAsAdmin(input: AdminRegisterInput): SuccessResponse
-    updateEntityModules(input: [UpdateEntityModuleInput]): SuccessResponse
+    updateEntityModule(input: [inputUpdateEntityModule]): SuccessResponse
     uploadImage(file: Upload!): String!
   }
 `;

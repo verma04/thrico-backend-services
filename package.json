@@ -13,6 +13,7 @@
     "dev:mobile": "npm run dev -w services/mobile-graphql",
     "dev:admin": "npm run dev -w services/admin-graphql",
     "dev:grpc": "npm run dev -w services/grpc-service",
+    "dev:gamification": "npm run dev -w services/gamification-worker",
     "build": "pnpm -r build",
     "migrate": "npm run migrate -w packages/database",
     "test": "npm run test --workspaces",
@@ -41,12 +42,17 @@
     "npm": ">=10.0.0"
   },
   "dependencies": {
+    "aws-sdk": "^2.1693.0",
+    "cryptr": "^6.4.0",
     "dotenv": "^17.2.3",
     "drizzle-orm": "^0.29.1",
     "graphql": "^16.8.1",
     "graphql-upload-minimal": "^1.6.4",
     "jsonwebtoken": "^9.0.2",
+    "moment": "^2.30.1",
+    "nanoid": "^5.1.6",
     "pg": "^8.16.3",
+    "sharp": "^0.34.5",
     "uuid": "^9.0.1"
   }
 }

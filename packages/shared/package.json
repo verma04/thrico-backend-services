@@ -12,10 +12,12 @@
   "dependencies": {
     "jsonwebtoken": "^9.0.2",
     "bcrypt": "^5.1.1",
-    "zod": "^3.22.4"
+    "zod": "^3.22.4",
+    "redis": "^5.10.0"
   },
   "devDependencies": {
     "@types/jsonwebtoken": "^9.0.5",
-    "@types/bcrypt": "^5.0.2"
+    "@types/bcrypt": "^5.0.2",
+    "@types/redis": "^4.0.10"
   }
 }

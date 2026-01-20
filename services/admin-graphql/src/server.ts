@@ -6,6 +6,7 @@ dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 
 import { ApolloServer } from "@apollo/server";
 import { expressMiddleware } from "@apollo/server/express4";
+import { graphqlUploadExpress } from "graphql-upload-minimal";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -50,8 +51,8 @@ async function startServer() {
   );
 
   const limiter = rateLimit({
-    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || "900000", 10),
-    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || "200", 10),
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || "900000", 10000),
+    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || "200", 10000),
     message: "Too many requests, please try again later.",
   });
   app.use("/graphql", limiter);
@@ -95,6 +96,7 @@ async function startServer() {
 
   app.use(
     "/graphql",
+    graphqlUploadExpress({ maxFileSize: 10000000, maxFiles: 10 }),
     expressMiddleware(server, {
       context: async ({ req }): Promise<any> => {
         // The Express middleware at line 60-70 already tries to authenticate

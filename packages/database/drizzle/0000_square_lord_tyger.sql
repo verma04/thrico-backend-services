@@ -173,7 +173,7 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- CREATE TYPE "source" AS ENUM('dashboard', 'group', 'event', 'jobs', 'marketPlace', 'rePost', 'story', 'admin', 'xf', 'poll', 'offer', 'celebration', 'forum');
+ CREATE TYPE "source" AS ENUM('dashboard', 'group', 'event', 'jobs', 'marketPlace', 'rePost', 'story', 'admin', 'poll', 'offer', 'celebration', 'forum');
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -496,35 +496,6 @@ EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "admin" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"firstName" text NOT NULL,
-	"lastName" text NOT NULL,
-	"password" text NOT NULL,
-	"email" text NOT NULL,
-	"created_at" timestamp DEFAULT now(),
-	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP,
-	CONSTRAINT "admin_email_unique" UNIQUE("email")
-);
---> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "profileInfo" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"user_id" uuid,
-	"metadata" jsonb,
-	"designation" text NOT NULL,
-	"phone" text NOT NULL
-);
---> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "otp" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"user_id" uuid,
-	"otp" text NOT NULL,
-	"created_at" timestamp DEFAULT now(),
-	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP,
-	"timeOfExpire" integer DEFAULT 10,
-	"isExpired" boolean DEFAULT false
-);
---> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "session" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"token" text NOT NULL,
@@ -538,11 +509,50 @@ CREATE TABLE IF NOT EXISTS "session" (
 	"logout" boolean DEFAULT false
 );
 --> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "otp" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" uuid,
+	"otp" text NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP,
+	"timeOfExpire" integer DEFAULT 10,
+	"isExpired" boolean DEFAULT false
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "profileInfo" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" uuid,
+	"metadata" jsonb,
+	"designation" text NOT NULL,
+	"phone" text NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "admin" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"firstName" text NOT NULL,
+	"lastName" text NOT NULL,
+	"password" text NOT NULL,
+	"email" text NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP,
+	CONSTRAINT "admin_email_unique" UNIQUE("email")
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "currency" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"cc" text NOT NULL,
 	"symbol" text NOT NULL,
 	"name" text NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "customDomain" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"domain" text NOT NULL,
+	"dnsConfig" boolean DEFAULT false NOT NULL,
+	"ssl" boolean DEFAULT false NOT NULL,
+	"status" boolean DEFAULT false NOT NULL,
+	"entity_id" uuid NOT NULL,
+	CONSTRAINT "customDomain_domain_unique" UNIQUE("domain")
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "entity" (
@@ -562,13 +572,94 @@ CREATE TABLE IF NOT EXISTS "entity" (
 	"country" "entityCountryEnum" DEFAULT 'IND' NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "theme" (
+CREATE TABLE IF NOT EXISTS "entitySettings" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"colorPrimary" text DEFAULT '#0972cc' NOT NULL,
-	"borderRadius" text DEFAULT '2' NOT NULL,
-	"colorBgContainer" text DEFAULT '#ffffff' NOT NULL,
+	"entity_id" uuid NOT NULL,
+	"allowNewUser" boolean DEFAULT true,
+	"autoApproveUser" boolean DEFAULT true,
+	"termAndConditionsMembers" jsonb,
+	"faqMembers" jsonb,
+	"allowCommunity" boolean DEFAULT true,
+	"autoApproveCommunity" boolean DEFAULT true,
+	"autoApproveGroup" boolean DEFAULT true,
+	"termAndConditionsCommunities" jsonb,
+	"faqCommunities" jsonb,
+	"allowNewDiscussionForum" boolean DEFAULT true,
+	"autoApproveDiscussionForum" boolean DEFAULT true,
+	"termAndDiscussionForums" jsonb,
+	"faqForums" jsonb,
+	"allowEvents" boolean DEFAULT true,
+	"autoApproveEvents" boolean DEFAULT true,
+	"termAndConditionsEvents" jsonb,
+	"faqEvents" jsonb,
+	"allowJobs" boolean DEFAULT true,
+	"autoApproveJobs" boolean DEFAULT true,
+	"termAndConditionsJobs" jsonb,
+	"faqJobs" jsonb,
+	"allowMentorship" boolean DEFAULT true,
+	"autoApproveMentorship" boolean DEFAULT true,
+	"termAndConditionsMentorship" jsonb,
+	"faqMentorship" jsonb,
+	"allowListing" boolean DEFAULT true,
+	"autoApproveListing" boolean DEFAULT true,
+	"autoApproveMarketPlace" boolean DEFAULT true,
+	"termAndConditionsListing" jsonb,
+	"faqListing" jsonb,
+	"allowShop" boolean DEFAULT true,
+	"autoApproveShop" boolean DEFAULT true,
+	"termAndConditionsShop" jsonb,
+	"faqShop" jsonb,
+	"allowOffers" boolean DEFAULT true,
+	"autoApproveOffers" boolean DEFAULT true,
+	"termAndConditionsOffers" jsonb,
+	"faqOffers" jsonb,
+	"allowSurveys" boolean DEFAULT true,
+	"autoApproveSurveys" boolean DEFAULT true,
+	"termAndConditionsSurveys" jsonb,
+	"faqSurveys" jsonb,
+	"allowPolls" boolean DEFAULT true,
+	"autoApprovePolls" boolean DEFAULT true,
+	"termAndConditionsPolls" jsonb,
+	"faqPolls" jsonb,
+	"allowStories" boolean DEFAULT true,
+	"autoApproveStories" boolean DEFAULT true,
+	"termAndConditionsStories" jsonb,
+	"faqStories" jsonb,
+	"termAndConditionsWallOfFame" jsonb,
+	"faqWallOfFame" jsonb,
+	"termAndConditionsGamification" jsonb,
+	"faqGamification" jsonb
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "entitySettingsUserApprovals" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"autoApprove" boolean DEFAULT false,
+	"entity_id" uuid NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "entityTag" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"title" text NOT NULL,
+	"entity_id" uuid NOT NULL,
 	"created_at" timestamp DEFAULT now(),
-	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP,
+	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "headerLinks" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"name" text NOT NULL,
+	"link" text NOT NULL,
+	"entity_id" uuid NOT NULL,
+	"sort" integer NOT NULL,
+	"subMenu" json
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "orgSocialMedia" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"twitter" text,
+	"linkedin" text,
+	"instagram" text,
+	"youtube" text,
 	"entity_id" uuid
 );
 --> statement-breakpoint
@@ -592,64 +683,14 @@ CREATE TABLE IF NOT EXISTS "stripe " (
 	CONSTRAINT "stripe _key_secret_unique" UNIQUE("key_secret")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "orgSocialMedia" (
+CREATE TABLE IF NOT EXISTS "theme" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"twitter" text,
-	"linkedin" text,
-	"instagram" text,
-	"youtube" text,
-	"entity_id" uuid
-);
---> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "headerLinks" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"name" text NOT NULL,
-	"link" text NOT NULL,
-	"entity_id" uuid NOT NULL,
-	"sort" integer NOT NULL,
-	"subMenu" json
-);
---> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "customDomain" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"domain" text NOT NULL,
-	"dnsConfig" boolean DEFAULT false NOT NULL,
-	"ssl" boolean DEFAULT false NOT NULL,
-	"status" boolean DEFAULT false NOT NULL,
-	"entity_id" uuid NOT NULL,
-	CONSTRAINT "customDomain_domain_unique" UNIQUE("domain")
-);
---> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "entitySettings" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"autoApproveUser" boolean DEFAULT true,
-	"autoApproveGroup" boolean DEFAULT true,
-	"autoApproveEvents" boolean DEFAULT true,
-	"autoApproveDiscussionForum" boolean DEFAULT true,
-	"autoApproveJobs" boolean DEFAULT true,
-	"autoApproveCommunity" boolean DEFAULT true,
-	"autoApproveMarketPlace" boolean DEFAULT true,
-	"entity_id" uuid NOT NULL,
-	"allowNewUser" boolean DEFAULT true,
-	"allowNewDiscussionForum" boolean DEFAULT true,
-	"allowCommunity" boolean DEFAULT true,
-	"termAndConditionsMembers" jsonb,
-	"termAndConditionsCommunities" jsonb,
-	"termAndDiscussionForums" jsonb
-);
---> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "entityTag" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"title" text NOT NULL,
-	"entity_id" uuid NOT NULL,
+	"colorPrimary" text DEFAULT '#0972cc' NOT NULL,
+	"borderRadius" text DEFAULT '2' NOT NULL,
+	"colorBgContainer" text DEFAULT '#ffffff' NOT NULL,
 	"created_at" timestamp DEFAULT now(),
-	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP
-);
---> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "entitySettingsUserApprovals" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"autoApprove" boolean DEFAULT false,
-	"entity_id" uuid NOT NULL
+	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP,
+	"entity_id" uuid
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "entityDomain" (
@@ -680,16 +721,6 @@ CREATE TABLE IF NOT EXISTS "entity_footer" (
 	"footer" jsonb NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "websiteType" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"pageType" "pagesEnum" NOT NULL,
-	"entity_id" uuid,
-	"isReady" boolean DEFAULT false,
-	"userName" text,
-	"password" text,
-	"url" text
-);
---> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "staticPages" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"type_id" uuid NOT NULL,
@@ -709,28 +740,14 @@ CREATE TABLE IF NOT EXISTS "staticPages" (
 	"slug" varchar(255) NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "websites" (
+CREATE TABLE IF NOT EXISTS "websiteType" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"entity_id" uuid NOT NULL,
-	"theme" text DEFAULT 'academia',
-	"font" text DEFAULT 'inter',
-	"is_published" boolean DEFAULT false,
-	"custom_domain" text,
-	"created_at" timestamp DEFAULT now(),
-	"updated_at" timestamp DEFAULT now()
-);
---> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "navbars" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"website_id" uuid NOT NULL,
-	"layout" text DEFAULT 'simple',
-	"is_enabled" boolean DEFAULT true,
-	"content" jsonb NOT NULL,
-	"created_at" timestamp DEFAULT now(),
-	"updated_at" timestamp DEFAULT now(),
-	"name" varchar(255) DEFAULT 'navbar' NOT NULL,
-	"type" varchar(255) DEFAULT 'navbar' NOT NULL,
-	CONSTRAINT "navbars_website_id_unique" UNIQUE("website_id")
+	"pageType" "pagesEnum" NOT NULL,
+	"entity_id" uuid,
+	"isReady" boolean DEFAULT false,
+	"userName" text,
+	"password" text,
+	"url" text
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "footers" (
@@ -744,17 +761,6 @@ CREATE TABLE IF NOT EXISTS "footers" (
 	"name" varchar(255) DEFAULT 'footer' NOT NULL,
 	"type" varchar(255) DEFAULT 'footer' NOT NULL,
 	CONSTRAINT "footers_website_id_unique" UNIQUE("website_id")
-);
---> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "pages" (
-	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"website_id" uuid NOT NULL,
-	"name" text NOT NULL,
-	"slug" text NOT NULL,
-	"is_enabled" boolean DEFAULT true,
-	"order" integer DEFAULT 0,
-	"created_at" timestamp DEFAULT now(),
-	"updated_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "modules" (
@@ -772,6 +778,44 @@ CREATE TABLE IF NOT EXISTS "modules" (
 	"visibility" text DEFAULT 'public' NOT NULL,
 	"includeInSitemap" boolean DEFAULT true,
 	"seo" jsonb
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "navbars" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"website_id" uuid NOT NULL,
+	"layout" text DEFAULT 'simple',
+	"is_enabled" boolean DEFAULT true,
+	"content" jsonb NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now(),
+	"name" varchar(255) DEFAULT 'navbar' NOT NULL,
+	"type" varchar(255) DEFAULT 'navbar' NOT NULL,
+	CONSTRAINT "navbars_website_id_unique" UNIQUE("website_id")
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "pages" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"website_id" uuid NOT NULL,
+	"name" text NOT NULL,
+	"slug" text NOT NULL,
+	"is_enabled" boolean DEFAULT true,
+	"order" integer DEFAULT 0,
+	"seo" jsonb,
+	"include_in_sitemap" boolean DEFAULT true,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "websites" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"entity_id" uuid NOT NULL,
+	"theme" text DEFAULT 'academia',
+	"font" text DEFAULT 'inter',
+	"custom_colors" jsonb,
+	"is_published" boolean DEFAULT false,
+	"custom_domain" text,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "payments" (
@@ -2569,7 +2613,7 @@ CREATE TABLE IF NOT EXISTS "gamification_badges" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"name" varchar(100) NOT NULL,
 	"type" "badge_type" NOT NULL,
-	"module" "points_ddssdmodule",
+	"module" varchar(100),
 	"action" varchar(100),
 	"target_value" integer NOT NULL,
 	"icon" varchar(10),
@@ -2578,10 +2622,12 @@ CREATE TABLE IF NOT EXISTS "gamification_badges" (
 	"is_active" boolean DEFAULT true NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL,
-	"entity_id" uuid NOT NULL
+	"entity_id" uuid NOT NULL,
+	CONSTRAINT "gamification_badges_entity_id_type_module_action_target_value_unique" UNIQUE("entity_id","type","module","action","target_value"),
+	CONSTRAINT "gamification_badges_entity_id_type_target_value_unique" UNIQUE("entity_id","type","target_value")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "gamificationUser" (
+CREATE TABLE IF NOT EXISTS "gamification_users" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"total_points" integer DEFAULT 0 NOT NULL,
 	"current_rank_id" uuid,
@@ -2589,13 +2635,13 @@ CREATE TABLE IF NOT EXISTS "gamificationUser" (
 	"updated_at" timestamp DEFAULT now() NOT NULL,
 	"user_id" uuid NOT NULL,
 	"org_id" uuid NOT NULL,
-	CONSTRAINT "gamificationUser_id_user_id_unique" UNIQUE("id","user_id")
+	CONSTRAINT "gamification_users_org_id_user_id_unique" UNIQUE("org_id","user_id")
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "gamification_point_rules" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"module_" "points_ddssdmodule" NOT NULL,
-	"action" "user_action_gamification" NOT NULL,
+	"module" varchar(100) NOT NULL,
+	"action" varchar(100) NOT NULL,
 	"trigger" "trigger_type" DEFAULT 'RECURRING' NOT NULL,
 	"points" integer NOT NULL,
 	"description" text,
@@ -2603,18 +2649,18 @@ CREATE TABLE IF NOT EXISTS "gamification_point_rules" (
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL,
 	"entity_id" uuid NOT NULL,
-	CONSTRAINT "gamification_point_rules_module__action_trigger_entity_id_unique" UNIQUE("module_","action","trigger","entity_id")
+	"daily_cap" integer DEFAULT 0 NOT NULL,
+	"weekly_cap" integer DEFAULT 0 NOT NULL,
+	"monthly_cap" integer DEFAULT 0 NOT NULL,
+	CONSTRAINT "gamification_point_rules_module_action_trigger_entity_id_unique" UNIQUE("module","action","trigger","entity_id")
 );
 --> statement-breakpoint
-CREATE TABLE IF NOT EXISTS "gamification_ranks" (
+CREATE TABLE IF NOT EXISTS "gamification_rank" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"name" varchar(100) NOT NULL,
-	"type" "rank_type" NOT NULL,
-	"min_points" integer,
+	"min_points" integer DEFAULT 0 NOT NULL,
 	"max_points" integer,
-	"min_badges" integer,
-	"max_badges" integer,
-	"color" varchar(7) NOT NULL,
+	"color" varchar(50) NOT NULL,
 	"icon" varchar(10),
 	"order" integer DEFAULT 0 NOT NULL,
 	"is_active" boolean DEFAULT true NOT NULL,
@@ -2720,22 +2766,10 @@ CREATE TABLE IF NOT EXISTS "reports" (
 	"entity" uuid NOT NULL
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX IF NOT EXISTS "slug_type_unique" ON "staticPages" ("slug","type_id");--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "static_pages_slug_type_unique" ON "staticPages" ("slug","type_id");--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "chats_user_pair_idx" ON "chats" ("user_id","user2_id","entity");--> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "otp" ADD CONSTRAINT "otp_user_id_admin_id_fk" FOREIGN KEY ("user_id") REFERENCES "admin"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "websites" ADD CONSTRAINT "websites_entity_id_entity_id_fk" FOREIGN KEY ("entity_id") REFERENCES "entity"("id") ON DELETE no action ON UPDATE no action;
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
- ALTER TABLE "navbars" ADD CONSTRAINT "navbars_website_id_websites_id_fk" FOREIGN KEY ("website_id") REFERENCES "websites"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -2747,13 +2781,25 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
+ ALTER TABLE "modules" ADD CONSTRAINT "modules_page_id_pages_id_fk" FOREIGN KEY ("page_id") REFERENCES "pages"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "navbars" ADD CONSTRAINT "navbars_website_id_websites_id_fk" FOREIGN KEY ("website_id") REFERENCES "websites"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
  ALTER TABLE "pages" ADD CONSTRAINT "pages_website_id_websites_id_fk" FOREIGN KEY ("website_id") REFERENCES "websites"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "modules" ADD CONSTRAINT "modules_page_id_pages_id_fk" FOREIGN KEY ("page_id") REFERENCES "pages"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "websites" ADD CONSTRAINT "websites_entity_id_entity_id_fk" FOREIGN KEY ("entity_id") REFERENCES "entity"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -2855,19 +2901,19 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "gamificationUser" ADD CONSTRAINT "gamificationUser_current_rank_id_gamification_ranks_id_fk" FOREIGN KEY ("current_rank_id") REFERENCES "gamification_ranks"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "gamification_users" ADD CONSTRAINT "gamification_users_current_rank_id_gamification_rank_id_fk" FOREIGN KEY ("current_rank_id") REFERENCES "gamification_rank"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "gamification_user_actions" ADD CONSTRAINT "gamification_user_actions_user_id_gamificationUser_id_fk" FOREIGN KEY ("user_id") REFERENCES "gamificationUser"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "gamification_user_actions" ADD CONSTRAINT "gamification_user_actions_user_id_gamification_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "gamification_users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "gamification_user_badges" ADD CONSTRAINT "gamification_user_badges_user_id_gamificationUser_id_fk" FOREIGN KEY ("user_id") REFERENCES "gamificationUser"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "gamification_user_badges" ADD CONSTRAINT "gamification_user_badges_user_id_gamification_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "gamification_users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -2879,7 +2925,7 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "gamification_user_points_history" ADD CONSTRAINT "gamification_user_points_history_user_id_gamificationUser_id_fk" FOREIGN KEY ("user_id") REFERENCES "gamificationUser"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "gamification_user_points_history" ADD CONSTRAINT "gamification_user_points_history_user_id_gamification_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "gamification_users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -2891,19 +2937,19 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "gamification_user_rank_history" ADD CONSTRAINT "gamification_user_rank_history_user_id_gamificationUser_id_fk" FOREIGN KEY ("user_id") REFERENCES "gamificationUser"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "gamification_user_rank_history" ADD CONSTRAINT "gamification_user_rank_history_user_id_gamification_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "gamification_users"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "gamification_user_rank_history" ADD CONSTRAINT "gamification_user_rank_history_from_rank_id_gamification_ranks_id_fk" FOREIGN KEY ("from_rank_id") REFERENCES "gamification_ranks"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "gamification_user_rank_history" ADD CONSTRAINT "gamification_user_rank_history_from_rank_id_gamification_rank_id_fk" FOREIGN KEY ("from_rank_id") REFERENCES "gamification_rank"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- ALTER TABLE "gamification_user_rank_history" ADD CONSTRAINT "gamification_user_rank_history_to_rank_id_gamification_ranks_id_fk" FOREIGN KEY ("to_rank_id") REFERENCES "gamification_ranks"("id") ON DELETE no action ON UPDATE no action;
+ ALTER TABLE "gamification_user_rank_history" ADD CONSTRAINT "gamification_user_rank_history_to_rank_id_gamification_rank_id_fk" FOREIGN KEY ("to_rank_id") REFERENCES "gamification_rank"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;

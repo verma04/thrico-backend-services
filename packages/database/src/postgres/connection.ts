@@ -34,17 +34,24 @@ function getDbConfig(region: DatabaseRegion): DbConfig | string {
   };
 }
 
+// Export schema for use in queries
+export { schema };
+
+export type AppDatabase = PostgresJsDatabase<typeof schema>;
+
 // Connection pool for each region
 const connectionPools: Map<
   DatabaseRegion,
   ReturnType<typeof postgres>
 > = new Map();
-const dbInstances: Map<DatabaseRegion, ReturnType<typeof drizzle>> = new Map();
+const dbInstances: Map<DatabaseRegion, AppDatabase> = new Map();
 
 /**
  * Get or create a database connection for a specific region
  */
-export function getDb(region: DatabaseRegion = DatabaseRegion.IND) {
+export function getDb(
+  region: DatabaseRegion = DatabaseRegion.IND
+): AppDatabase {
   // Return cached instance if exists
   if (dbInstances.has(region)) {
     return dbInstances.get(region)!;
@@ -76,7 +83,7 @@ export function getDb(region: DatabaseRegion = DatabaseRegion.IND) {
           });
 
     // Create drizzle instance
-    const db = drizzle(sql, { schema });
+    const db: AppDatabase = drizzle(sql, { schema });
 
     // Cache the connection
     connectionPools.set(region, sql);
@@ -144,8 +151,3 @@ export async function testConnection(region: DatabaseRegion): Promise<boolean> {
     return false;
   }
 }
-
-// Export schema for use in queries
-export { schema };
-
-export type AppDatabase = PostgresJsDatabase<typeof schema>;

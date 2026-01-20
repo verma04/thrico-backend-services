@@ -17,6 +17,7 @@ import {
   customFormSubmissions,
   customForms,
   offers,
+  userFeed,
 } from "@thrico/database";
 import { entityClient, subscriptionClient } from "@thrico/grpc";
 
@@ -385,6 +386,229 @@ const dashboardResolvers = {
       }
 
       return results;
+    },
+
+    async getPlatformModuleActivity(
+      _: any,
+      { timeRange }: { timeRange: string },
+      context: any
+    ) {
+      const { db, entityId } = await checkAuth(context);
+
+      if (!entityId) {
+        throw new GraphQLError("Permission Denied", {
+          extensions: {
+            code: "FORBIDDEN",
+            http: { status: 403 },
+          },
+        });
+      }
+
+      const now = new Date();
+      let startDate = new Date();
+
+      switch (timeRange) {
+        case "LAST_24_HOURS":
+          startDate.setHours(now.getHours() - 24);
+          break;
+        case "LAST_7_DAYS":
+          startDate.setDate(now.getDate() - 7);
+          break;
+        case "LAST_30_DAYS":
+          startDate.setDate(now.getDate() - 30);
+          break;
+        case "LAST_90_DAYS":
+          startDate.setDate(now.getDate() - 90);
+          break;
+        default:
+          startDate.setHours(now.getHours() - 24);
+      }
+
+      let enabledModules: string[] = [];
+      try {
+        const subscription = await subscriptionClient.checkEntitySubscription(
+          entityId
+        );
+        if (subscription && subscription.modules) {
+          enabledModules = subscription.modules
+            .filter((t: any) => t.enabled)
+            .map((t: any) => t.name);
+        }
+      } catch (e) {
+        console.error("Error fetching entity details", e);
+      }
+
+      const results = [];
+
+      // 1. Feed
+      if (enabledModules.includes("Feed")) {
+        const feedItems = await db
+          .select({ count: count(userFeed.id) })
+          .from(userFeed)
+          .where(
+            and(
+              eq(userFeed.entity, entityId),
+              gte(userFeed.createdAt, startDate)
+            )
+          );
+        results.push({
+          name: "Feed",
+          itemCount: feedItems[0]?.count || 0,
+        });
+      }
+
+      // 2. Communities
+      if (enabledModules.includes("Communities")) {
+        const communityItems = await db
+          .select({ count: count(groups.id) })
+          .from(groups)
+          .where(
+            and(eq(groups.entity, entityId), gte(groups.createdAt, startDate))
+          );
+        results.push({
+          name: "Communities",
+          itemCount: communityItems[0]?.count || 0,
+        });
+      }
+
+      // 3. Events
+      if (enabledModules.includes("Events")) {
+        const eventItems = await db
+          .select({ count: count(events.id) })
+          .from(events)
+          .where(
+            and(eq(events.entityId, entityId), gte(events.createdAt, startDate))
+          );
+        results.push({
+          name: "Events",
+          itemCount: eventItems[0]?.count || 0,
+        });
+      }
+
+      // 4. Listing (Marketplace)
+      if (enabledModules.includes("Listing")) {
+        const listingItems = await db
+          .select({ count: count(marketPlace.id) })
+          .from(marketPlace)
+          .where(
+            and(
+              eq(marketPlace.entityId, entityId),
+              gte(marketPlace.createdAt, startDate)
+            )
+          );
+        results.push({
+          name: "Listing",
+          itemCount: listingItems[0]?.count || 0,
+        });
+      }
+
+      // 5. Jobs
+      if (enabledModules.includes("Jobs")) {
+        const jobItems = await db
+          .select({ count: count(jobs.id) })
+          .from(jobs)
+          .where(
+            and(eq(jobs.entityId, entityId), gte(jobs.createdAt, startDate))
+          );
+        results.push({
+          name: "Jobs",
+          itemCount: jobItems[0]?.count || 0,
+        });
+      }
+
+      // 6. Mentorship
+      if (enabledModules.includes("Mentorship")) {
+        const mentorItems = await db
+          .select({ count: count(mentorShip.id) })
+          .from(mentorShip)
+          .where(
+            and(
+              eq(mentorShip.entity, entityId),
+              gte(mentorShip.createdAt, startDate)
+            )
+          );
+        results.push({
+          name: "Mentorship",
+          itemCount: mentorItems[0]?.count || 0,
+        });
+      }
+
+      // 7. Polls
+      if (enabledModules.includes("Polls")) {
+        const pollItems = await db
+          .select({ count: count(polls.id) })
+          .from(polls)
+          .where(
+            and(eq(polls.entityId, entityId), gte(polls.createdAt, startDate))
+          );
+        results.push({
+          name: "Polls",
+          itemCount: pollItems[0]?.count || 0,
+        });
+      }
+
+      // 8. Forums
+      if (enabledModules.includes("Forums")) {
+        const forumItems = await db
+          .select({ count: count(discussionForum.id) })
+          .from(discussionForum)
+          .where(
+            and(
+              eq(discussionForum.entityId, entityId),
+              gte(discussionForum.createdAt, startDate)
+            )
+          );
+        results.push({
+          name: "Forums",
+          itemCount: forumItems[0]?.count || 0,
+        });
+      }
+
+      // 9. Surveys (Custom Forms)
+      if (enabledModules.includes("Surveys")) {
+        const surveyItems = await db
+          .select({ count: count(customForms.id) })
+          .from(customForms)
+          .where(
+            and(
+              eq(customForms.entityId, entityId),
+              gte(customForms.createdAt, startDate)
+            )
+          );
+        results.push({
+          name: "Surveys",
+          itemCount: surveyItems[0]?.count || 0,
+        });
+      }
+
+      // 10. Offers
+      if (enabledModules.includes("Offers")) {
+        const offerItems = await db
+          .select({ count: count(offers.id) })
+          .from(offers)
+          .where(
+            and(eq(offers.entityId, entityId), gte(offers.createdAt, startDate))
+          );
+        results.push({
+          name: "Offers",
+          itemCount: offerItems[0]?.count || 0,
+        });
+      }
+
+      // Calculate summary statistics
+      const total = results.reduce(
+        (sum, module) => sum + Number(module.itemCount),
+        0
+      );
+      const active = results.filter((module) => module.itemCount > 0).length;
+      const inactive = enabledModules.length - active;
+
+      return {
+        total,
+        active,
+        inactive,
+        modules: results,
+      };
     },
   },
   Mutation: {},

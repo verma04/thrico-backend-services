@@ -1,6 +1,6 @@
 {
-  "id": "3fec2fa1-d759-4c6f-a926-8ed5e3e0247b",
-  "prevId": "40f05471-f846-491c-811e-40af680a916f",
+  "id": "22b2194c-b6c1-4533-bc9c-c05b8a24662b",
+  "prevId": "f81c0187-2d7d-45da-9c3c-d05e27115a1d",
   "version": "5",
   "dialect": "pg",
   "tables": {
@@ -1818,6 +1818,19 @@
           "notNull": false,
           "default": 0
         },
+        "seo": {
+          "name": "seo",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "include_in_sitemap": {
+          "name": "include_in_sitemap",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": true
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -1882,6 +1895,12 @@
           "primaryKey": false,
           "notNull": false,
           "default": "'inter'"
+        },
+        "custom_colors": {
+          "name": "custom_colors",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "is_published": {
           "name": "is_published",
@@ -12486,7 +12505,7 @@
         },
         "module": {
           "name": "module",
-          "type": "points_ddssdmodule",
+          "type": "varchar(100)",
           "primaryKey": false,
           "notNull": false
         },
@@ -12551,10 +12570,31 @@
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {}
+      "uniqueConstraints": {
+        "gamification_badges_entity_id_type_module_action_target_value_unique": {
+          "name": "gamification_badges_entity_id_type_module_action_target_value_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "entity_id",
+            "type",
+            "module",
+            "action",
+            "target_value"
+          ]
+        },
+        "gamification_badges_entity_id_type_target_value_unique": {
+          "name": "gamification_badges_entity_id_type_target_value_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "entity_id",
+            "type",
+            "target_value"
+          ]
+        }
+      }
     },
-    "gamificationUser": {
-      "name": "gamificationUser",
+    "gamification_users": {
+      "name": "gamification_users",
       "schema": "",
       "columns": {
         "id": {
@@ -12606,9 +12646,9 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "gamificationUser_current_rank_id_gamification_ranks_id_fk": {
-          "name": "gamificationUser_current_rank_id_gamification_ranks_id_fk",
-          "tableFrom": "gamificationUser",
+        "gamification_users_current_rank_id_gamification_ranks_id_fk": {
+          "name": "gamification_users_current_rank_id_gamification_ranks_id_fk",
+          "tableFrom": "gamification_users",
           "tableTo": "gamification_ranks",
           "columnsFrom": [
             "current_rank_id"
@@ -12622,11 +12662,11 @@
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "gamificationUser_id_user_id_unique": {
-          "name": "gamificationUser_id_user_id_unique",
+        "gamification_users_org_id_user_id_unique": {
+          "name": "gamification_users_org_id_user_id_unique",
           "nullsNotDistinct": false,
           "columns": [
-            "id",
+            "org_id",
             "user_id"
           ]
         }
@@ -12643,15 +12683,15 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "module_": {
-          "name": "module_",
-          "type": "points_ddssdmodule",
+        "module": {
+          "name": "module",
+          "type": "varchar(100)",
           "primaryKey": false,
           "notNull": true
         },
         "action": {
           "name": "action",
-          "type": "user_action_gamification",
+          "type": "varchar(100)",
           "primaryKey": false,
           "notNull": true
         },
@@ -12700,17 +12740,38 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
+        },
+        "daily_cap": {
+          "name": "daily_cap",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "weekly_cap": {
+          "name": "weekly_cap",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "monthly_cap": {
+          "name": "monthly_cap",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         }
       },
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "gamification_point_rules_module__action_trigger_entity_id_unique": {
-          "name": "gamification_point_rules_module__action_trigger_entity_id_unique",
+        "gamification_point_rules_module_action_trigger_entity_id_unique": {
+          "name": "gamification_point_rules_module_action_trigger_entity_id_unique",
           "nullsNotDistinct": false,
           "columns": [
-            "module_",
+            "module",
             "action",
             "trigger",
             "entity_id"
@@ -12735,17 +12796,12 @@
           "primaryKey": false,
           "notNull": true
         },
-        "type": {
-          "name": "type",
-          "type": "rank_type",
-          "primaryKey": false,
-          "notNull": true
-        },
         "min_points": {
           "name": "min_points",
           "type": "integer",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": 0
         },
         "max_points": {
           "name": "max_points",
@@ -12753,21 +12809,9 @@
           "primaryKey": false,
           "notNull": false
         },
-        "min_badges": {
-          "name": "min_badges",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "max_badges": {
-          "name": "max_badges",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
         "color": {
           "name": "color",
-          "type": "varchar(7)",
+          "type": "varchar(50)",
           "primaryKey": false,
           "notNull": true
         },
@@ -12862,10 +12906,10 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "gamification_user_actions_user_id_gamificationUser_id_fk": {
-          "name": "gamification_user_actions_user_id_gamificationUser_id_fk",
+        "gamification_user_actions_user_id_gamification_users_id_fk": {
+          "name": "gamification_user_actions_user_id_gamification_users_id_fk",
           "tableFrom": "gamification_user_actions",
-          "tableTo": "gamificationUser",
+          "tableTo": "gamification_users",
           "columnsFrom": [
             "user_id"
           ],
@@ -12926,10 +12970,10 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "gamification_user_badges_user_id_gamificationUser_id_fk": {
-          "name": "gamification_user_badges_user_id_gamificationUser_id_fk",
+        "gamification_user_badges_user_id_gamification_users_id_fk": {
+          "name": "gamification_user_badges_user_id_gamification_users_id_fk",
           "tableFrom": "gamification_user_badges",
-          "tableTo": "gamificationUser",
+          "tableTo": "gamification_users",
           "columnsFrom": [
             "user_id"
           ],
@@ -13001,10 +13045,10 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "gamification_user_points_history_user_id_gamificationUser_id_fk": {
-          "name": "gamification_user_points_history_user_id_gamificationUser_id_fk",
+        "gamification_user_points_history_user_id_gamification_users_id_fk": {
+          "name": "gamification_user_points_history_user_id_gamification_users_id_fk",
           "tableFrom": "gamification_user_points_history",
-          "tableTo": "gamificationUser",
+          "tableTo": "gamification_users",
           "columnsFrom": [
             "user_id"
           ],
@@ -13070,10 +13114,10 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "gamification_user_rank_history_user_id_gamificationUser_id_fk": {
-          "name": "gamification_user_rank_history_user_id_gamificationUser_id_fk",
+        "gamification_user_rank_history_user_id_gamification_users_id_fk": {
+          "name": "gamification_user_rank_history_user_id_gamification_users_id_fk",
           "tableFrom": "gamification_user_rank_history",
-          "tableTo": "gamificationUser",
+          "tableTo": "gamification_users",
           "columnsFrom": [
             "user_id"
           ],
@@ -13739,7 +13783,6 @@
         "rePost": "rePost",
         "story": "story",
         "admin": "admin",
-        "xf": "xf",
         "poll": "poll",
         "offer": "offer",
         "celebration": "celebration",

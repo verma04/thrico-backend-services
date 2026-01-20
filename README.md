@@ -24,9 +24,9 @@ thrico-backend/
 │   ├── grpc/              # gRPC proto definitions and clients
 │   └── logging/           # Winston logger configuration
 ├── services/              # Microservices
-│   ├── user-graphql/      # User-facing GraphQL API (port 4001)
-│   ├── mobile-graphql/    # Mobile-optimized GraphQL API (port 4002)
-│   ├── admin-graphql/     # Entity Admin GraphQL API (port 4003)
+│   ├── admin-graphql/     # Entity Admin GraphQL API (port 1111)
+│   ├── user/              # User-facing GraphQL API (port 2222)
+│   ├── mobile/            # Mobile-optimized GraphQL API (port 3333)
 │   └── grpc-service/      # gRPC microservice (port 50051)
 └── docker-compose.yml     # Docker services configuration
 ```
@@ -78,26 +78,26 @@ npm run migrate
 
 ```bash
 # Start all services in development mode
-npm run dev
+pnpm run dev
 
 # Or start individual services
-npm run dev:user     # User GraphQL on port 4001
-npm run dev:mobile   # Mobile GraphQL on port 4002
-npm run dev:admin    # Admin GraphQL on port 4003
-npm run dev:grpc     # gRPC service on port 50051
+pnpm --filter admin-graphql dev  # Admin GraphQL on port 1111
+pnpm --filter user dev           # User GraphQL on port 2222
+pnpm --filter mobile dev         # Mobile GraphQL on port 3333
+pnpm run dev:grpc                # gRPC service on port 50051
 ```
 
 ## GraphQL API Endpoints
 
-- **User API**: http://localhost:4001/graphql
-- **Mobile API**: http://localhost:4002/graphql
-- **Admin API**: http://localhost:4003/graphql
+- **Admin API**: http://localhost:1111/graphql
+- **User API**: http://localhost:2222/graphql
+- **Mobile API**: http://localhost:3333/graphql
 
 ### Health Checks
 
-- http://localhost:4001/health
-- http://localhost:4002/health
-- http://localhost:4003/health
+- http://localhost:1111/health
+- http://localhost:2222/health
+- http://localhost:3333/health
 
 ## Database Configuration
 
@@ -117,6 +117,7 @@ Users are automatically routed to the appropriate database based on their region
 - **Production**: AWS DynamoDB (configure in `.env`)
 
 Models:
+
 - `UserActivity` - User activity tracking
 - `AuditLog` - System audit logs
 
@@ -137,14 +138,16 @@ All GraphQL APIs use JWT-based authentication:
 
 ```graphql
 mutation {
-  register(input: {
-    email: "user@example.com"
-    username: "johndoe"
-    password: "SecurePass123"
-    firstName: "John"
-    lastName: "Doe"
-    region: INDIA
-  }) {
+  register(
+    input: {
+      email: "user@example.com"
+      username: "johndoe"
+      password: "SecurePass123"
+      firstName: "John"
+      lastName: "Doe"
+      region: INDIA
+    }
+  ) {
     user {
       id
       email
@@ -161,10 +164,7 @@ mutation {
 
 ```graphql
 mutation {
-  login(input: {
-    email: "user@example.com"
-    password: "SecurePass123"
-  }) {
+  login(input: { email: "user@example.com", password: "SecurePass123" }) {
     user {
       id
       email
@@ -190,19 +190,19 @@ Located at: `packages/grpc/proto/service.proto`
 ### Using gRPC Client
 
 ```typescript
-import { grpcClient } from '@thrico/grpc';
+import { grpcClient } from "@thrico/grpc";
 
 // Get user
-const response = await grpcClient.getUser('user-id');
+const response = await grpcClient.getUser("user-id");
 
 // Create user
 const newUser = await grpcClient.createUser({
-  email: 'user@example.com',
-  username: 'johndoe',
-  password: 'password',
-  first_name: 'John',
-  last_name: 'Doe',
-  region: 'india',
+  email: "user@example.com",
+  username: "johndoe",
+  password: "password",
+  first_name: "John",
+  last_name: "Doe",
+  region: "india",
 });
 ```
 
@@ -252,9 +252,9 @@ Key environment variables (see `.env.example` for complete list):
 NODE_ENV=development
 
 # GraphQL Servers
-USER_GRAPHQL_PORT=4001
-MOBILE_GRAPHQL_PORT=4002
-ADMIN_GRAPHQL_PORT=4003
+ADMIN_GRAPHQL_PORT=1111
+USER_GRAPHQL_PORT=2222
+MOBILE_GRAPHQL_PORT=3333
 
 # gRPC
 GRPC_PORT=50051

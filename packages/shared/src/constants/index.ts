@@ -72,7 +72,7 @@ export const ENV = {
   NODE_ENV: process.env.NODE_ENV || "development",
 
   // JWT
-  JWT_SECRET: process.env.JWT_SECRET || "default-secret-change-me",
+  JWT_SECRET: process.env.JWT_SECRET || "123466",
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "7d",
   JWT_REFRESH_SECRET:
     process.env.JWT_REFRESH_SECRET || "default-refresh-secret-change-me",

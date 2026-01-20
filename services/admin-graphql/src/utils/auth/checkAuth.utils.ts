@@ -1,6 +1,6 @@
 import { GraphQLError } from "graphql";
 import jwt from "jsonwebtoken";
-import { ADMIN, getDb } from "@thrico/database";
+import { ADMIN, AppDatabase, getDb } from "@thrico/database";
 import { DatabaseRegion, JWTPayload, ENV } from "@thrico/shared";
 import { entityClient } from "@thrico/grpc";
 import { decryptToken } from "../crypto/jwt.crypto";
@@ -11,7 +11,7 @@ export type AuthContext = {
   token: string;
   entity: string;
   entityId?: string; // from JWT/Admin
-  db: any;
+  db: AppDatabase;
   country: DatabaseRegion;
   email: string;
   firstName?: string;

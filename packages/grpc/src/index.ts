@@ -7,3 +7,4 @@ export * from "./subscriptionClient";
 export * from "./customRequest";
 export * from "./countryService";
 export * from "./server";
+export * from "./gamificationClient";

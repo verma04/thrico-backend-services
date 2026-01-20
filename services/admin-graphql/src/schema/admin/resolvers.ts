@@ -17,7 +17,7 @@ import checkAuth from "../../utils/auth/checkAuth.utils";
 import sendOtp from "../../utils/sendOtp.utils";
 import { decryptOtp } from "../../utils/crypto/otp.crypto";
 import generateJwtToken from "../../utils/generateJwtToken.utils";
-
+import { subscriptionClient } from "@thrico/grpc";
 import uploadImageToFolder from "../../utils/upload/uploadImageToFolder.utils";
 
 // Define a context type if not available globally, or use any if strictly necessary but better typed
@@ -32,6 +32,10 @@ interface Context {
 
 export const adminResolvers: any = {
   Query: {
+    health: () => ({
+      status: "ok",
+      timestamp: new Date().toISOString(),
+    }),
     getUser: async (_: any, __: any, context: Context) => {
       try {
         const user = await checkAuth(context);
@@ -353,6 +357,8 @@ export const adminResolvers: any = {
         const data = await checkAuth(context);
         const org_id = data.entityId || "general";
 
+        console.log(file);
+
         const url = await uploadImageToFolder(`${org_id}`, [file]);
         log.info("Image uploaded successfully", { org_id });
         return url[0].url;
@@ -365,6 +371,25 @@ export const adminResolvers: any = {
             http: { status: 500 },
           },
         });
+      }
+    },
+
+    async updateEntityModule(_: any, { input }: any, context: any) {
+      try {
+        const { db, entity } = await checkAuth(context);
+
+        console.log(input);
+
+        const subscription = await subscriptionClient.updateEntityModules(
+          entity,
+          input
+        );
+        // const subscription = await checkEntitySubscription(entityId);
+
+        return subscription;
+      } catch (error) {
+        console.log(error);
+        throw error;
       }
     },
   },

@@ -20,6 +20,7 @@ export const websites = pgTable("websites", {
     .notNull(),
   theme: text("theme").default("academia"), // ThemeType
   font: text("font").default("inter"), // FontType
+  customColors: jsonb("custom_colors"),
   isPublished: boolean("is_published").default(false),
   customDomain: text("custom_domain"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -92,6 +93,8 @@ export const pages = pgTable("pages", {
   slug: text("slug").notNull(),
   isEnabled: boolean("is_enabled").default(true),
   order: integer("order").default(0), // For ordering pages
+  seo: jsonb("seo"), // SEO metadata (title, description, keywords)
+  includeInSitemap: boolean("include_in_sitemap").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

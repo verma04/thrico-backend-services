@@ -32,6 +32,7 @@ import { givingResolvers } from "./giving/resolvers";
 import { pageResolvers } from "./page/resolvers";
 import { dashboardResolvers } from "./dashboard/resolvers";
 import groupsResolvers from "./groups/resolvers";
+import { offersResolvers } from "./offers/resolvers";
 
 const mainResolvers = {
   Query: {
@@ -162,6 +163,7 @@ export const resolvers: any = {
     ...pageResolvers.Query,
     ...dashboardResolvers.Query,
     ...groupsResolvers.Query,
+    ...offersResolvers.Query,
   },
   Mutation: {
     ...mainResolvers.Mutation,
@@ -187,5 +189,6 @@ export const resolvers: any = {
     ...pageResolvers.Mutation,
     ...dashboardResolvers.Mutation,
     ...groupsResolvers.Mutation,
+    ...offersResolvers.Mutation,
   },
 };

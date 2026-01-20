@@ -40,7 +40,6 @@ export const source = pgEnum("source", [
   "rePost",
   "story",
   "admin",
-  "xf",
   "poll",
   "offer",
   "celebration",

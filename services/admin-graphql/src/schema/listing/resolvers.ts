@@ -10,7 +10,6 @@ import {
 } from "@thrico/database";
 import uploadFeedImage from "../../utils/upload/uploadFeedImage.utils";
 import { entityClient } from "@thrico/grpc";
-import generateSlug from "../../utils/slug.utils";
 
 export const listingResolvers = {
   Query: {
@@ -423,15 +422,34 @@ export const listingResolvers = {
 
         const entityResult = await entityClient.getEntityDetails(entity);
 
+        // Check for duplicate title
+        const duplicate = await db.query.marketPlace.findFirst({
+          where: (listing: any, { eq, and }: any) =>
+            and(eq(listing.entityId, entity), eq(listing.title, input.title)),
+        });
+
+        if (duplicate) {
+          throw new GraphQLError("A listing with this title already exists.", {
+            extensions: {
+              code: "CONFLICT",
+              http: { status: 409 },
+            },
+          });
+        }
+
         const checkAutoApprove = await db.query.entitySettings.findFirst({
           where: (entitySettings: any, { eq }: any) =>
             eq(entitySettings.entity, entity),
         });
 
+        console.log("Input:", input);
+
         let media: any[] = [];
         if (input.media) {
           media = await uploadFeedImage(entity, input.media);
         }
+
+        console.log("Uploaded Media:", media);
 
         const newListing = await db.transaction(async (tx: any) => {
           const [createdListing] = await tx
@@ -452,16 +470,14 @@ export const listingResolvers = {
               status: checkAutoApprove?.autoApproveMarketPlace
                 ? "APPROVED"
                 : "PENDING",
-              slug: generateSlug(input.title),
-              // locationLatLong omitted if not using PostGIS raw extensions here easily or input format varies
-              // original: sql`ST_SetSRID(ST_MakePoint(${input.location.longitude}, ${input.location.latitude}), 4326)`
+              slug: input.title,
             })
             .returning();
 
           let medias: any[] = [];
           if (media.length > 0) {
             medias = media.map((set) => ({
-              url: set.url, // uploadFeedImage returns {url, id}
+              url: set.url,
               marketPlace: createdListing.id,
             }));
 
@@ -544,7 +560,7 @@ export const listingResolvers = {
           .update(marketPlace)
           .set({
             ...input,
-            slug: generateSlug(input.title),
+            slug: input.title,
           })
           .where(
             and(eq(marketPlace.id, input.id), eq(marketPlace.entityId, entity))

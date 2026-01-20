@@ -36,8 +36,8 @@ export const pointRules = pgTable(
   "gamification_point_rules",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    module: moduleEnum("module_").notNull(),
-    action: userActionEnum("action").notNull(),
+    module: varchar("module", { length: 100 }).notNull(),
+    action: varchar("action", { length: 100 }).notNull(),
     trigger: triggerTypeEnum("trigger").notNull().default("RECURRING"),
     points: integer("points").notNull(),
     description: text("description"),
@@ -45,6 +45,9 @@ export const pointRules = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
     entityId: uuid("entity_id").notNull(),
+    dailyCap: integer("daily_cap").notNull().default(0),
+    weeklyCap: integer("weekly_cap").notNull().default(0),
+    monthlyCap: integer("monthly_cap").notNull().default(0),
   },
   (table) => ({
     uniqueRule: unique().on(
@@ -57,32 +60,48 @@ export const pointRules = pgTable(
 );
 
 // Badges Table
-export const badges = pgTable("gamification_badges", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  name: varchar("name", { length: 100 }).notNull(),
-  type: badgeTypeEnum("type").notNull(),
-  module: moduleEnum("module"), // nullable for points-based badges
-  action: varchar("action", { length: 100 }), // nullable for points-based badges
-  targetValue: integer("target_value").notNull(),
-  icon: varchar("icon", { length: 10 }),
-  description: text("description"),
-  condition: text("condition").notNull(), // computed field for display
-  isActive: boolean("is_active").notNull().default(true),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-  entityId: uuid("entity_id").notNull(),
-});
+export const badges = pgTable(
+  "gamification_badges",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: varchar("name", { length: 100 }).notNull(),
+    type: badgeTypeEnum("type").notNull(),
+    module: varchar("module", { length: 100 }), // nullable for points-based badges
+    action: varchar("action", { length: 100 }), // nullable for points-based badges
+    targetValue: integer("target_value").notNull(),
+    icon: varchar("icon", { length: 10 }),
+    description: text("description"),
+    condition: text("condition").notNull(), // computed field for display
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+    entityId: uuid("entity_id").notNull(),
+  },
+  (table) => ({
+    // Unique constraint for ACTION badges
+    uniqueActionBadge: unique().on(
+      table.entityId,
+      table.type,
+      table.module,
+      table.action,
+      table.targetValue
+    ),
+    // Unique constraint for POINTS badges
+    uniquePointsBadge: unique().on(
+      table.entityId,
+      table.type,
+      table.targetValue
+    ),
+  })
+);
 
 // Ranks Table
 export const ranks = pgTable("gamification_ranks", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: varchar("name", { length: 100 }).notNull(),
-  type: rankTypeEnum("type").notNull(),
-  minPoints: integer("min_points"),
+  minPoints: integer("min_points").notNull().default(0),
   maxPoints: integer("max_points"), // null means unlimited
-  minBadges: integer("min_badges"),
-  maxBadges: integer("max_badges"), // null means unlimited
-  color: varchar("color", { length: 7 }).notNull(), // hex color
+  color: varchar("color", { length: 50 }).notNull(), // Supports hex, rgb, etc.
   icon: varchar("icon", { length: 10 }),
   order: integer("order").notNull().default(0), // for sorting ranks
   isActive: boolean("is_active").notNull().default(true),
@@ -92,7 +111,7 @@ export const ranks = pgTable("gamification_ranks", {
 });
 
 export const gamificationUser = pgTable(
-  "gamificationUser",
+  "gamification_users",
   {
     id: uuid("id").primaryKey().defaultRandom(),
     totalPoints: integer("total_points").notNull().default(0),
@@ -104,7 +123,7 @@ export const gamificationUser = pgTable(
   },
   (table) => {
     return {
-      unq: unique().on(table.id, table.user),
+      unq: unique().on(table.entityId, table.user),
     };
   }
 );

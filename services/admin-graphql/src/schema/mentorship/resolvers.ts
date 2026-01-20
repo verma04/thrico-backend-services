@@ -195,6 +195,10 @@ const mentorShipResolvers = {
           where: and(eq(mentorshipCategory.id, input.id)),
         });
 
+        if (!category) {
+          throw new Error("Category not found");
+        }
+
         console.log(input);
 
         const createFeedBack = await db
@@ -275,6 +279,10 @@ const mentorShipResolvers = {
         const category = await db.query.mentorshipSkills.findFirst({
           where: and(eq(mentorshipSkills.id, input.id)),
         });
+
+        if (!category) {
+          throw new Error("Skill category not found");
+        }
 
         console.log(input);
 

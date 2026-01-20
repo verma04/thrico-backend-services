@@ -49,11 +49,24 @@ export const dashboardTypes = gql`
     userCount: Int!
   }
 
+  type PlatformModuleActivityItem {
+    name: String!
+    itemCount: Int!
+  }
+
+  type PlatformModuleActivity {
+    total: Int!
+    active: Int!
+    inactive: Int!
+    modules: [PlatformModuleActivityItem!]!
+  }
+
   extend type Query {
     dashboards(entityId: String!): [Dashboard!]!
     dashboard(id: ID!): Dashboard
     getDashboardStats(timeRange: TimeRange!): DashboardStats!
     getModuleActivity(timeRange: TimeRange!): [ModuleActivity!]!
+    getPlatformModuleActivity(timeRange: TimeRange!): PlatformModuleActivity!
   }
 
   extend type Mutation {

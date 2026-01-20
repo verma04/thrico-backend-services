@@ -1,181 +1,362 @@
 import { WebsiteCache } from "../../lib/redis-cache";
 import { footers, modules, navbars, pages, websites } from "@thrico/database";
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import { GraphQLError } from "graphql";
+import { log } from "@thrico/logging";
 
 const cache = new WebsiteCache();
 
 export const websiteResolvers = {
   Query: {
     async getWebsite(_: any, { input }: any, context: any) {
-      // Try cache first
-      const { id, entity, db } = await checkAuth(context);
-      console.log(id, entity);
-      const cached = await cache.getWebsite(entity);
+      try {
+        // Try cache first
+        const { id, entity, db } = await checkAuth(context);
+        log.debug("Auth check", { id, entity });
+        const cached = await cache.getWebsite(entity);
 
-      if (cached) return cached;
+        if (cached) return cached;
 
-      // Fetch from database
-      const website = await db.query.websites.findFirst({
-        where: eq(websites.entityId, entity),
-        with: {
-          navbar: true,
-          footer: true,
-          pages: {
-            with: {
-              modules: {
-                orderBy: (modules: any, { asc }: any) => [asc(modules.order)],
+        // Fetch from database
+        const website = await db.query.websites.findFirst({
+          where: eq(websites.entityId, entity),
+          with: {
+            navbar: true,
+            footer: true,
+            pages: {
+              with: {
+                modules: {
+                  orderBy: (modules: any, { asc }: any) => [asc(modules.order)],
+                },
+              },
+              orderBy: (pages: any, { asc }: any) => [asc(pages.order)],
+            },
+          },
+        });
+
+        if (website && website.pages && website.pages.length > 0) {
+          log.debug("Website fetched from DB", {
+            modules: website.pages[0].modules,
+          });
+        }
+
+        // Cache the result
+        if (website) {
+          await cache.setWebsite(entity, website);
+          log.info("Website fetched from DB", { websiteId: website.id });
+        }
+
+        return website;
+      } catch (error) {
+        log.error("Error in getWebsite", { error });
+        throw error;
+      }
+    },
+    async getAllPagesSeo(_: any, { websiteId }: any, context: any) {
+      try {
+        const { db } = await checkAuth(context);
+        const websitePages = await db.query.pages.findMany({
+          where: eq(pages.websiteId, websiteId),
+          orderBy: (p: any, { asc }: any) => [asc(p.order)],
+        });
+        return websitePages;
+      } catch (error) {
+        log.error("Error in getAllPagesSeo", { error });
+        throw error;
+      }
+    },
+
+    async getPageBySlug(_: any, { websiteId, slug }: any, context: any) {
+      try {
+        const { db } = await checkAuth(context);
+        const page = await db.query.pages.findFirst({
+          where: and(eq(pages.websiteId, websiteId), eq(pages.slug, slug)),
+          with: {
+            modules: {
+              orderBy: (modules: any, { asc }: any) => [asc(modules.order)],
+            },
+            website: {
+              with: {
+                navbar: true,
+                footer: true,
               },
             },
-            orderBy: (pages: any, { asc }: any) => [asc(pages.order)],
           },
-        },
-      });
+        });
 
-      if (website && website.pages && website.pages.length > 0) {
-        console.log(website.pages[0].modules, "website fetched from DB");
+        if (!page) return null;
+
+        return {
+          ...page,
+          navbar: (page as any).website?.navbar,
+          footer: (page as any).website?.footer,
+        };
+      } catch (error) {
+        log.error("Error in getPageBySlug", { error });
+        throw error;
       }
-
-      // Cache the result
-      if (website) {
-        await cache.setWebsite(entity, website);
-      }
-      console.log("website fetched from DB", website);
-
-      return website;
     },
   },
 
   Mutation: {
     async updateWebsiteTheme(_: any, { websiteId, theme }: any, context: any) {
-      const { db, entity } = await checkAuth(context);
-      const [updatedWebsite] = await db
-        .update(websites)
-        .set({ theme, updatedAt: new Date() })
-        .where(and(eq(websites.id, websiteId), eq(websites.entityId, entity)))
-        .returning();
+      try {
+        const { db, entity } = await checkAuth(context);
+        const [updatedWebsite] = await db
+          .update(websites)
+          .set({ theme, updatedAt: new Date() })
+          .where(and(eq(websites.id, websiteId), eq(websites.entityId, entity)))
+          .returning();
 
-      if (!updatedWebsite) {
-        throw new GraphQLError("Website not found or access denied.", {
-          extensions: { code: "NOT_FOUND" },
-        });
+        if (!updatedWebsite) {
+          throw new GraphQLError("Website not found or access denied.", {
+            extensions: { code: "NOT_FOUND" },
+          });
+        }
+
+        await cache.invalidateWebsite(entity, websiteId);
+        return updatedWebsite;
+      } catch (error) {
+        log.error("Error in updateWebsiteTheme", { error });
+        throw error;
       }
-
-      await cache.invalidateWebsite(entity, websiteId);
-      return updatedWebsite;
     },
 
     async updateWebsiteFont(_: any, { websiteId, font }: any, context: any) {
-      const { db, entity } = await checkAuth(context);
-      const [updatedWebsite] = await db
-        .update(websites)
-        .set({ font, updatedAt: new Date() })
-        .where(and(eq(websites.id, websiteId), eq(websites.entityId, entity)))
-        .returning();
+      try {
+        const { db, entity } = await checkAuth(context);
+        const [updatedWebsite] = await db
+          .update(websites)
+          .set({ font, updatedAt: new Date() })
+          .where(and(eq(websites.id, websiteId), eq(websites.entityId, entity)))
+          .returning();
 
-      if (!updatedWebsite) {
-        throw new GraphQLError("Website not found or access denied.", {
-          extensions: { code: "NOT_FOUND" },
-        });
+        if (!updatedWebsite) {
+          throw new GraphQLError("Website not found or access denied.", {
+            extensions: { code: "NOT_FOUND" },
+          });
+        }
+
+        await cache.invalidateWebsite(entity, websiteId);
+        return updatedWebsite;
+      } catch (error) {
+        log.error("Error in updateWebsiteFont", { error });
+        throw error;
       }
+    },
 
-      await cache.invalidateWebsite(entity, websiteId);
-      return updatedWebsite;
+    async updateWebsiteCustomColors(
+      _: any,
+      { websiteId, customColors }: any,
+      context: any
+    ) {
+      try {
+        const { db, entity } = await checkAuth(context);
+        log.debug("Update website custom colors", { websiteId, customColors });
+
+        if (customColors === undefined || customColors === null) {
+          throw new GraphQLError(
+            "customColors is required and cannot be null.",
+            {
+              extensions: { code: "BAD_USER_INPUT" },
+            }
+          );
+        }
+
+        // Build the update object conditionally
+        const updateData: any = {
+          updatedAt: new Date(),
+        };
+
+        // Only add customColors if it's a valid value
+        if (customColors !== undefined && customColors !== null) {
+          updateData.customColors = customColors;
+        }
+
+        const [updatedWebsite] = await db
+          .update(websites)
+          .set(updateData)
+          .where(and(eq(websites.id, websiteId), eq(websites.entityId, entity)))
+          .returning();
+
+        log.info("Website custom colors updated", {
+          websiteId,
+          hasCustomColors: !!updatedWebsite?.customColors,
+        });
+
+        if (!updatedWebsite) {
+          throw new GraphQLError("Website not found or access denied.", {
+            extensions: { code: "NOT_FOUND" },
+          });
+        }
+
+        await cache.invalidateWebsite(entity, websiteId);
+        return updatedWebsite.customColors;
+      } catch (error) {
+        log.error("Error in updateWebsiteCustomColors", { error });
+        throw error;
+      }
     },
 
     async updatePage(
       _: any,
-      { pageId, name, slug, isEnabled }: any,
+      {
+        pageId,
+        name,
+        slug,
+        isEnabled,
+        title,
+        description,
+        keywords,
+        schemaMarkup,
+        includeInSitemap,
+      }: any,
       context: any
     ) {
-      const { db, entity } = await checkAuth(context);
+      try {
+        const { db, entity } = await checkAuth(context);
 
-      const page = await db.query.pages.findFirst({
-        where: eq(pages.id, pageId),
-      });
-
-      if (!page) {
-        throw new GraphQLError("Page not found.", {
-          extensions: { code: "NOT_FOUND" },
+        const page = await db.query.pages.findFirst({
+          where: eq(pages.id, pageId),
         });
+
+        if (!page) {
+          throw new GraphQLError("Page not found.", {
+            extensions: { code: "NOT_FOUND" },
+          });
+        }
+
+        if (slug) {
+          const existingPage = await db.query.pages.findFirst({
+            where: and(
+              eq(pages.websiteId, page.websiteId),
+              eq(pages.slug, slug),
+              ne(pages.id, pageId)
+            ),
+          });
+
+          if (existingPage) {
+            throw new GraphQLError("A page with this slug already exists.", {
+              extensions: { code: "BAD_USER_INPUT" },
+            });
+          }
+        }
+
+        // Merge existing SEO if updating only some fields, or start fresh if no SEO exists
+        const currentSeo = (page.seo as any) || {};
+        const updatedSeo = {
+          ...currentSeo,
+          ...(title !== undefined && { title }),
+          ...(description !== undefined && { description }),
+          ...(keywords !== undefined && { keywords }),
+          ...(schemaMarkup !== undefined && { schemaMarkup }),
+        };
+
+        const [updatedPage] = await db
+          .update(pages)
+          .set({
+            ...(name && { name }),
+            ...(slug && { slug }),
+            ...(isEnabled !== undefined && { isEnabled }),
+            ...(includeInSitemap !== undefined && { includeInSitemap }),
+            seo: updatedSeo,
+
+            updatedAt: new Date(),
+          })
+          .where(eq(pages.id, pageId))
+          .returning();
+
+        await cache.invalidateWebsite(entity, page.websiteId);
+        return updatedPage;
+      } catch (error) {
+        log.error("Error in updatePage", { error });
+        throw error;
       }
+    },
 
-      if (slug) {
-        const existingPage = await db.query.pages.findFirst({
-          where: and(
-            eq(pages.websiteId, page.websiteId),
-            eq(pages.slug, slug),
-            eq(pages.id, pageId) // This should be ne(pages.id, pageId) for uniqueness check relative to OTHER pages?
-            // Original code: eq(pages.id, pageId) -> This checks if SAME page has slug.
-            // Wait, existingPage logic: if FOUND, throw error.
-            // If I search for page with SAME id and SAME slug, it is redundant but not conflict.
-            // The check should be `ne(pages.id, pageId)` to find CONFLICT.
-            // User code had `eq(pages.id, pageId)`. I'll trust user code logic for now or correct it if it's obvious bug.
-            // Actually, if I update slug, checking `eq` checks if *I* already have it? No.
-            // If I want to ensure uniqueness: `and(eq(pages.websiteId, page.websiteId), eq(pages.slug, slug), ne(pages.id, pageId))`
-          ),
+    async updatePageSeo(
+      _: any,
+      {
+        pageId,
+        title,
+        description,
+        keywords,
+        schemaMarkup,
+        includeInSitemap,
+      }: any,
+      context: any
+    ) {
+      try {
+        const { db, entity } = await checkAuth(context);
+
+        const page = await db.query.pages.findFirst({
+          where: eq(pages.id, pageId),
         });
-        // Assuming user meant to check for duplicates elsewhere, logic in original snippet seems to check if "this exact page already has this slug" which is fine, but maybe they meant "any OTHER page".
-        // I will stick to user provided code structure but maybe fix the logic if I see `ne` is missing.
-        // Actually, user provided code:
-        /*
-        const existingPage = await db.query.pages.findFirst({
-          where: and(
-            eq(pages.websiteId, page.websiteId),
-            eq(pages.slug, slug),
-            eq(pages.id, pageId)
-          ),
-        });
-        */
-        // If this returns true, it throws "already exists".
-        // This effectively prevents updating the page if it already matches?? That seems wrong.
-        // But I will paste logic as is, maybe I misunderstood.
-        // Wait, if I am updating slug to "foo", and "foo" is already my slug, it throws.
-        // If I update slug to "bar", it checks if "bar" + my ID exists. (Unlikely unless composite key).
-        // I'll proceed with user code but I suspect `ne` was intended.
+
+        if (!page) {
+          throw new GraphQLError("Page not found.", {
+            extensions: { code: "NOT_FOUND" },
+          });
+        }
+
+        const currentSeo = (page.seo as any) || {};
+        const updatedSeo = {
+          ...currentSeo,
+          ...(title !== undefined && { title }),
+          ...(description !== undefined && { description }),
+          ...(keywords !== undefined && { keywords }),
+          ...(schemaMarkup !== undefined && { schemaMarkup }),
+        };
+
+        const [updatedPage] = await db
+          .update(pages)
+          .set({
+            seo: updatedSeo,
+            ...(includeInSitemap !== undefined && { includeInSitemap }),
+            updatedAt: new Date(),
+          })
+          .where(eq(pages.id, pageId))
+          .returning();
+
+        await cache.invalidateWebsite(entity, page.websiteId);
+        return updatedPage;
+      } catch (error) {
+        log.error("Error in updatePageSeo", { error });
+        throw error;
       }
-
-      const [updatedPage] = await db
-        .update(pages)
-        .set({
-          ...(name && { name }),
-          ...(slug && { slug }),
-          ...(isEnabled !== undefined && { isEnabled }),
-          updatedAt: new Date(),
-        })
-        .where(eq(pages.id, pageId))
-        .returning();
-
-      await cache.invalidateWebsite(entity, page.websiteId);
-      return updatedPage;
     },
 
     async deletePage(_: any, { pageId }: any, context: any) {
-      const { db, entity } = await checkAuth(context);
+      try {
+        const { db, entity } = await checkAuth(context);
 
-      const page = await db.query.pages.findFirst({
-        where: eq(pages.id, pageId),
-      });
-
-      if (!page) {
-        throw new GraphQLError("Page not found.", {
-          extensions: { code: "NOT_FOUND" },
+        const page = await db.query.pages.findFirst({
+          where: eq(pages.id, pageId),
         });
+
+        if (!page) {
+          throw new GraphQLError("Page not found.", {
+            extensions: { code: "NOT_FOUND" },
+          });
+        }
+
+        // Delete associated modules first
+        await db.delete(modules).where(eq(modules.pageId, pageId));
+
+        // Delete the page
+        const [deletedPage] = await db
+          .delete(pages)
+          .where(eq(pages.id, pageId))
+          .returning();
+
+        await cache.invalidateWebsite(entity, page.websiteId);
+
+        return true; // Original was returning object, but Mutation return type logic says Boolean!
+      } catch (error) {
+        log.error("Error in deletePage", { error });
+        throw error;
       }
-
-      // Delete associated modules first
-      await db.delete(modules).where(eq(modules.pageId, pageId));
-
-      // Delete the page
-      const [deletedPage] = await db
-        .delete(pages)
-        .where(eq(pages.id, pageId))
-        .returning();
-
-      await cache.invalidateWebsite(entity, page.websiteId);
-
-      return true; // Original was returning object, but Mutation return type logic says Boolean!
     },
 
     async updateNavbar(
@@ -183,28 +364,33 @@ export const websiteResolvers = {
       { websiteId, layout, content, isEnabled }: any,
       context: any
     ) {
-      const { id, entity, db } = await checkAuth(context);
-      // Update database
-      const [updated] = await db
-        .update(navbars)
-        .set({
-          ...(layout && { layout }),
-          ...(content && { content }),
-          ...(isEnabled !== undefined && { isEnabled }),
-          updatedAt: new Date(),
-        })
-        .where(eq(navbars.websiteId, websiteId))
-        .returning();
+      try {
+        const { id, entity, db } = await checkAuth(context);
+        // Update database
+        const [updated] = await db
+          .update(navbars)
+          .set({
+            ...(layout && { layout }),
+            ...(content && { content }),
+            ...(isEnabled !== undefined && { isEnabled }),
+            updatedAt: new Date(),
+          })
+          .where(eq(navbars.websiteId, websiteId))
+          .returning();
 
-      // Invalidate cache
-      const website = await db.query.websites.findFirst({
-        where: eq(websites.id, websiteId),
-      });
-      if (website) {
-        await cache.invalidateWebsite(website.entityId, websiteId);
+        // Invalidate cache
+        const website = await db.query.websites.findFirst({
+          where: eq(websites.id, websiteId),
+        });
+        if (website) {
+          await cache.invalidateWebsite(website.entityId, websiteId);
+        }
+
+        return updated;
+      } catch (error) {
+        log.error("Error in updateNavbar", { error });
+        throw error;
       }
-
-      return updated;
     },
 
     async updateFooter(
@@ -212,71 +398,92 @@ export const websiteResolvers = {
       { websiteId, layout, content, isEnabled }: any,
       context: any
     ) {
-      const { id, entity, db } = await checkAuth(context);
-      // Similar to updateNavbar
-      const [updated] = await db
-        .update(footers)
-        .set({
-          ...(layout && { layout }),
-          ...(content && { content }),
-          ...(isEnabled !== undefined && { isEnabled }),
-          updatedAt: new Date(),
-        })
-        .where(eq(footers.websiteId, websiteId))
-        .returning();
+      try {
+        const { id, entity, db } = await checkAuth(context);
+        // Similar to updateNavbar
+        const [updated] = await db
+          .update(footers)
+          .set({
+            ...(layout && { layout }),
+            ...(content && { content }),
+            ...(isEnabled !== undefined && { isEnabled }),
+            updatedAt: new Date(),
+          })
+          .where(eq(footers.websiteId, websiteId))
+          .returning();
 
-      const website = await db.query.websites.findFirst({
-        where: eq(websites.id, websiteId),
-      });
-      if (website) {
-        await cache.invalidateWebsite(website.entityId, websiteId);
+        const website = await db.query.websites.findFirst({
+          where: eq(websites.id, websiteId),
+        });
+        if (website) {
+          await cache.invalidateWebsite(website.entityId, websiteId);
+        }
+
+        return updated;
+      } catch (error) {
+        log.error("Error in updateFooter", { error });
+        throw error;
       }
-
-      return updated;
     },
 
     async createPage(_: any, { websiteId, name, slug }: any, context: any) {
-      const { id, entity, db } = await checkAuth(context);
+      try {
+        const { id, entity, db } = await checkAuth(context);
 
-      // Check if a page with the same slug already exists for this website
-      const existingPage = await db.query.pages.findFirst({
-        where: and(eq(pages.websiteId, websiteId), eq(pages.slug, slug)),
-      });
-
-      if (existingPage) {
-        throw new GraphQLError("A page with this slug already exists.", {
-          extensions: {
-            code: "BAD_USER_INPUT",
-            http: { status: 400 },
-          },
+        // Check if a page with the same slug already exists for this website
+        const existingPage = await db.query.pages.findFirst({
+          where: and(eq(pages.websiteId, websiteId), eq(pages.slug, slug)),
         });
+
+        if (existingPage) {
+          throw new GraphQLError("A page with this slug already exists.", {
+            extensions: {
+              code: "BAD_USER_INPUT",
+              http: { status: 400 },
+            },
+          });
+        }
+
+        // Get max order
+        const existingPages = await db.query.pages.findMany({
+          where: eq(pages.websiteId, websiteId),
+        });
+        const maxOrder = Math.max(
+          ...existingPages.map((p: any) => p.order),
+          -1
+        );
+
+        const seo = {
+          title: name,
+          description: name,
+          keywords: [],
+          schemaMarkup: null,
+        };
+
+        const [newPage] = await db
+          .insert(pages)
+          .values({
+            websiteId,
+            name,
+            slug,
+            order: maxOrder + 1,
+            seo,
+          })
+          .returning();
+
+        // Invalidate cache
+        const website = await db.query.websites.findFirst({
+          where: eq(websites.id, websiteId),
+        });
+        if (website) {
+          await cache.invalidateWebsite(website.entityId, websiteId);
+        }
+
+        return newPage;
+      } catch (error) {
+        log.error("Error in createPage", { error });
+        throw error;
       }
-
-      // Get max order
-      const existingPages = await db.query.pages.findMany({
-        where: eq(pages.websiteId, websiteId),
-      });
-      const maxOrder = Math.max(...existingPages.map((p: any) => p.order), -1);
-
-      const [newPage] = await db
-        .insert(pages)
-        .values({
-          websiteId,
-          name,
-          slug,
-          order: maxOrder + 1,
-        })
-        .returning();
-
-      // Invalidate cache
-      const website = await db.query.websites.findFirst({
-        where: eq(websites.id, websiteId),
-      });
-      if (website) {
-        await cache.invalidateWebsite(website.entityId, websiteId);
-      }
-
-      return newPage;
     },
 
     async updateModule(
@@ -284,28 +491,43 @@ export const websiteResolvers = {
       { moduleId, name, layout, content, isEnabled }: any,
       context: any
     ) {
-      const { db } = await checkAuth(context);
+      try {
+        const { db, entity } = await checkAuth(context);
 
-      const [updatedModule] = await db
-        .update(modules)
-        .set({
-          ...(name && { name }),
-          ...(layout && { layout }),
-          ...(content && { content }),
-          ...(isEnabled !== undefined && { isEnabled }),
-          updatedAt: new Date(),
-        })
-        .where(eq(modules.id, moduleId))
-        .returning();
+        const [updatedModule] = await db
+          .update(modules)
+          .set({
+            ...(name && { name }),
+            ...(layout && { layout }),
+            ...(content && { content }),
+            ...(isEnabled !== undefined && { isEnabled }),
+            updatedAt: new Date(),
+          })
+          .where(eq(modules.id, moduleId))
+          .returning();
 
-      if (!updatedModule) {
-        throw new GraphQLError("Module not found.", {
-          extensions: { code: "NOT_FOUND" },
+        if (!updatedModule) {
+          throw new GraphQLError("Module not found.", {
+            extensions: { code: "NOT_FOUND" },
+          });
+        }
+
+        // Get the page to find the websiteId
+        const page = await db.query.pages.findFirst({
+          where: eq(pages.id, updatedModule.pageId),
         });
-      }
 
-      await cache.invalidatePage(updatedModule.pageId);
-      return updatedModule;
+        // Invalidate both page and website cache
+        await cache.invalidatePage(updatedModule.pageId);
+        if (page) {
+          await cache.invalidateWebsite(entity, page.websiteId);
+        }
+
+        return updatedModule;
+      } catch (error) {
+        log.error("Error in updateModule", { error });
+        throw error;
+      }
     },
 
     async createModule(
@@ -313,51 +535,141 @@ export const websiteResolvers = {
       { pageId, type, name, layout, content }: any,
       context: any
     ) {
-      const { id, entity, db } = await checkAuth(context);
-      // Get max order
-      const existingModules = await db.query.modules.findMany({
-        where: eq(modules.pageId, pageId),
-      });
-      const maxOrder = Math.max(
-        ...existingModules.map((m: any) => m.order),
-        -1
-      );
+      try {
+        const { id, entity, db } = await checkAuth(context);
+        // Get max order
+        const existingModules = await db.query.modules.findMany({
+          where: eq(modules.pageId, pageId),
+        });
+        const maxOrder = Math.max(
+          ...existingModules.map((m: any) => m.order),
+          -1
+        );
 
-      const [newModule] = await db
-        .insert(modules)
-        .values({
-          pageId,
-          type,
-          name,
-          layout,
-          content,
-          order: maxOrder + 1,
-        })
-        .returning();
+        const [newModule] = await db
+          .insert(modules)
+          .values({
+            pageId,
+            type,
+            name,
+            layout,
+            content,
+            order: maxOrder + 1,
+          })
+          .returning();
 
-      // Invalidate page cache
-      await cache.invalidatePage(pageId);
+        // Get the page to find the websiteId
+        const page = await db.query.pages.findFirst({
+          where: eq(pages.id, pageId),
+        });
 
-      return newModule;
+        // Invalidate both page and website cache
+        log.info("Module created", {
+          moduleId: newModule.id,
+          pageId: newModule.pageId,
+        });
+        await cache.invalidatePage(pageId);
+        if (page) {
+          await cache.invalidateWebsite(entity, page.websiteId);
+        }
+
+        return newModule;
+      } catch (error) {
+        log.error("Error in createModule", { error });
+        throw error;
+      }
+    },
+
+    async deleteModule(_: any, { moduleId }: any, context: any) {
+      try {
+        const { db, entity } = await checkAuth(context);
+
+        const module = await db.query.modules.findFirst({
+          where: eq(modules.id, moduleId),
+        });
+
+        if (!module) {
+          throw new GraphQLError("Module not found.", {
+            extensions: { code: "NOT_FOUND" },
+          });
+        }
+
+        // Get the page to find the websiteId
+        const page = await db.query.pages.findFirst({
+          where: eq(pages.id, module.pageId),
+        });
+
+        await db.delete(modules).where(eq(modules.id, moduleId)).returning();
+
+        // Invalidate both page and website cache
+        await cache.invalidatePage(module.pageId);
+        if (page) {
+          await cache.invalidateWebsite(entity, page.websiteId);
+        }
+
+        return true;
+      } catch (error) {
+        log.error("Error in deleteModule", { error });
+        throw error;
+      }
+    },
+
+    async toggleModule(_: any, { moduleId, isEnabled }: any, context: any) {
+      try {
+        const { db, entity } = await checkAuth(context);
+
+        const [updatedModule] = await db
+          .update(modules)
+          .set({ isEnabled, updatedAt: new Date() })
+          .where(eq(modules.id, moduleId))
+          .returning();
+
+        if (!updatedModule) {
+          throw new GraphQLError("Module not found.", {
+            extensions: { code: "NOT_FOUND" },
+          });
+        }
+
+        // Get the page to find the websiteId
+        const page = await db.query.pages.findFirst({
+          where: eq(pages.id, updatedModule.pageId),
+        });
+
+        // Invalidate both page and website cache
+        await cache.invalidatePage(updatedModule.pageId);
+        if (page) {
+          await cache.invalidateWebsite(entity, page.websiteId);
+        }
+
+        return updatedModule;
+      } catch (error) {
+        log.error("Error in toggleModule", { error });
+        throw error;
+      }
     },
 
     async reorderModules(_: any, { pageId, moduleIds }: any, context: any) {
-      // Update order for each module
-      const { id, entity, db } = await checkAuth(context);
-      await Promise.all(
-        moduleIds.map((id: string, index: number) =>
-          db.update(modules).set({ order: index }).where(eq(modules.id, id))
-        )
-      );
+      try {
+        // Update order for each module
+        const { id, entity, db } = await checkAuth(context);
+        await Promise.all(
+          moduleIds.map((id: string, index: number) =>
+            db.update(modules).set({ order: index }).where(eq(modules.id, id))
+          )
+        );
 
-      // Invalidate cache
-      await cache.invalidatePage(pageId);
+        // Invalidate cache
+        await cache.invalidatePage(pageId);
 
-      // Return updated modules
-      return db.query.modules.findMany({
-        where: eq(modules.pageId, pageId),
-        orderBy: (modules: any, { asc }: any) => [asc(modules.order)],
-      });
+        // Return updated modules
+        return db.query.modules.findMany({
+          where: eq(modules.pageId, pageId),
+          orderBy: (modules: any, { asc }: any) => [asc(modules.order)],
+        });
+      } catch (error) {
+        log.error("Error in reorderModules", { error });
+        throw error;
+      }
     },
   },
 };

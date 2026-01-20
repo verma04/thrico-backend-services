@@ -1,4 +1,5 @@
 export const listingTypes = `#graphql
+
   enum ListingConditionEnum {
     NEW
     USED_LIKE_NOW
@@ -89,7 +90,7 @@ export const listingTypes = `#graphql
   # Input types
   input ListingInput {
     title: String!
-    price: String!
+    price: Int!
     condition: ListingConditionEnum!
     description: String!
     category: ID!

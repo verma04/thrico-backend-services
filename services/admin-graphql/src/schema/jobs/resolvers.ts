@@ -55,129 +55,179 @@ export const jobsResolvers = {
       }
     },
 
-    async getJobStats(_: any, { input }: any, context: any) {
+    async getJobStats(
+      _: any,
+      { timeRange }: { timeRange: string },
+      context: any,
+    ) {
       try {
         const { entity, db } = await checkAuth(context);
 
+        const now = new Date();
+        let startDate = new Date();
+
+        switch (timeRange) {
+          case "LAST_24_HOURS":
+            startDate.setHours(now.getHours() - 24);
+            break;
+          case "LAST_7_DAYS":
+            startDate.setDate(now.getDate() - 7);
+            break;
+          case "LAST_30_DAYS":
+            startDate.setDate(now.getDate() - 30);
+            break;
+          case "LAST_90_DAYS":
+            startDate.setDate(now.getDate() - 90);
+            break;
+          default:
+            startDate.setDate(now.getDate() - 7);
+        }
+
+        const timeDiff = now.getTime() - startDate.getTime();
+        const previousStartDate = new Date(startDate.getTime() - timeDiff);
+
         // 1. Total Jobs (all time)
-        const totalJobsResult = await db
-          .select({ count: sql<number>`COUNT(*)` })
+        const [totalJobsResult] = await db
+          .select({ count: sql`COUNT(*)`.mapWith(Number) })
           .from(jobs)
-          .where(sql`${jobs.entityId} = ${entity}`);
-        const totalJobs = totalJobsResult[0]?.count || 0;
+          .where(eq(jobs.entityId, entity));
+        const totalJobs = totalJobsResult?.count || 0;
+
+        const [prevTotalJobsResult] = await db
+          .select({ count: sql`COUNT(*)`.mapWith(Number) })
+          .from(jobs)
+          .where(
+            and(
+              eq(jobs.entityId, entity),
+              sql`${jobs.createdAt} < ${startDate}`,
+            ),
+          );
+        const prevTotalJobs = prevTotalJobsResult?.count || 0;
+        const totalJobsChange =
+          prevTotalJobs > 0
+            ? ((totalJobs - prevTotalJobs) / prevTotalJobs) * 100
+            : 0;
 
         // 2. Active Jobs (status = APPROVED and isActive = true)
-        const activeJobsResult = await db
-          .select({ count: sql<number>`COUNT(*)` })
+        const [activeJobsResult] = await db
+          .select({ count: sql`COUNT(*)`.mapWith(Number) })
           .from(jobs)
           .where(
-            sql`${jobs.entityId} = ${entity} AND ${jobs.status} = 'APPROVED' AND ${jobs.isActive} = true`
+            and(
+              eq(jobs.entityId, entity),
+              eq(jobs.status, "APPROVED"),
+              eq(jobs.isActive, true),
+            ),
           );
-        const activeJobs = activeJobsResult[0]?.count || 0;
+        const activeJobs = activeJobsResult?.count || 0;
+
+        const [prevActiveJobsResult] = await db
+          .select({ count: sql`COUNT(*)`.mapWith(Number) })
+          .from(jobs)
+          .where(
+            and(
+              eq(jobs.entityId, entity),
+              eq(jobs.status, "APPROVED"),
+              eq(jobs.isActive, true),
+              sql`${jobs.createdAt} < ${startDate}`,
+            ),
+          );
+        const prevActiveJobs = prevActiveJobsResult?.count || 0;
+        const activeJobsChange =
+          prevActiveJobs > 0
+            ? ((activeJobs - prevActiveJobs) / prevActiveJobs) * 100
+            : 0;
 
         // 3. Total Applications (all time)
-        const totalApplicationsResult = await db
-          .select({ count: sql<number>`COUNT(*)` })
+        const [totalApplicationsResult] = await db
+          .select({ count: sql`COUNT(*)`.mapWith(Number) })
           .from(jobApplicant)
           .where(
-            sql`${jobApplicant.jobId} IN (SELECT ${jobs.id} FROM ${jobs} WHERE ${jobs.entityId} = ${entity})`
+            sql`${jobApplicant.jobId} IN (SELECT ${jobs.id} FROM ${jobs} WHERE ${jobs.entityId} = ${entity})`,
           );
-        const totalApplications = totalApplicationsResult[0]?.count || 0;
+        const totalApplications = totalApplicationsResult?.count || 0;
+
+        const [currAppCountResult] = await db
+          .select({ count: sql`COUNT(*)`.mapWith(Number) })
+          .from(jobApplicant)
+          .where(
+            and(
+              sql`${jobApplicant.jobId} IN (SELECT ${jobs.id} FROM ${jobs} WHERE ${jobs.entityId} = ${entity})`,
+              sql`${jobApplicant.createdAt} >= ${startDate}`,
+            ),
+          );
+        const currAppCount = currAppCountResult?.count || 0;
+
+        const [prevAppCountResult] = await db
+          .select({ count: sql`COUNT(*)`.mapWith(Number) })
+          .from(jobApplicant)
+          .where(
+            and(
+              sql`${jobApplicant.jobId} IN (SELECT ${jobs.id} FROM ${jobs} WHERE ${jobs.entityId} = ${entity})`,
+              sql`${jobApplicant.createdAt} >= ${previousStartDate}`,
+              sql`${jobApplicant.createdAt} < ${startDate}`,
+            ),
+          );
+        const prevAppCount = prevAppCountResult?.count || 0;
+        const applicationsChange =
+          prevAppCount > 0
+            ? ((currAppCount - prevAppCount) / prevAppCount) * 100
+            : 0;
 
         // 4. Total Views (all time)
-        const totalViewsResult = await db
-          .select({ count: sql<number>`COUNT(*)` })
+        const [totalViewsResult] = await db
+          .select({ count: sql`COUNT(*)`.mapWith(Number) })
           .from(jobViews)
           .where(
-            sql`${jobViews.jobId} IN (SELECT ${jobs.id} FROM ${jobs} WHERE ${jobs.entityId} = ${entity})`
+            sql`${jobViews.jobId} IN (SELECT ${jobs.id} FROM ${jobs} WHERE ${jobs.entityId} = ${entity})`,
           );
-        const totalViews = totalViewsResult[0]?.count || 0;
+        const totalViews = totalViewsResult?.count || 0;
 
-        // 5. Avg. Applications per job
-        const avgApplications =
-          totalJobs > 0 ? Math.round(totalApplications / totalJobs) : 0;
-
-        // 6. Applications this week
-        const now = new Date();
-        const startOfWeek = new Date(now);
-        startOfWeek.setDate(now.getDate() - now.getDay());
-        startOfWeek.setHours(0, 0, 0, 0);
-
-        const applicationsThisWeekResult = await db
-          .select({ count: sql<number>`COUNT(*)` })
-          .from(jobApplicant)
-          .where(
-            sql`${jobApplicant.jobId} IN (SELECT ${jobs.id} FROM ${jobs} WHERE ${jobs.entityId} = ${entity}) AND ${jobApplicant.createdAt} >= ${startOfWeek}`
-          );
-        const applicationsThisWeek = applicationsThisWeekResult[0]?.count || 0;
-
-        // 7. Views this week
-        const viewsThisWeekResult = await db
-          .select({ count: sql<number>`COUNT(*)` })
+        const [currViewCountResult] = await db
+          .select({ count: sql`COUNT(*)`.mapWith(Number) })
           .from(jobViews)
           .where(
-            sql`${jobViews.jobId} IN (SELECT ${jobs.id} FROM ${jobs} WHERE ${jobs.entityId} = ${entity}) AND ${jobViews.viewedAt} >= ${startOfWeek}`
+            and(
+              sql`${jobViews.jobId} IN (SELECT ${jobs.id} FROM ${jobs} WHERE ${jobs.entityId} = ${entity})`,
+              sql`${jobViews.viewedAt} >= ${startDate}`,
+            ),
           );
-        const viewsThisWeek = viewsThisWeekResult[0]?.count || 0;
+        const currViewCount = currViewCountResult?.count || 0;
 
-        // 8. Views last week
-        const startOfLastWeek = new Date(startOfWeek);
-        startOfLastWeek.setDate(startOfWeek.getDate() - 7);
-
-        const viewsLastWeekResult = await db
-          .select({ count: sql<number>`COUNT(*)` })
+        const [prevViewCountResult] = await db
+          .select({ count: sql`COUNT(*)`.mapWith(Number) })
           .from(jobViews)
           .where(
-            sql`${jobViews.jobId} IN (SELECT ${jobs.id} FROM ${jobs} WHERE ${jobs.entityId} = ${entity}) AND ${jobViews.viewedAt} >= ${startOfLastWeek} AND ${jobViews.viewedAt} < ${startOfWeek}`
+            and(
+              sql`${jobViews.jobId} IN (SELECT ${jobs.id} FROM ${jobs} WHERE ${jobs.entityId} = ${entity})`,
+              sql`${jobViews.viewedAt} >= ${previousStartDate}`,
+              sql`${jobViews.viewedAt} < ${startDate}`,
+            ),
           );
-        const viewsLastWeek = viewsLastWeekResult[0]?.count || 0;
-
-        // 9. Applications last week
-        const applicationsLastWeekResult = await db
-          .select({ count: sql<number>`COUNT(*)` })
-          .from(jobApplicant)
-          .where(
-            sql`${jobApplicant.jobId} IN (SELECT ${jobs.id} FROM ${jobs} WHERE ${jobs.entityId} = ${entity}) AND ${jobApplicant.createdAt} >= ${startOfLastWeek} AND ${jobApplicant.createdAt} < ${startOfWeek}`
-          );
-        const applicationsLastWeek = applicationsLastWeekResult[0]?.count || 0;
-
-        // 10. Views weekly percent change
-        let viewsWeeklyChange = 0;
-        if (viewsLastWeek > 0) {
-          viewsWeeklyChange = Math.round(
-            ((viewsThisWeek - viewsLastWeek) / viewsLastWeek) * 100
-          );
-        } else if (viewsThisWeek > 0) {
-          viewsWeeklyChange = 100;
-        }
-
-        // 11. Applications weekly percent change
-        let applicationsWeeklyChange = 0;
-        if (applicationsLastWeek > 0) {
-          applicationsWeeklyChange = Math.round(
-            ((applicationsThisWeek - applicationsLastWeek) /
-              applicationsLastWeek) *
-              100
-          );
-        } else if (applicationsThisWeek > 0) {
-          applicationsWeeklyChange = 100;
-        }
+        const prevViewCount = prevViewCountResult?.count || 0;
+        const viewsChange =
+          prevViewCount > 0
+            ? ((currViewCount - prevViewCount) / prevViewCount) * 100
+            : 0;
 
         return {
           totalJobs,
+          totalJobsChange: parseFloat(totalJobsChange.toFixed(1)),
           activeJobs,
+          activeJobsChange: parseFloat(activeJobsChange.toFixed(1)),
           totalApplications,
+          applicationsChange: parseFloat(applicationsChange.toFixed(1)),
           totalViews,
-          avgApplications,
-          applicationsThisWeek,
-          applicationsLastWeek,
-          applicationsWeeklyChange,
-          viewsThisWeek,
-          viewsLastWeek,
-          viewsWeeklyChange,
+          viewsChange: parseFloat(viewsChange.toFixed(1)),
+          // Additional fields for backward compatibility/UI needs
+          avgApplications: totalJobs > 0 ? totalApplications / totalJobs : 0,
+          applicationsThisWeek: currAppCount,
+          viewsThisWeek: currViewCount,
+          applicationsWeeklyChange: parseFloat(applicationsChange.toFixed(1)),
+          viewsWeeklyChange: parseFloat(viewsChange.toFixed(1)),
         };
       } catch (error) {
-        console.log(error);
+        console.error("error getJobStats: ", error);
         throw error;
       }
     },
@@ -398,7 +448,7 @@ export const jobsResolvers = {
             });
 
             return [job, verification];
-          }
+          },
         );
 
         console.log("Job created:", createdJob, insertedVerification);

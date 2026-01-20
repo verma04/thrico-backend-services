@@ -190,6 +190,10 @@ const givingResolvers = {
           where: and(eq(campaignCategory.id, input.id)),
         });
 
+        if (!category) {
+          throw new Error("Category not found");
+        }
+
         console.log(input);
 
         const createFeedBack = await db

@@ -1,0 +1,197 @@
+{
+  NVM_INC: '/Users/pulseplay/.nvm/versions/node/v18.20.8/include/node',
+  ANTIGRAVITY_AGENT: '1',
+  npm_package_engines_npm: '>=10.0.0',
+  TERM_PROGRAM: 'vscode',
+  NODE: '/Users/pulseplay/.nvm/versions/node/v18.20.8/bin/node',
+  ANDROID_HOME: '/Users/pulseplay/Library/Android/sdk',
+  NVM_CD_FLAGS: '-q',
+  INIT_CWD: '/Users/pulseplay/thrico/thrico-backend',
+  SHELL: '/bin/zsh',
+  TERM: 'xterm-256color',
+  TMPDIR: '/var/folders/lq/b806ggc535s2r3p589pxmc2r0000gn/T/',
+  npm_config_global_prefix: '/Users/pulseplay/.nvm/versions/node/v18.20.8',
+  TERM_PROGRAM_VERSION: '1.104.0',
+  VSCODE_PYTHON_AUTOACTIVATE_GUARD: '1',
+  ANDROID_SDK_ROOT: '/Users/pulseplay/Library/Android/sdk',
+  MallocNanoZone: '0',
+  ORIGINAL_XDG_CURRENT_DESKTOP: 'undefined',
+  ZDOTDIR: '/Users/pulseplay',
+  COLOR: '0',
+  npm_config_noproxy: '',
+  PNPM_HOME: '/Users/pulseplay/Library/pnpm',
+  npm_config_local_prefix: '/Users/pulseplay/thrico/thrico-backend',
+  USER: 'pulseplay',
+  NVM_DIR: '/Users/pulseplay/.nvm',
+  COMMAND_MODE: 'unix2003',
+  npm_config_globalconfig: '/Users/pulseplay/.nvm/versions/node/v18.20.8/etc/npmrc',
+  SSH_AUTH_SOCK: '/private/tmp/com.apple.launchd.txieGnbL4U/Listeners',
+  __CF_USER_TEXT_ENCODING: '0x1F5:0x0:0x0',
+  VSCODE_PROFILE_INITIALIZED: '1',
+  npm_execpath: '/Users/pulseplay/.nvm/versions/node/v18.20.8/lib/node_modules/npm/bin/npm-cli.js',
+  PAGER: 'cat',
+  PATH: '/Users/pulseplay/thrico/thrico-backend/node_modules/.bin:/Users/pulseplay/thrico/thrico-backend/node_modules/.bin:/Users/pulseplay/thrico/node_modules/.bin:/Users/pulseplay/node_modules/.bin:/Users/node_modules/.bin:/node_modules/.bin:/Users/pulseplay/.nvm/versions/node/v18.20.8/lib/node_modules/npm/node_modules/@npmcli/run-script/lib/node-gyp-bin:/Users/pulseplay/.antigravity/antigravity/bin:/opt/homebrew/opt/ruby/bin:/opt/homebrew/opt/ruby/bin:/Users/pulseplay/.nvm/versions/node/v18.20.8/bin:/opt/homebrew/bin:/Users/pulseplay/bin:/usr/local/bin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/Library/Apple/usr/bin:/Users/pulseplay/.antigravity/antigravity/bin:/opt/homebrew/opt/ruby/bin:/Users/pulseplay/.nvm/versions/node/v18.20.8/bin:/Users/pulseplay/Library/pnpm:/opt/homebrew/bin:/Users/pulseplay/bin:/Users/pulseplay/Library/Android/sdk/emulator:/Users/pulseplay/Library/Android/sdk/platform-tools:/Users/pulseplay/Library/Android/sdk/emulator:/Users/pulseplay/Library/Android/sdk/platform-tools',
+  npm_package_json: '/Users/pulseplay/thrico/thrico-backend/package.json',
+  __CFBundleIdentifier: 'com.google.antigravity',
+  USER_ZDOTDIR: '/Users/pulseplay',
+  npm_config_init_module: '/Users/pulseplay/.npm-init.js',
+  npm_config_userconfig: '/Users/pulseplay/.npmrc',
+  PWD: '/Users/pulseplay/thrico/thrico-backend',
+  npm_command: 'exec',
+  JAVA_HOME: '/Library/Java/JavaVirtualMachines/zulu-17.jdk/Contents/Home',
+  EDITOR: 'vi',
+  npm_lifecycle_event: 'npx',
+  LANG: 'en_US.UTF-8',
+  npm_package_name: 'thrico-backend',
+  NODE_PATH: '/Users/pulseplay/thrico/thrico-backend/node_modules/.pnpm/tsx@4.21.0/node_modules/tsx/dist/node_modules:/Users/pulseplay/thrico/thrico-backend/node_modules/.pnpm/tsx@4.21.0/node_modules/tsx/node_modules:/Users/pulseplay/thrico/thrico-backend/node_modules/.pnpm/tsx@4.21.0/node_modules:/Users/pulseplay/thrico/thrico-backend/node_modules/.pnpm/node_modules',
+  XPC_FLAGS: '0x0',
+  VSCODE_GIT_ASKPASS_EXTRA_ARGS: '',
+  npm_config_npm_version: '10.8.2',
+  npm_package_engines_node: '>=20.0.0',
+  npm_config_node_gyp: '/Users/pulseplay/.nvm/versions/node/v18.20.8/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js',
+  XPC_SERVICE_NAME: '0',
+  npm_package_version: '1.0.0',
+  ANTIGRAVITY_CLI_ALIAS: 'agy',
+  VSCODE_INJECTION: '1',
+  HOME: '/Users/pulseplay',
+  SHLVL: '2',
+  VSCODE_GIT_ASKPASS_MAIN: '/Applications/Antigravity.app/Contents/Resources/app/extensions/git/dist/askpass-main.js',
+  LOGNAME: 'pulseplay',
+  npm_config_cache: '/Users/pulseplay/.npm',
+  npm_lifecycle_script: 'tsx',
+  VSCODE_GIT_IPC_HANDLE: '/var/folders/lq/b806ggc535s2r3p589pxmc2r0000gn/T/vscode-git-d4333440b0.sock',
+  NVM_BIN: '/Users/pulseplay/.nvm/versions/node/v18.20.8/bin',
+  npm_config_user_agent: 'npm/10.8.2 node/v18.20.8 darwin arm64 workspaces/false',
+  GIT_ASKPASS: '/Applications/Antigravity.app/Contents/Resources/app/extensions/git/dist/askpass.sh',
+  VSCODE_GIT_ASKPASS_NODE: '/Applications/Antigravity.app/Contents/Frameworks/Antigravity Helper (Plugin).app/Contents/MacOS/Antigravity Helper (Plugin)',
+  COLORTERM: 'truecolor',
+  npm_config_prefix: '/Users/pulseplay/.nvm/versions/node/v18.20.8',
+  npm_node_execpath: '/Users/pulseplay/.nvm/versions/node/v18.20.8/bin/node'
+}
+[dotenv@17.2.3] injecting env (46) from .env -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com
+2026-01-16 17:22:16 [[32minfo[39m]: Connecting to PostgreSQL database
+{
+  "region": "IND"
+}
+2026-01-16 17:22:16 [[32minfo[39m]: Successfully connected to PostgreSQL database
+{
+  "region": "IND"
+}
+--- Point Rules ---
+[
+  {
+    "id": "7df7ff7b-208a-4320-8b78-80f8ee659765",
+    "module": "communities",
+    "action": "Create Community",
+    "trigger": "FIRST_TIME",
+    "points": 5,
+    "description": "",
+    "isActive": false,
+    "createdAt": "2026-01-16T06:05:49.000Z",
+    "updatedAt": "2026-01-16T06:06:32.000Z",
+    "entityId": "786c9750-c424-4598-be98-6819c95bcff9",
+    "dailyCap": 0,
+    "weeklyCap": 0,
+    "monthlyCap": 0
+  },
+  {
+    "id": "49f51da3-3724-4150-8233-6e5f05a4961e",
+    "module": "communities",
+    "action": "Create Community",
+    "trigger": "RECURRING",
+    "points": 5,
+    "description": "",
+    "isActive": true,
+    "createdAt": "2026-01-16T06:10:17.000Z",
+    "updatedAt": "2026-01-16T06:10:17.000Z",
+    "entityId": "786c9750-c424-4598-be98-6819c95bcff9",
+    "dailyCap": 0,
+    "weeklyCap": 0,
+    "monthlyCap": 0
+  },
+  {
+    "id": "8eb1b599-108f-4f54-b644-756f5c440a8c",
+    "module": "polls",
+    "action": "Create Poll",
+    "trigger": "FIRST_TIME",
+    "points": 5,
+    "description": "",
+    "isActive": true,
+    "createdAt": "2026-01-16T07:57:56.000Z",
+    "updatedAt": "2026-01-16T07:57:56.000Z",
+    "entityId": "786c9750-c424-4598-be98-6819c95bcff9",
+    "dailyCap": 0,
+    "weeklyCap": 0,
+    "monthlyCap": 0
+  },
+  {
+    "id": "6afc4f6a-90f5-4f94-abca-f0f2080cd37d",
+    "module": "polls",
+    "action": "Create Poll",
+    "trigger": "RECURRING",
+    "points": 5,
+    "description": "2ewewe",
+    "isActive": true,
+    "createdAt": "2026-01-16T10:15:33.000Z",
+    "updatedAt": "2026-01-16T10:15:33.000Z",
+    "entityId": "786c9750-c424-4598-be98-6819c95bcff9",
+    "dailyCap": 0,
+    "weeklyCap": 0,
+    "monthlyCap": 0
+  },
+  {
+    "id": "4248a96e-87b2-4ecf-8a8d-8a269f337db1",
+    "module": "polls",
+    "action": "tr-poll-create",
+    "trigger": "FIRST_TIME",
+    "points": 5,
+    "description": "",
+    "isActive": true,
+    "createdAt": "2026-01-16T10:18:46.000Z",
+    "updatedAt": "2026-01-16T10:18:46.000Z",
+    "entityId": "786c9750-c424-4598-be98-6819c95bcff9",
+    "dailyCap": 0,
+    "weeklyCap": 0,
+    "monthlyCap": 0
+  },
+  {
+    "id": "77381430-b085-4e8a-8fad-374bece78a3a",
+    "module": "feed",
+    "action": "tr-feed-create",
+    "trigger": "FIRST_TIME",
+    "points": 20,
+    "description": "",
+    "isActive": true,
+    "createdAt": "2026-01-16T11:38:26.000Z",
+    "updatedAt": "2026-01-16T11:38:26.000Z",
+    "entityId": "786c9750-c424-4598-be98-6819c95bcff9",
+    "dailyCap": 0,
+    "weeklyCap": 0,
+    "monthlyCap": 0
+  }
+]
+
+--- User Points History (Sample) ---
+┌─────────┬────────────────────────────────────────┬────────────────────────────────────────┬────────────────────────────────────────┬──────────────┬──────────┬──────────────────────────┐
+│ (index) │                   id                   │                 userId                 │              pointRuleId               │ pointsEarned │ metadata │        createdAt         │
+├─────────┼────────────────────────────────────────┼────────────────────────────────────────┼────────────────────────────────────────┼──────────────┼──────────┼──────────────────────────┤
+│    0    │ 'f99f4238-5a09-4e01-a699-fbf0d7e97351' │ 'e08f81f0-aea1-469e-b9d7-55718723258f' │ '4248a96e-87b2-4ecf-8a8d-8a269f337db1' │      5       │   null   │ 2026-01-16T10:29:39.000Z │
+│    1    │ 'd61b2c74-a664-4e65-8681-1f5bba598331' │ 'e08f81f0-aea1-469e-b9d7-55718723258f' │ '77381430-b085-4e8a-8fad-374bece78a3a' │      20      │   null   │ 2026-01-16T11:38:37.000Z │
+│    2    │ 'fa8abd21-77f9-47fe-8793-1ef886145db8' │ 'e08f81f0-aea1-469e-b9d7-55718723258f' │ '77381430-b085-4e8a-8fad-374bece78a3a' │      20      │   null   │ 2026-01-16T11:38:49.000Z │
+└─────────┴────────────────────────────────────────┴────────────────────────────────────────┴────────────────────────────────────────┴──────────────┴──────────┴──────────────────────────┘
+
+--- Gamification Users (Sample) ---
+┌─────────┬────────────────────────────────────────┬─────────────┬───────────────┬──────────────────────────┬──────────────────────────┬────────────────────────────────────────┬────────────────────────────────────────┐
+│ (index) │                   id                   │ totalPoints │ currentRankId │        createdAt         │        updatedAt         │                  user                  │                entityId                │
+├─────────┼────────────────────────────────────────┼─────────────┼───────────────┼──────────────────────────┼──────────────────────────┼────────────────────────────────────────┼────────────────────────────────────────┤
+│    0    │ '4041eaa0-f29f-4b9b-8323-2d9ca85742e7' │      0      │     null      │ 2025-10-03T06:27:53.000Z │ 2025-10-03T06:27:53.000Z │ '6ab9698d-56a1-42d9-ae55-c3fd52760c68' │ 'd4d3db8e-1830-4948-b70b-59fa3cf39e0c' │
+│    1    │ 'e8b8c59e-468a-4a24-be5f-bd04d57c9030' │      0      │     null      │ 2025-10-03T06:48:12.000Z │ 2025-10-03T06:48:12.000Z │ '2cc43de4-6211-4cd2-99f3-cf889b6f96d3' │ 'f522390d-05a6-4c04-b789-e8dc68f9dff2' │
+│    2    │ '78c28acb-6a0f-4c7e-a3a7-6a0c0f74fe55' │      0      │     null      │ 2025-10-03T07:54:10.000Z │ 2025-10-03T07:54:10.000Z │ '85d4c492-8182-4435-a81d-3d2023a1a9fa' │ 'c07b13f6-5971-401f-9124-0dade495c06c' │
+│    3    │ 'c5b34930-9787-4076-8e23-823b8da3be88' │      0      │     null      │ 2025-10-03T07:54:56.000Z │ 2025-10-03T07:54:56.000Z │ '68e50d87-235f-4600-a136-ee5c768f214c' │ 'f522390d-05a6-4c04-b789-e8dc68f9dff2' │
+│    4    │ '6bc3c5d8-3d8f-4df2-a032-1786ede8dccd' │      0      │     null      │ 2025-10-03T07:56:54.000Z │ 2025-10-03T07:56:54.000Z │ 'a75a6736-4c72-4256-a902-1230b98b2eb6' │ '65702c95-454f-4a38-9214-c9ddff7e1181' │
+│    5    │ '19a8f380-f364-4057-a2a3-d86fc8d8567b' │      0      │     null      │ 2025-10-03T07:57:11.000Z │ 2025-10-03T07:57:11.000Z │ 'a3c95ae9-dd5a-4b2d-8762-fb87a3cd6ccc' │ '526db5e6-c4c4-4064-adfe-213baac55e88' │
+│    6    │ '5fe98a47-4a7b-4fcb-8e59-fbe88904024b' │      0      │     null      │ 2025-10-03T07:58:36.000Z │ 2025-10-03T07:58:36.000Z │ '316bedeb-3f05-40e6-9b74-a2bb3dcb5fe3' │ 'c07b13f6-5971-401f-9124-0dade495c06c' │
+│    7    │ '7f2de8c1-c5f9-4220-9908-8e6675252a3e' │      0      │     null      │ 2025-10-03T10:11:52.000Z │ 2025-10-03T10:11:52.000Z │ '823bd1df-801c-4fbf-8285-8a78512f8e3e' │ 'f522390d-05a6-4c04-b789-e8dc68f9dff2' │
+│    8    │ 'f4222ffd-ac22-4a59-abf2-e84ca11846a5' │      0      │     null      │ 2025-10-03T11:20:33.000Z │ 2025-10-03T11:20:33.000Z │ '470dc082-2386-4bbd-a2b4-dabc8d80a726' │ '526db5e6-c4c4-4064-adfe-213baac55e88' │
+│    9    │ '5377c94e-120e-4a45-979f-44e2ffd1a182' │      0      │     null      │ 2025-10-03T12:17:46.000Z │ 2025-10-03T12:17:46.000Z │ 'e6fe1892-459d-4d79-8cd3-2bacb7a36b26' │ 'f522390d-05a6-4c04-b789-e8dc68f9dff2' │
+└─────────┴────────────────────────────────────────┴─────────────┴───────────────┴──────────────────────────┴──────────────────────────┴────────────────────────────────────────┴────────────────────────────────────────┘

@@ -28,9 +28,9 @@ COPY --from=builder /app/services/admin-graphql ./services/admin-graphql
 
 RUN mkdir -p /app/logs
 
-EXPOSE 4003
+EXPOSE 1111
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:4003/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+# HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+#   CMD node -e "require('http').get('http://localhost:1111/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
 CMD ["node", "services/admin-graphql/dist/server.js"]

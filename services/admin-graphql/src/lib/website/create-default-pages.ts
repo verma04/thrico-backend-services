@@ -49,9 +49,10 @@ export async function createDefaultPages(
 
           order: 0,
           content: {
-            title: `Welcome to ${entityName}`,
+            title: `Build Your Community, Together`,
             subtitle: "Building communities, creating impact",
-            description: "Join us in our mission to make a difference",
+            description:
+              "Connect, collaborate, and grow with like-minded individuals. Join thousands of professionals building meaningful relationships.🎉Join Community",
             primaryButtonText: "Get Started",
             primaryButtonLink: "#",
             secondaryButtonText: "Learn More",
@@ -96,23 +97,6 @@ export async function createDefaultPages(
               alignment: "center",
               columns: 3,
             },
-          },
-        },
-        {
-          type: "cta-banner",
-          name: "Join Us CTA",
-          layout: "centered-banner",
-          isEnabled: true,
-          order: 3,
-          content: {
-            title: "Ready to Get Started?",
-            description:
-              "Join our community today and be part of something great",
-            primaryButtonText: "Join Now",
-            primaryButtonLink: "#signup",
-            secondaryButtonText: "Contact Us",
-            secondaryButtonLink: "#contact",
-            backgroundColor: "primary",
           },
         },
       ],
@@ -227,6 +211,10 @@ export async function createDefaultPages(
         slug: pageConfig.slug,
         isEnabled: true,
         order: pageConfig.order,
+        ...(pageConfig.seo && { seo: pageConfig.seo }),
+        ...(pageConfig.includeInSitemap !== undefined && {
+          includeInSitemap: pageConfig.includeInSitemap,
+        }),
       })
       .returning();
 
@@ -318,7 +306,8 @@ export async function createDefaultFooter(
           text: entityName,
           imageUrl: entityLogo,
         },
-        tagline: "Building communities, creating impact",
+        tagline:
+          "Building meaningful professional communities, one connection at a time.",
         columns: [
           {
             id: "1",

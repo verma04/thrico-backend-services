@@ -93,6 +93,10 @@ const interestsResolvers = {
           where: and(eq(groupInterests.id, input.id)),
         });
 
+        if (!interests) {
+          throw new Error("Interests not found");
+        }
+
         console.log(input);
 
         const newInterests = await db

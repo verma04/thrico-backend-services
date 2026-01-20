@@ -1,4 +1,9 @@
-import { DatabaseRegion, UserRole, UserStatus, EntityStatus } from '../constants';
+import {
+  DatabaseRegion,
+  UserRole,
+  UserStatus,
+  EntityStatus,
+} from "../constants";
 
 // Base Types
 export interface BaseEntity {
@@ -183,4 +188,18 @@ export interface AuditLog {
   changes?: Record<string, any>;
   ipAddress?: string;
   userAgent?: string;
+}
+
+// Website Theme Types
+export interface CustomThemeColors {
+  primary?: string;
+  secondary?: string;
+  accent?: string;
+  background?: string;
+  muted?: string;
+  border?: string;
+  // Additional customization
+  borderRadius?: number; // 0-20px
+  spacing?: number; // 0.5-2 (multiplier)
+  fontSize?: number; // 12-20px base size
 }

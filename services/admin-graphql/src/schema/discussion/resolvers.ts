@@ -605,7 +605,9 @@ export const discussionResolvers = {
             .update(discussionForum)
             .set({
               totalComments:
-                forum.totalComments > 0 ? forum.totalComments - 1 : 0,
+                (forum?.totalComments ?? 0) > 0
+                  ? (forum?.totalComments ?? 0) - 1
+                  : 0,
             })
             .where(eq(discussionForum.id, discussionForumId));
 
@@ -665,7 +667,8 @@ export const discussionResolvers = {
               .update(discussionForum)
               .set({
                 upVotes: (forum.upVotes || 0) + 1,
-                downVotes: forum.downVotes > 0 ? forum.downVotes - 1 : 0,
+                downVotes:
+                  (forum.downVotes ?? 0) > 0 ? (forum.downVotes ?? 0) - 1 : 0,
               })
               .where(eq(discussionForum.id, discussionForumId));
           });
@@ -698,7 +701,8 @@ export const discussionResolvers = {
             await tx
               .update(discussionForum)
               .set({
-                upVotes: forum.upVotes > 0 ? forum.upVotes - 1 : 0,
+                upVotes:
+                  (forum.upVotes ?? 0) > 0 ? (forum.upVotes ?? 0) - 1 : 0,
               })
               .where(eq(discussionForum.id, discussionForumId));
           });
@@ -744,7 +748,8 @@ export const discussionResolvers = {
               .update(discussionForum)
               .set({
                 downVotes: (forum.downVotes || 0) + 1,
-                upVotes: forum.upVotes > 0 ? forum.upVotes - 1 : 0,
+                upVotes:
+                  (forum.upVotes ?? 0) > 0 ? (forum.upVotes ?? 0) - 1 : 0,
               })
               .where(eq(discussionForum.id, discussionForumId));
           });
@@ -777,7 +782,8 @@ export const discussionResolvers = {
             await tx
               .update(discussionForum)
               .set({
-                downVotes: forum.downVotes > 0 ? forum.downVotes - 1 : 0,
+                downVotes:
+                  (forum?.downVotes ?? 0) > 0 ? (forum.downVotes ?? 0) - 1 : 0,
               })
               .where(eq(discussionForum.id, discussionForumId));
           });
