@@ -13,13 +13,16 @@
     "@thrico/database": "*",
     "@thrico/logging": "*",
     "@thrico/shared": "*",
-    "drizzle-orm": "^0.29.5",
-    "graphql": "^16.8.1",
-    "slugify": "^1.6.6",
-    "unique-slug": "^4.0.0",
+    "amqp-connection-manager": "^5.0.0",
+    "amqplib": "^0.10.9",
     "aws-sdk": "^2.1693.0",
+    "drizzle-orm": "^0.29.5",
+    "firebase-admin": "^13.6.0",
+    "graphql": "^16.8.1",
     "moment": "^2.30.1",
-    "sharp": "^0.33.2"
+    "sharp": "^0.33.2",
+    "slugify": "^1.6.6",
+    "unique-slug": "^4.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.10.6",

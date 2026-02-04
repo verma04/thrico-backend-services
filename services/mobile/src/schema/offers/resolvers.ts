@@ -6,14 +6,15 @@ export const offersResolvers = {
     async getOffers(_: any, { input }: any, context: any) {
       try {
         const { entityId, db } = await checkAuth(context);
-        const { categoryId, page = 1, limit = 10 } = input || {};
+        const { categoryId, offset = 1, limit = 10, search } = input || {};
 
         const result = await OfferService.getApprovedOffers({
           entityId,
           db,
-          page,
+          page: offset,
           limit,
           categoryId,
+          search,
         });
 
         return result;
@@ -31,6 +32,43 @@ export const offersResolvers = {
         });
       } catch (error) {
         console.error("Error in getOfferCategories (user):", error);
+        throw error;
+      }
+    },
+
+    async getOffersByUserId(_: any, { input }: any, context: any) {
+      try {
+        const { entityId, db } = await checkAuth(context);
+        const { categoryId, page = 1, limit = 10 } = input || {};
+        const { id } = await checkAuth(context);
+
+        const result = await OfferService.getOffersByUserId({
+          entityId,
+          db,
+          page,
+          limit,
+          userId: id,
+        });
+
+        return result;
+      } catch (error) {
+        console.error("Error in getOffersByUserId (user):", error);
+        throw error;
+      }
+    },
+    async getOfferById(_: any, { offerId }: any, context: any) {
+      try {
+        const { entityId, db } = await checkAuth(context);
+
+        const result = await OfferService.getOfferById({
+          offerId,
+          entityId,
+          db,
+        });
+
+        return result;
+      } catch (error) {
+        console.error("Error in getOfferById (user):", error);
         throw error;
       }
     },
@@ -85,6 +123,24 @@ export const offersResolvers = {
         return true;
       } catch (error) {
         console.error("Error in trackOfferVisual (user):", error);
+        throw error;
+      }
+    },
+
+    async shareOffer(_: any, { offerId }: any, context: any) {
+      try {
+        const { entityId, userId, db } = await checkAuth(context);
+
+        const updatedOffer = await OfferService.shareOffer({
+          offerId,
+          userId,
+          entityId,
+          db,
+        });
+
+        return updatedOffer;
+      } catch (error) {
+        console.error("Error in shareOffer (user):", error);
         throw error;
       }
     },

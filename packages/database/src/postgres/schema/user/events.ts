@@ -50,7 +50,7 @@ export const events = pgTable("eventsss", {
   eventCreator: uuid("eventCreator_id"),
   eventCreatedBy: addedBy("addedBy").default("USER"),
   entityId: uuid("entityId").notNull(),
-  cover: text("cover").notNull().default("defaultEventCover.png"),
+  cover: text("cover").notNull().default("default-events.png"),
   title: text("title").notNull(),
   slug: text("slug").notNull().unique(),
   type: eventTypesEnum("type").notNull(),
@@ -98,7 +98,7 @@ export const eventsPaymentsRelations = relations(
       fields: [eventsPayments.eventId],
       references: [events.id],
     }),
-  })
+  }),
 );
 
 export const eventsVenue = pgTable("eventsVenue", {
@@ -156,7 +156,7 @@ export const eventSpeakersRelations = relations(
       fields: [eventSpeakers.eventId],
       references: [events.id],
     }),
-  })
+  }),
 );
 
 export const eventsMedia = pgTable("eventsMedia", {
@@ -180,7 +180,7 @@ export const eventsSpeakerToAgenda = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     // speaker: integer("speaker_id"),
     // agenda: integer("agenda_id"),
-  }
+  },
   // (table) => {
   //   return {
   //     pk: primaryKey({ columns: [table.agenda, table.speaker] }),
@@ -221,7 +221,7 @@ export const eventsAgendaRelations = relations(
       fields: [eventsAgenda.venue],
       references: [eventsVenue.id],
     }),
-  })
+  }),
 );
 
 export const eventsRelations = relations(events, ({ one, many }) => ({
@@ -272,7 +272,7 @@ export const eventsSponsorShipRelations = relations(
       fields: [eventsSponsorShip.eventId],
       references: [events.id],
     }),
-  })
+  }),
 );
 
 export const eventsOrganizer = pgTable("eventsOrganizer", {
@@ -292,7 +292,7 @@ export const eventsOrganizerRelations = relations(
       fields: [eventsOrganizer.eventId],
       references: [events.id],
     }),
-  })
+  }),
 );
 
 export const eventHost = pgTable(
@@ -304,7 +304,7 @@ export const eventHost = pgTable(
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
     entity: uuid("entity_id").notNull(),
-  }
+  },
   // (table) => {
   //   return {
   //     pk: primaryKey({ columns: [table.userId, table.eventId] }),
@@ -355,7 +355,7 @@ export const eventSponsorsRelations = relations(
       fields: [eventSponsors.sponsorShipId],
       references: [eventsSponsorShip.id],
     }),
-  })
+  }),
 );
 
 export const eventsSettings = pgTable("eventsSettings", {
@@ -373,7 +373,7 @@ export const eventsSettingsRelations = relations(
       fields: [eventsSettings.eventId],
       references: [events.id],
     }),
-  })
+  }),
 );
 
 export const eventsAttendees = pgTable(
@@ -388,7 +388,7 @@ export const eventsAttendees = pgTable(
   (t) => ({
     unq: unique().on(t.user, t.eventId),
     unq2: unique("uniqueEventsAttendees").on(t.user, t.eventId),
-  })
+  }),
 );
 
 export const eventsAttendeesRelations = relations(
@@ -402,7 +402,7 @@ export const eventsAttendeesRelations = relations(
       fields: [eventsAttendees.eventId],
       references: [user.id],
     }),
-  })
+  }),
 );
 
 export const eventVerification = pgTable("eventsVerification", {
@@ -421,7 +421,7 @@ export const eventVerificationRelations = relations(
       fields: [eventVerification.eventId],
       references: [events.id],
     }),
-  })
+  }),
 );
 
 export const eventLogs = pgTable("eventAuditLogs", {

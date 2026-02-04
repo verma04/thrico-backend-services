@@ -9,6 +9,7 @@ import {
   json,
   unique,
   varchar,
+  boolean,
 } from "drizzle-orm/pg-core";
 import { feedStatusEnum, groups } from "./communities";
 import { user } from "./member/user";
@@ -22,6 +23,7 @@ import { polls } from "./polls";
 import { discussionForum } from "./discussion-forum";
 import { offers } from "./offers";
 import { celebration } from "./celebration";
+import { surveys } from "./survey";
 
 // Define the feed priority enum if it doesn't exist in communities
 export const userFeedPriorityEnum = pgEnum("userFeedPriority", [
@@ -44,6 +46,7 @@ export const source = pgEnum("source", [
   "offer",
   "celebration",
   "forum",
+  "survey",
 ]);
 
 export const userFeedStatusEnum = pgEnum("userFeedStatusEnum", [
@@ -88,64 +91,20 @@ export const userFeed = pgTable(
     totalReShare: integer("totalReShare").notNull().default(0),
     privacy: privacyFeed("privacy").default("PUBLIC"),
     repostId: uuid("repost_id"),
+    surveyId: uuid("survey_id"),
     repostedBy: uuid("reposted_by"),
     addedBy: addedBy("addedBy").default("USER"),
     postedOn: posted("postedOn"),
+    isPinned: boolean("is_pinned").default(false),
+    pinnedAt: timestamp("pinned_at"),
   },
   (table) => ({
     addedByCheck: check(
       "user_id_required_if_added_by_user",
-      sql`(${table.addedBy} != 'USER' OR ${table.userId} IS NOT NULL)`
+      sql`(${table.addedBy} != 'USER' OR ${table.userId} IS NOT NULL)`,
     ),
-  })
+  }),
 );
-
-export const feedRelations = relations(userFeed, ({ one, many }) => ({
-  reactions: many(feedReactions),
-  comment: many(feedComment),
-  media: many(media),
-  group: one(groups, {
-    fields: [userFeed.groupId],
-    references: [groups.id],
-  }),
-  user: one(user, {
-    fields: [userFeed.userId],
-    references: [user.id],
-  }),
-  poll: one(polls, {
-    fields: [userFeed.pollId],
-    references: [polls.id],
-  }),
-  celebration: one(celebration, {
-    fields: [userFeed.celebrationId],
-    references: [celebration.id],
-  }),
-  offer: one(offers, {
-    fields: [userFeed.offerId],
-    references: [offers.id],
-  }),
-
-  entity: one(entity, {
-    fields: [userFeed.entity],
-    references: [entity.id],
-  }),
-  forum: one(discussionForum, {
-    fields: [userFeed.forumId],
-    references: [discussionForum.id],
-  }),
-  job: one(jobs, {
-    fields: [userFeed.jobId],
-    references: [jobs.id],
-  }),
-  marketPlace: one(marketPlace, {
-    fields: [userFeed.marketPlaceId],
-    references: [marketPlace.id],
-  }),
-  stories: one(userStory, {
-    fields: [userFeed.storyId],
-    references: [userStory.id],
-  }),
-}));
 
 export const reactionsType = pgEnum("reactionsType", [
   "like",
@@ -174,10 +133,10 @@ export const feedReactions = pgTable(
       pk: unique().on(table.userId, table.feedId),
       addedByCheck: check(
         "user_id_required_if_added_by_user",
-        sql`(${table.likedBy} != 'USER' OR ${table.userId} IS NOT NULL)`
+        sql`(${table.likedBy} != 'USER' OR ${table.userId} IS NOT NULL)`,
       ),
     };
-  }
+  },
 );
 
 export const feedReactionsRelations = relations(
@@ -191,7 +150,7 @@ export const feedReactionsRelations = relations(
       fields: [feedReactions.userId],
       references: [user.id],
     }),
-  })
+  }),
 );
 
 export const media = pgTable(
@@ -211,9 +170,9 @@ export const media = pgTable(
   (table) => ({
     addedByCheck: check(
       "user_id_required_if_added_by_user",
-      sql`(${table.addedBy} != 'USER' OR ${table.user} IS NOT NULL)`
+      sql`(${table.addedBy} != 'USER' OR ${table.user} IS NOT NULL)`,
     ),
-  })
+  }),
 );
 
 export const mediaRelations = relations(media, ({ one, many }) => ({
@@ -273,7 +232,7 @@ export const feedWishList = pgTable(
     return {
       pk: unique().on(table.feedId, table.userId, table.entityId),
     };
-  }
+  },
 );
 
 export const feedWishListRelations = relations(
@@ -291,5 +250,56 @@ export const feedWishListRelations = relations(
       fields: [feedWishList.entityId],
       references: [entity.id],
     }),
-  })
+  }),
 );
+
+export const feedRelations = relations(userFeed, ({ one, many }) => ({
+  reactions: many(feedReactions),
+  comment: many(feedComment),
+  media: many(media),
+  group: one(groups, {
+    fields: [userFeed.groupId],
+    references: [groups.id],
+  }),
+  user: one(user, {
+    fields: [userFeed.userId],
+    references: [user.id],
+  }),
+  poll: one(polls, {
+    fields: [userFeed.pollId],
+    references: [polls.id],
+  }),
+  celebration: one(celebration, {
+    fields: [userFeed.celebrationId],
+    references: [celebration.id],
+  }),
+  offer: one(offers, {
+    fields: [userFeed.offerId],
+    references: [offers.id],
+  }),
+
+  entity: one(entity, {
+    fields: [userFeed.entity],
+    references: [entity.id],
+  }),
+  forum: one(discussionForum, {
+    fields: [userFeed.forumId],
+    references: [discussionForum.id],
+  }),
+  job: one(jobs, {
+    fields: [userFeed.jobId],
+    references: [jobs.id],
+  }),
+  marketPlace: one(marketPlace, {
+    fields: [userFeed.marketPlaceId],
+    references: [marketPlace.id],
+  }),
+  stories: one(userStory, {
+    fields: [userFeed.storyId],
+    references: [userStory.id],
+  }),
+  survey: one(surveys, {
+    fields: [userFeed.surveyId],
+    references: [surveys.id],
+  }),
+}));

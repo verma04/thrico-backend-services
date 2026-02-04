@@ -41,6 +41,7 @@ import { countryClient, entityClient, subscriptionClient } from "@thrico/grpc";
 import { seedDiscussionCategories } from "../../seed/seedDiscussionCategories";
 import { initializeWebsite as initWebsiteContent } from "../../lib/website/create-default-pages";
 import { changeDomain } from "../../queue/email-rabbit";
+import { seedDefaultGamification } from "../../lib/website/gamification-defaults.seed";
 
 const shardCountry = async ({
   entityDomain,
@@ -221,7 +222,7 @@ export const entityResolvers: any = {
                 code: "NOT FOUND",
                 http: { status: 400 },
               },
-            }
+            },
           );
         }
         return {
@@ -418,7 +419,7 @@ export const entityResolvers: any = {
     async getDiscussionForumTermsAndConditions(
       _: any,
       { input }: any,
-      context: any
+      context: any,
     ) {
       try {
         const { db, entity: entityId } = await checkAuth(context);
@@ -452,9 +453,8 @@ export const entityResolvers: any = {
       try {
         const { entity: entityId } = await checkAuth(context);
 
-        const subscription = await subscriptionClient.checkEntitySubscription(
-          entityId
-        );
+        const subscription =
+          await subscriptionClient.checkEntitySubscription(entityId);
 
         return subscription;
       } catch (error) {
@@ -551,6 +551,7 @@ export const entityResolvers: any = {
               theme: entityType,
               font: "inter",
             });
+            await seedDefaultGamification(data.db, result?.id);
           } catch (e) {
             console.error("Failed to initialize website", e);
           }
@@ -588,7 +589,7 @@ export const entityResolvers: any = {
                 ...input,
                 entity: entityId,
               },
-            }
+            },
           );
         } else {
           // Create new item — id will be auto-generated
@@ -691,7 +692,7 @@ export const entityResolvers: any = {
     async updateTermsAndConditionsByModule(
       _: any,
       { module, termsAndConditions }: any,
-      context: any
+      context: any,
     ) {
       try {
         const { db, entity: entityId } = await checkAuth(context);
@@ -753,7 +754,7 @@ export const entityResolvers: any = {
     async updateDiscussionForumTermsAndConditions(
       _: any,
       { input }: any,
-      context: any
+      context: any,
     ) {
       try {
         const { db, entity: entityId } = await checkAuth(context);
@@ -829,7 +830,7 @@ export const entityResolvers: any = {
                 code: "BAD_USER_INPUT",
                 http: { status: 400 },
               },
-            }
+            },
           );
         }
 
@@ -855,7 +856,7 @@ export const entityResolvers: any = {
             $SET: {
               domain: domain,
             },
-          }
+          },
         );
 
         // Fetch entity details for name
@@ -955,7 +956,7 @@ export const entityResolvers: any = {
           db,
           entityId,
           entityResult.name,
-          entityResult.logo
+          entityResult.logo,
         );
 
         return true;

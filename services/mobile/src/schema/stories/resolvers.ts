@@ -15,13 +15,14 @@ const storiesResolvers: any = {
     },
     async getStoriesFromConnections(_: any, __: any, context: any) {
       try {
-        const { userId, entityId, db } = await checkAuth(context);
+        const { entityId, db, id } = await checkAuth(context);
         const groupedStories =
           await StoryService.getStoriesGroupedByConnections({
             db,
-            userId,
+            userId: id,
             entityId,
           });
+
         return groupedStories;
       } catch (error) {
         console.log(error);

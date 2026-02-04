@@ -127,6 +127,8 @@ export const userTypes = `#graphql
   }
   input allStatusInput {
     status: Status!
+    limit: Int
+    offset: Int
   }
   input userSettings {
     autoApprove: Boolean
@@ -134,16 +136,28 @@ export const userTypes = `#graphql
   type getUserAnalytics {
     totalMembers: Int
     verifiedMembers: Int
-    verifiedPercent: Float
+    verifiedPercent: Int
     activeMembers: Int
-    activePercent: Float
+    activePercent: Int
     newMembersThisMonth: Int
+  }
+
+  type UserGrowth {
+    date: String
+    count: Int
+  }
+
+  type UserRoleDistribution {
+    name: String
+    value: Int
   }
   extend type Query {
     getUserDetailsById(input: inputId): userToEntity
     getAllUser(input: allStatusInput): [userToEntity]
     getUserSettings: userSetting
-    getUserAnalytics: getUserAnalytics
+    getUserAnalytics(timeRange: TimeRange): getUserAnalytics
+    getUserGrowth(timeRange: TimeRange!): [UserGrowth]
+    getUserRoleDistribution(timeRange: TimeRange!): [UserRoleDistribution]
   }
 
   extend type Mutation {

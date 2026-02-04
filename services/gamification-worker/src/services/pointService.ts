@@ -8,9 +8,10 @@ import {
   badges,
   userBadges,
 } from "@thrico/database";
-import { and, eq, lte, desc } from "drizzle-orm";
+import { and, eq, lte, desc, sql } from "drizzle-orm";
 import { Redis } from "ioredis";
 import { log } from "@thrico/logging";
+import { NotificationService } from "./notificationService";
 
 export class PointService {
   static async awardPoints(
@@ -18,7 +19,7 @@ export class PointService {
     redis: Redis,
     gUser: any,
     rules: any[],
-    event: any
+    event: any,
   ) {
     // Validate gUser has required fields
     if (!gUser || !gUser.id) {
@@ -39,13 +40,16 @@ export class PointService {
     let finalTotalPoints = gUser.totalPoints;
 
     for (const rule of rules) {
+      if (!rule.isActive) {
+        continue;
+      }
       try {
         // Trigger Check (FIRST_TIME vs RECURRING)
         if (rule.trigger === "FIRST_TIME") {
           const alreadyAwarded = await tx.query.userPointsHistory.findFirst({
             where: and(
               eq(userPointsHistory.userId, gUser.id),
-              eq(userPointsHistory.pointRuleId, rule.id)
+              eq(userPointsHistory.pointRuleId, rule.id),
             ),
           });
 
@@ -53,6 +57,95 @@ export class PointService {
             log.info("Rule already awarded (FIRST_TIME)", {
               userId: gUser.user,
               ruleId: rule.id,
+            });
+            continue;
+          }
+        }
+
+        // Cap Checks
+        const now = new Date();
+        const startOfDay = new Date(now.setHours(0, 0, 0, 0));
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - now.getDay());
+        startOfWeek.setHours(0, 0, 0, 0);
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+
+        if (rule.dailyCap > 0) {
+          const dailyTotal = await tx
+            .select({
+              total: sql<number>`COALESCE(SUM(${userPointsHistory.pointsEarned}), 0)`,
+            })
+            .from(userPointsHistory)
+            .where(
+              and(
+                eq(userPointsHistory.userId, gUser.id),
+                eq(userPointsHistory.pointRuleId, rule.id),
+                sql`${userPointsHistory.createdAt} >= ${startOfDay}`,
+              ),
+            );
+
+          if (Number(dailyTotal[0]?.total || 0) + rule.points > rule.dailyCap) {
+            log.info("Daily cap exceeded", {
+              userId: gUser.user,
+              ruleId: rule.id,
+              dailyTotal: dailyTotal[0]?.total,
+              cap: rule.dailyCap,
+            });
+            continue;
+          }
+        }
+
+        if (rule.weeklyCap > 0) {
+          const weeklyTotal = await tx
+            .select({
+              total: sql<number>`COALESCE(SUM(${userPointsHistory.pointsEarned}), 0)`,
+            })
+            .from(userPointsHistory)
+            .where(
+              and(
+                eq(userPointsHistory.userId, gUser.id),
+                eq(userPointsHistory.pointRuleId, rule.id),
+                sql`${userPointsHistory.createdAt} >= ${startOfWeek}`,
+              ),
+            );
+
+          if (
+            Number(weeklyTotal[0]?.total || 0) + rule.points >
+            rule.weeklyCap
+          ) {
+            log.info("Weekly cap exceeded", {
+              userId: gUser.user,
+              ruleId: rule.id,
+              weeklyTotal: weeklyTotal[0]?.total,
+              cap: rule.weeklyCap,
+            });
+            continue;
+          }
+        }
+
+        if (rule.monthlyCap > 0) {
+          const monthlyTotal = await tx
+            .select({
+              total: sql<number>`COALESCE(SUM(${userPointsHistory.pointsEarned}), 0)`,
+            })
+            .from(userPointsHistory)
+            .where(
+              and(
+                eq(userPointsHistory.userId, gUser.id),
+                eq(userPointsHistory.pointRuleId, rule.id),
+                sql`${userPointsHistory.createdAt} >= ${startOfMonth}`,
+              ),
+            );
+
+          if (
+            Number(monthlyTotal[0]?.total || 0) + rule.points >
+            rule.monthlyCap
+          ) {
+            log.info("Monthly cap exceeded", {
+              userId: gUser.user,
+              ruleId: rule.id,
+              monthlyTotal: monthlyTotal[0]?.total,
+              cap: rule.monthlyCap,
             });
             continue;
           }
@@ -78,7 +171,7 @@ export class PointService {
           "Verifying gamification user exists before point history insert",
           {
             gUserId: gUser.id,
-          }
+          },
         );
 
         const userExists = await tx.query.gamificationUser.findFirst({
@@ -87,7 +180,7 @@ export class PointService {
 
         if (!userExists) {
           const error = new Error(
-            `Gamification user ${gUser.id} does not exist in database before point history insert. This indicates a transaction isolation issue.`
+            `Gamification user ${gUser.id} does not exist in database before point history insert. This indicates a transaction isolation issue.`,
           );
           log.error("Gamification user not found in database", {
             gUserId: gUser.id,
@@ -102,7 +195,7 @@ export class PointService {
           {
             gUserId: gUser.id,
             userExistsId: userExists.id,
-          }
+          },
         );
 
         // Log points history
@@ -133,20 +226,37 @@ export class PointService {
       }
     }
 
+    // Send notification if points were awarded
+    if (totalAwardedPoints > 0) {
+      await NotificationService.sendGamificationNotification(
+        tx, // Pass transaction context
+        gUser.user,
+        gUser.entityId,
+        {
+          type: "POINTS_EARNED",
+          title: "Points Earned!",
+          message: `You earned ${totalAwardedPoints} points!`,
+          points: totalAwardedPoints,
+        },
+        gUser.id,
+      );
+    }
+
     return { totalAwardedPoints, finalTotalPoints };
   }
 
   static async checkRankProgression(
     tx: any,
+    db: AppDatabase,
     gUser: any,
     finalTotalPoints: number,
-    entityId: string
+    entityId: string,
   ) {
     const nextRank = await tx.query.ranks.findFirst({
       where: and(
         eq(ranks.entityId, entityId),
         eq(ranks.isActive, true),
-        lte(ranks.minPoints, finalTotalPoints)
+        lte(ranks.minPoints, finalTotalPoints),
       ),
       orderBy: [desc(ranks.minPoints)],
     });
@@ -167,21 +277,35 @@ export class PointService {
         userId: gUser.user,
         rank: nextRank.name,
       });
+
+      await NotificationService.sendGamificationNotification(
+        db,
+        gUser.user,
+        entityId,
+        {
+          type: "RANK_UP",
+          title: "Rank Up!",
+          message: `You've been promoted to ${nextRank.name}!`,
+          rank: nextRank,
+        },
+        gUser.id,
+      );
     }
   }
 
   static async checkPointsBadges(
     tx: any,
+    db: AppDatabase,
     gUser: any,
     finalTotalPoints: number,
-    entityId: string
+    entityId: string,
   ) {
     const pointBadges = await tx.query.badges.findMany({
       where: and(
         eq(badges.entityId, entityId),
         eq(badges.type, "POINTS"),
         lte(badges.targetValue, finalTotalPoints),
-        eq(badges.isActive, true)
+        eq(badges.isActive, true),
       ),
     });
 
@@ -189,7 +313,7 @@ export class PointService {
       const alreadyHas = await tx.query.userBadges.findFirst({
         where: and(
           eq(userBadges.userId, gUser.id),
-          eq(userBadges.badgeId, badge.id)
+          eq(userBadges.badgeId, badge.id),
         ),
       });
 
@@ -205,6 +329,19 @@ export class PointService {
           userId: gUser.user,
           badgeName: badge.name,
         });
+
+        await NotificationService.sendGamificationNotification(
+          db,
+          gUser.user,
+          entityId,
+          {
+            type: "BADGE_EARNED",
+            title: "Badge Earned!",
+            message: `You earned the ${badge.name} badge!`,
+            badge: badge,
+          },
+          gUser.id,
+        );
       }
     }
   }

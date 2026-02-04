@@ -1,4 +1,4 @@
-import { AppDatabase, gamificationUser } from "@thrico/database";
+import { AppDatabase, gamificationUser, user } from "@thrico/database";
 import { and, eq } from "drizzle-orm";
 import { log } from "@thrico/logging";
 
@@ -6,13 +6,26 @@ export class UserService {
   static async getOrCreateGamificationUser(
     tx: any,
     userId: string,
-    entityId: string
+    entityId: string,
   ) {
     try {
+      // 0. Verify the user exists in the main user table first
+      const dbUser = await tx.query.user.findFirst({
+        where: eq(user.id, userId),
+      });
+
+      if (!dbUser) {
+        log.error("Cannot create gamification user - main user not found", {
+          userId,
+          entityId,
+        });
+        throw new Error(`User with ID ${userId} not found in database`);
+      }
+
       let gUser = await tx.query.gamificationUser.findFirst({
         where: and(
           eq(gamificationUser.user, userId),
-          eq(gamificationUser.entityId, entityId)
+          eq(gamificationUser.entityId, entityId),
         ),
       });
 

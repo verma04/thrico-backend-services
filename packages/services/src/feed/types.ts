@@ -1,7 +1,7 @@
 export interface FeedQueryParams {
   currentUserId: string;
   db: any;
-  offset?: number;
+  cursor?: string;
   limit?: number;
   entity: string;
 }
@@ -32,4 +32,5 @@ export interface FeedInput {
   };
   privacy?: string | null;
   source?: string | null;
+  status?: string | null;
 }

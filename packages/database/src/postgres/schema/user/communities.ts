@@ -42,6 +42,7 @@ export const memberStatusEnum = pgEnum("memberStatusEnum", [
 export const managerRole = pgEnum("managerRole", [
   "ADMIN",
   "MANAGER",
+  "MODERATOR",
   "USER",
   "NOT_MEMBER",
 ]);
@@ -77,7 +78,7 @@ export const groupInterestsRelations = relations(
       fields: [groupInterests.entity],
       references: [entity.id],
     }),
-  })
+  }),
 );
 
 export const groups = pgTable("-community", {
@@ -88,7 +89,7 @@ export const groups = pgTable("-community", {
   creator: uuid("creator_id"),
   addedBy: addedBy("addedBy"),
   entity: uuid("org_id").notNull(),
-  cover: text("cover").default("/groups-default-cover-photo.jpg"),
+  cover: text("cover").default("default_communities.png"),
   status: communityEntityStatus("status").notNull(),
   isApproved: boolean("isApproved").notNull().default(false),
   description: varchar("description", { length: 300 }).default(""),
@@ -120,11 +121,11 @@ export const groups = pgTable("-community", {
   rules: jsonb("rules"),
   // Rating fields
   overallRating: numeric("overallRating", { precision: 3, scale: 2 }).default(
-    "0.00"
+    "0.00",
   ),
   totalRatings: integer("totalRatings").default(0),
   verifiedRating: numeric("verifiedRating", { precision: 3, scale: 2 }).default(
-    "0.00"
+    "0.00",
   ),
   totalVerifiedRatings: integer("totalVerifiedRatings").default(0),
   // Flagged fields
@@ -185,7 +186,7 @@ export const communityVerificationRelations = relations(
       fields: [communityVerification.community],
       references: [groups.id],
     }),
-  })
+  }),
 );
 
 export const groupView = pgTable("communityViews", {
@@ -214,7 +215,7 @@ export const communitySettingsRelations = relations(
       fields: [communitySettings.groupId],
       references: [groups.id],
     }),
-  })
+  }),
 );
 
 export const groupInvitation = pgTable(
@@ -226,7 +227,7 @@ export const groupInvitation = pgTable(
     updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
     isAccepted: boolean("isAccepted").default(false),
     actionTime: timestamp("actionTime"),
-  }
+  },
   // (table) => {
   //   return {
   //     pk: primaryKey({ columns: [table.userId, table.groupId] }),
@@ -249,7 +250,7 @@ export const invitationRelations = relations(
       fields: [groupInvitation.userId],
       references: [user.id],
     }),
-  })
+  }),
 );
 
 export const groupMember = pgTable(
@@ -271,7 +272,7 @@ export const groupMember = pgTable(
     return {
       pk: unique().on(table.userId, table.groupId),
     };
-  }
+  },
 );
 
 export const groupMemberRelations = relations(groupMember, ({ one, many }) => ({
@@ -315,7 +316,7 @@ export const groupRequest = pgTable(
     return {
       pk: unique().on(table.userId, table.groupId),
     };
-  }
+  },
 );
 
 export const groupRequestRelations = relations(
@@ -329,7 +330,7 @@ export const groupRequestRelations = relations(
       fields: [groupRequest.userId],
       references: [user.id],
     }),
-  })
+  }),
 );
 
 export const groupViews = pgTable("communityViews", {
@@ -405,7 +406,7 @@ export const groupRating = pgTable(
     return {
       pk: unique().on(table.userId, table.groupId, table.entityId),
     };
-  }
+  },
 );
 
 export const groupRatingRelations = relations(groupRating, ({ one, many }) => ({
@@ -442,7 +443,7 @@ export const ratingHelpfulness = pgTable(
     return {
       pk: unique().on(table.ratingId, table.userId),
     };
-  }
+  },
 );
 
 export const ratingHelpfulnessRelations = relations(
@@ -456,7 +457,7 @@ export const ratingHelpfulnessRelations = relations(
       fields: [ratingHelpfulness.userId],
       references: [user.id],
     }),
-  })
+  }),
 );
 
 // Community Rating Summary/Aggregate Table
@@ -465,7 +466,7 @@ export const groupRatingSummary = pgTable("communityRatingSummary", {
   groupId: uuid("community_id").notNull().unique(),
   totalRatings: integer("totalRatings").default(0),
   averageRating: numeric("averageRating", { precision: 3, scale: 2 }).default(
-    "0.00"
+    "0.00",
   ),
   totalVerifiedRatings: integer("totalVerifiedRatings").default(0),
   averageVerifiedRating: numeric("averageVerifiedRating", {
@@ -498,7 +499,7 @@ export const groupRatingSummaryRelations = relations(
       fields: [groupRatingSummary.groupId],
       references: [groups.id],
     }),
-  })
+  }),
 );
 
 // Rating Moderation/Reports
@@ -519,7 +520,7 @@ export const ratingReport = pgTable(
     return {
       pk: unique().on(table.ratingId, table.reporterId),
     };
-  }
+  },
 );
 
 export const ratingReportRelations = relations(ratingReport, ({ one }) => ({
@@ -585,7 +586,7 @@ export const communityWishlist = pgTable(
     return {
       pk: unique().on(table.userId, table.groupId, table.entityId),
     };
-  }
+  },
 );
 
 export const communityWishlistRelations = relations(
@@ -603,7 +604,7 @@ export const communityWishlistRelations = relations(
       fields: [communityWishlist.entityId],
       references: [entity.id],
     }),
-  })
+  }),
 );
 
 // Community/User Notification System
@@ -650,7 +651,7 @@ export const communityNotificationRelations = relations(
       fields: [communityNotification.entityId],
       references: [entity.id],
     }),
-  })
+  }),
 );
 
 // Community Activity Log Enums
@@ -676,7 +677,7 @@ export const communityActivityStatusEnum = pgEnum(
     "LEFT",
     "REMOVED",
     "CREATED",
-  ]
+  ],
 );
 
 // Community Activity/Audit Log Table
@@ -702,7 +703,7 @@ export const communityActivityLogRelations = relations(
       fields: [communityActivityLog.userId],
       references: [user.id],
     }),
-  })
+  }),
 );
 
 // Community Feed Status Enum
@@ -772,7 +773,7 @@ export const communityFeed = pgTable(
     return {
       uniqueFeedCommunity: unique().on(table.userFeedId, table.communityId),
     };
-  }
+  },
 );
 
 export const communityFeedRelations = relations(
@@ -816,7 +817,7 @@ export const communityFeedRelations = relations(
     // Future extensibility
     interactions: many(communityFeedInteraction),
     reports: many(communityFeedReport),
-  })
+  }),
 );
 
 // Community Feed Interactions
@@ -843,10 +844,10 @@ export const communityFeedInteraction = pgTable(
       uniqueUserFeedInteraction: unique().on(
         table.feedId,
         table.userId,
-        table.type
+        table.type,
       ),
     };
-  }
+  },
 );
 
 export const communityFeedInteractionRelations = relations(
@@ -860,7 +861,7 @@ export const communityFeedInteractionRelations = relations(
       fields: [communityFeedInteraction.userId],
       references: [user.id],
     }),
-  })
+  }),
 );
 
 // Community Feed Reports
@@ -881,7 +882,7 @@ export const communityFeedReport = pgTable(
     return {
       uniqueUserFeedReport: unique().on(table.feedId, table.reporterId),
     };
-  }
+  },
 );
 
 export const communityFeedReportRelations = relations(
@@ -899,7 +900,7 @@ export const communityFeedReportRelations = relations(
       fields: [communityFeedReport.reviewedBy],
       references: [user.id],
     }),
-  })
+  }),
 );
 
 // Add these enums near your other enums
@@ -978,10 +979,10 @@ export const communityReport = pgTable(
       uniqueUserCommunityReport: unique().on(
         table.reporterId,
         table.communityId,
-        table.entityId
+        table.entityId,
       ),
     };
-  }
+  },
 );
 
 export const communityReportRelations = relations(
@@ -1011,7 +1012,7 @@ export const communityReportRelations = relations(
     // Related records
     appeals: many(communityReportAppeal),
     auditLogs: many(communityReportAuditLog),
-  })
+  }),
 );
 
 // Community Report Appeal System
@@ -1048,7 +1049,7 @@ export const communityReportAppeal = pgTable(
       // One appeal per report
       uniqueReportAppeal: unique().on(table.reportId),
     };
-  }
+  },
 );
 
 export const communityReportAppealRelations = relations(
@@ -1070,7 +1071,7 @@ export const communityReportAppealRelations = relations(
       fields: [communityReportAppeal.decidedBy],
       references: [user.id],
     }),
-  })
+  }),
 );
 
 // Community Report Audit Log
@@ -1117,7 +1118,7 @@ export const communityReportAuditLogRelations = relations(
       fields: [communityReportAuditLog.performedBy],
       references: [user.id],
     }),
-  })
+  }),
 );
 
 // Community Report Statistics (for admin dashboard)
@@ -1135,7 +1136,7 @@ export const communityReportStats = pgTable("communityReportStats", {
 
   // Counts by reason
   inappropriateContentReports: integer("inappropriate_content_reports").default(
-    0
+    0,
   ),
   spamReports: integer("spam_reports").default(0),
   harassmentReports: integer("harassment_reports").default(0),
@@ -1161,5 +1162,5 @@ export const communityReportStatsRelations = relations(
       fields: [communityReportStats.entityId],
       references: [entity.id],
     }),
-  })
+  }),
 );

@@ -7,17 +7,26 @@ import {
   user,
   userFeed,
   userToEntity,
+  pushNotificationToCache,
+  getNotificationsFromCache,
+  markNotificationAsReadInCache,
+  USER_LOGIN_SESSION,
 } from "@thrico/database";
+import { FirebaseService } from "./firebase";
 
 export class NotificationService {
   static async getUserNotifications({
     db,
     currentUserId,
     getUnreadCountFn,
+    limit = 10,
+    offset = 0,
   }: {
     db: any;
     currentUserId: string;
     getUnreadCountFn?: (userId: string) => Promise<number>;
+    limit?: number;
+    offset?: number;
   }) {
     try {
       if (!currentUserId) {
@@ -40,6 +49,7 @@ export class NotificationService {
           feed: userFeed,
           content: notifications.content,
           notificationType: notifications.notificationType,
+          isRead: notifications.isRead,
           createdAt: notifications.createdAt,
           like: sql<Array<object>>`ARRAY(
             SELECT ${user}
@@ -59,7 +69,9 @@ export class NotificationService {
         .leftJoin(user, eq(userToEntity.userId, user.id))
         .leftJoin(userFeed, eq(notifications.feed, userFeed.id))
         .where(eq(notifications.user, currentUserId))
-        .orderBy(desc(notifications.createdAt));
+        .orderBy(desc(notifications.createdAt))
+        .limit(limit)
+        .offset(offset);
 
       let unreadCount = 0;
       if (getUnreadCountFn) {
@@ -103,13 +115,32 @@ export class NotificationService {
 
       log.debug("Marking notification as read", { notificationId, userId });
 
-      // TODO: Implement when isRead field is added to notifications table
-      log.warn("markNotificationAsRead not yet implemented", {
-        notificationId,
-        userId,
-      });
+      const [updated] = await db
+        .update(notifications)
+        .set({ isRead: "true" })
+        .where(
+          and(
+            eq(notifications.id, notificationId),
+            eq(notifications.user, userId),
+          ),
+        )
+        .returning();
 
-      return { success: true };
+      if (updated) {
+        // Sync with Redis cache
+        await markNotificationAsReadInCache(
+          updated.entity,
+          userId,
+          notificationId,
+        ).catch((err) => {
+          log.error("Failed to mark notification as read in cache", {
+            notificationId,
+            error: err.message,
+          });
+        });
+      }
+
+      return { success: !!updated };
     } catch (error) {
       log.error("Error in markNotificationAsRead", {
         error,
@@ -143,8 +174,8 @@ export class NotificationService {
         .where(
           and(
             eq(notifications.id, notificationId),
-            eq(notifications.user, userId)
-          )
+            eq(notifications.user, userId),
+          ),
         )
         .returning();
 
@@ -153,7 +184,7 @@ export class NotificationService {
           "Notification not found or you don't have permission to delete it.",
           {
             extensions: { code: "FORBIDDEN" },
-          }
+          },
         );
       }
 
@@ -173,51 +204,250 @@ export class NotificationService {
     db,
     userId,
     senderId,
+    entityId,
     content,
     notificationType,
     feedId,
+    shouldSendPush,
+    pushTitle,
+    pushBody,
   }: {
     db: any;
     userId: string;
     senderId?: string;
+    entityId: string;
     content: string;
     notificationType: string;
     feedId?: string;
+    shouldSendPush?: boolean;
+    pushTitle?: string;
+    pushBody?: string;
   }) {
     try {
-      if (!userId || !content || !notificationType) {
+      if (!userId || !content || !notificationType || !entityId) {
         throw new GraphQLError(
-          "User ID, content, and notification type are required.",
+          "User ID, entity ID, content, and notification type are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
-      log.debug("Creating notification", { userId, notificationType });
+      log.debug("Creating notification", {
+        userId,
+        entityId,
+        notificationType,
+      });
 
       const [notification] = await db
         .insert(notifications)
         .values({
           user: userId,
           sender: senderId,
+          entity: entityId,
           content,
           notificationType,
           feed: feedId,
+          isRead: "false",
         })
         .returning();
 
-      log.info("Notification created", {
+      // Cache in Redis (which now also publishes for SSE)
+      await pushNotificationToCache(entityId, userId, notification);
+
+      console.log({
+        userId,
+        entityId,
+        title: pushTitle || "New Notification",
+        body: pushBody || content,
+        payload: {
+          notificationId: notification.id,
+          notificationType,
+        },
+      });
+      // Trigger Push if requested
+      if (shouldSendPush) {
+        this.sendPushNotification({
+          userId,
+          entityId,
+          title: pushTitle || "New Notification",
+          body: pushBody || content,
+          payload: {
+            notificationId: notification.id,
+            notificationType,
+          },
+        }).catch((err: any) => {
+          log.error("Failed to send push as part of notification creation", {
+            userId,
+            error: err.message,
+          });
+        });
+      }
+
+      log.info("Notification created, cached, and potentially pushed", {
         notificationId: notification.id,
         userId,
+        entityId,
         notificationType,
+        shouldSendPush,
       });
       return notification;
     } catch (error) {
       log.error("Error in createNotification", {
         error,
         userId,
+        entityId,
         notificationType,
+      });
+      throw error;
+    }
+  }
+
+  static async getNotificationsByEntityAndUser({
+    entityId,
+    userId,
+  }: {
+    entityId: string;
+    userId: string;
+  }) {
+    try {
+      log.debug("Getting notifications from Redis cache", { entityId, userId });
+      const notifications = await getNotificationsFromCache(entityId, userId);
+      return notifications;
+    } catch (error) {
+      log.error("Error in getNotificationsByEntityAndUser", {
+        error,
+        entityId,
+        userId,
+      });
+      return [];
+    }
+  }
+
+  static async getTargetDeviceTokens({
+    userId,
+    entityId,
+  }: {
+    userId: string;
+    entityId: string;
+  }) {
+    try {
+      log.debug("Getting target device tokens", { userId, entityId });
+
+      // Query DynamoDB for user sessions using scan as fallback for missing index
+      const sessions = await USER_LOGIN_SESSION.scan("userId")
+        .eq(userId)
+        .exec();
+
+      // Filter sessions by active entity or fallback
+      const targetSessions = sessions.filter(
+        (s: any) =>
+          s.deviceToken && (!s.activeEntityId || s.activeEntityId === entityId),
+      );
+
+      const tokens = targetSessions.map((s: any) => s.deviceToken);
+
+      log.info("Target device tokens retrieved", {
+        userId,
+        entityId,
+        tokenCount: tokens.length,
+      });
+
+      return tokens;
+    } catch (error) {
+      log.error("Error in getTargetDeviceTokens", { error, userId, entityId });
+      return [];
+    }
+  }
+
+  /**
+   * Send a push notification to all active devices of a user in an entity context
+   */
+  static async sendPushNotification({
+    userId,
+    entityId,
+    title,
+    body,
+    payload,
+  }: {
+    userId: string;
+    entityId: string;
+    title: string;
+    body: string;
+    payload?: any;
+  }) {
+    try {
+      log.debug("Preparing to send push notification", {
+        userId,
+        entityId,
+        title,
+      });
+
+      const tokens = await this.getTargetDeviceTokens({ userId, entityId });
+
+      if (tokens.length === 0) {
+        log.info("No active device tokens found for user in entity context", {
+          userId,
+          entityId,
+        });
+        return;
+      }
+
+      log.info(`Sending push notification to ${tokens.length} devices`, {
+        userId,
+        entityId,
+        title,
+      });
+
+      return await FirebaseService.sendToDevices({
+        tokens,
+        title,
+        body,
+        payload,
+      });
+    } catch (error) {
+      log.error("Error in sendPushNotification", { error, userId, entityId });
+      return { success: false, error };
+    }
+  }
+
+  static async countUnreadNotifications({
+    db,
+    userId,
+    notificationTypes,
+  }: {
+    db: any;
+    userId: string;
+    notificationTypes: string[];
+  }) {
+    try {
+      if (!userId || !notificationTypes || notificationTypes.length === 0) {
+        throw new GraphQLError("User ID and notification types are required.", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+
+      const { inArray } = await import("drizzle-orm");
+
+      const [result] = await db
+        .select({
+          count: sql<number>`count(${notifications.id})::int`,
+        })
+        .from(notifications)
+        .where(
+          and(
+            eq(notifications.user, userId),
+            inArray(notifications.notificationType, notificationTypes as any),
+            eq(notifications.isRead, "false"),
+          ),
+        );
+
+      return result?.count || 0;
+    } catch (error) {
+      log.error("Error in countUnreadNotifications", {
+        error,
+        userId,
+        notificationTypes,
       });
       throw error;
     }

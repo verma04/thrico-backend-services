@@ -1,0 +1,1 @@
+ALTER TYPE "notificationType" ADD VALUE 'CONNECTION_REQUEST';

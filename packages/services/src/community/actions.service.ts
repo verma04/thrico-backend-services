@@ -5,20 +5,19 @@ import {
   groupMember,
   groupRequest,
   groups,
-  communityNotification,
   communityFeed,
   user,
   userFeed,
   jobs,
   offers,
   polls,
-  marketPlace,
-  marketPlaceMedia,
   events,
   communityWishlist,
   communityFeedInteraction,
   communityFeedReport,
-  communityReport, // Added userFeed
+  communityReport,
+  AppDatabase,
+  aboutUser, // Added userFeed
 } from "@thrico/database";
 import { FeedMutationService } from "../feed/feed-mutation.service";
 import { FeedQueryService } from "../feed/feed-query.service";
@@ -33,6 +32,12 @@ interface CommunityMemberPermissions {
   canReport: boolean;
   canApprove?: boolean;
   canReject?: boolean;
+}
+interface PaginationInfo {
+  total: number;
+  limit: number;
+  offset: number;
+  hasMore: boolean;
 }
 // Placeholder for email service
 const sendEmail = async (to: string, subject: string, body: string) => {
@@ -119,7 +124,7 @@ export class CommunityActionsService {
     groupId: string;
     reason?: string;
     entityId: string;
-    db: any;
+    db: AppDatabase;
   }) {
     try {
       this.validateInput({ userId, groupId, entityId });
@@ -130,12 +135,13 @@ export class CommunityActionsService {
       if (!group) throw new GraphQLError("No Community found");
 
       const existingMember = await this.getUserMembership(db, userId, groupId);
+      console.log("existingMember", existingMember);
       if (existingMember) throw new GraphQLError("Already a member");
 
       const existingRequest = await db.query.groupRequest.findFirst({
         where: and(
           eq(groupRequest.groupId, groupId),
-          eq(groupRequest.userId, userId)
+          eq(groupRequest.userId, userId),
         ),
       });
       if (existingRequest) throw new GraphQLError("Already requested");
@@ -152,7 +158,7 @@ export class CommunityActionsService {
           });
           await tx
             .update(groups)
-            .set({ numberOfUser: group.numberOfUser + 1 })
+            .set({ numberOfUser: (group?.numberOfUser || 0) + 1 })
             .where(eq(groups.id, groupId));
 
           // Gamification Trigger
@@ -209,7 +215,7 @@ export class CommunityActionsService {
         where: and(
           eq(communityWishlist.groupId, groupId),
           eq(communityWishlist.userId, userId),
-          eq(communityWishlist.entityId, entityId)
+          eq(communityWishlist.entityId, entityId),
         ),
       });
 
@@ -264,17 +270,27 @@ export class CommunityActionsService {
   }: {
     userId: string;
     groupId: string;
-    db: any;
+    db: AppDatabase;
   }) {
     try {
       const result = await db.transaction(async (tx: any) => {
+        // Delete any pending join requests as well
+        await tx
+          .delete(groupRequest)
+          .where(
+            and(
+              eq(groupRequest.groupId, groupId),
+              eq(groupRequest.userId, userId),
+            ),
+          );
+
         const deleted = await tx
           .delete(groupMember)
           .where(
             and(
               eq(groupMember.groupId, groupId),
-              eq(groupMember.userId, userId)
-            )
+              eq(groupMember.userId, userId),
+            ),
           )
           .returning();
 
@@ -285,10 +301,17 @@ export class CommunityActionsService {
             .where(eq(groups.id, groupId));
           return true;
         }
-        return false;
+        return deleted;
       });
 
-      return { success: result };
+      return {
+        success: result === true,
+        message:
+          result === true
+            ? "Successfully left the community"
+            : "You are not a member of this community",
+        communityArchived: false,
+      };
     } catch (error) {
       log.error("Error in leaveCommunity", { error, groupId, userId });
       throw error;
@@ -296,14 +319,14 @@ export class CommunityActionsService {
   }
 
   public static async getUserMembership(
-    db: any,
+    db: AppDatabase,
     userId: string,
-    groupId: string
+    groupId: string,
   ) {
     return db.query.groupMember.findFirst({
       where: and(
         eq(groupMember.userId, userId),
-        eq(groupMember.groupId, groupId)
+        eq(groupMember.groupId, groupId),
       ),
     });
   }
@@ -311,15 +334,15 @@ export class CommunityActionsService {
   private static async getUserMemberships(
     db: any,
     userId: string,
-    groupIds?: string[]
+    groupIds?: string[],
   ) {
     const conditions = [eq(groupMember.userId, userId)];
 
     if (groupIds && groupIds.length > 0) {
       conditions.push(
         sql`${groupMember.groupId} = ANY(${sql.raw(
-          `'{${groupIds.join(",")}}'`
-        )})`
+          `'{${groupIds.join(",")}}'`,
+        )})`,
       );
     }
 
@@ -332,7 +355,7 @@ export class CommunityActionsService {
   private static calculatePermissions(
     isOwner: boolean,
     userRole?: string | null,
-    isMember: boolean = false
+    isMember: boolean = false,
   ): CommunityMemberPermissions {
     const isAdmin = userRole === "ADMIN";
     const isManager = userRole === "MANAGER";
@@ -353,7 +376,7 @@ export class CommunityActionsService {
     isMember: boolean,
     userRole?: string | null,
     feed?: any,
-    requiresApproval?: boolean
+    requiresApproval?: boolean,
   ): FeedMetadata {
     return {
       isOwnFeed: isOwner,
@@ -369,7 +392,7 @@ export class CommunityActionsService {
     if (feed.job?.id) return "job";
     if (feed.offer?.id) return "offer";
     if (feed.poll?.id) return "poll";
-    if (feed.marketPlace?.id) return "marketplace";
+
     if (feed.event?.id) return "event";
     return "post";
   }
@@ -401,8 +424,8 @@ export class CommunityActionsService {
     } else if (communityIds && communityIds.length > 0) {
       conditions.push(
         sql`${userFeed.groupId} = ANY(${sql.raw(
-          `'{${communityIds.join(",")}}'`
-        )})`
+          `'{${communityIds.join(",")}}'`,
+        )})`,
       );
     } else {
       conditions.push(isNotNull(userFeed.groupId));
@@ -419,7 +442,7 @@ export class CommunityActionsService {
       status,
       currentUserId,
       userMemberships,
-      communityId
+      communityId,
     );
 
     return conditions;
@@ -430,10 +453,10 @@ export class CommunityActionsService {
     status?: FeedStatus,
     currentUserId?: string,
     userMemberships: any[] = [],
-    communityId?: string
+    communityId?: string,
   ) {
     const userMembershipMap = new Map(
-      userMemberships.map((m) => [m.groupId, m])
+      userMemberships.map((m) => [m.groupId, m]),
     );
 
     if (!status) {
@@ -442,7 +465,7 @@ export class CommunityActionsService {
           const userMember = userMembershipMap.get(communityId);
           if (userMember) {
             conditions.push(
-              sql`(${communityFeed.status} = 'APPROVED' OR (${communityFeed.status} = 'PENDING' AND ${communityFeed.member} = ${userMember.id}))`
+              sql`(${communityFeed.status} = 'APPROVED' OR (${communityFeed.status} = 'PENDING' AND ${communityFeed.member} = ${userMember.id}))`,
             );
           } else {
             conditions.push(eq(communityFeed.status, "APPROVED"));
@@ -453,8 +476,8 @@ export class CommunityActionsService {
           if (memberCommunityIds.length > 0) {
             conditions.push(
               sql`${userFeed.groupId} = ANY(${sql.raw(
-                `'{${memberCommunityIds.join(",")}}'`
-              )})`
+                `'{${memberCommunityIds.join(",")}}'`,
+              )})`,
             );
           }
           conditions.push(eq(communityFeed.status, "APPROVED"));
@@ -468,7 +491,7 @@ export class CommunityActionsService {
         status,
         currentUserId,
         userMembershipMap,
-        communityId
+        communityId,
       );
     }
   }
@@ -478,7 +501,7 @@ export class CommunityActionsService {
     status: FeedStatus,
     currentUserId?: string,
     userMembershipMap?: Map<string, any>,
-    communityId?: string
+    communityId?: string,
   ) {
     if (status === "PENDING" && currentUserId && userMembershipMap) {
       if (communityId) {
@@ -489,8 +512,8 @@ export class CommunityActionsService {
           conditions.push(
             and(
               eq(communityFeed.status, "PENDING"),
-              eq(communityFeed.member, userMember.id)
-            )
+              eq(communityFeed.member, userMember.id),
+            ),
           );
         } else {
           conditions.push(sql`false`);
@@ -523,7 +546,6 @@ export class CommunityActionsService {
 
   private static getAdditionalFeedFields() {
     return {
-      repostId: userFeed.repostId,
       group: {
         id: groups.id,
         title: groups.title,
@@ -560,26 +582,7 @@ export class CommunityActionsService {
         title: polls.title,
         endDate: polls.endDate,
       },
-      marketPlace: {
-        id: marketPlace.id,
-        title: marketPlace.title,
-        price: marketPlace.price,
-        description: marketPlace.description,
-        location: marketPlace.location,
-        category: marketPlace.category,
-        condition: marketPlace.condition,
-        createdAt: marketPlace.createdAt,
-        media: sql<Array<string>>`COALESCE(
-            ARRAY(
-                SELECT ${marketPlaceMedia.url}
-                FROM ${marketPlaceMedia}
-                WHERE ${marketPlaceMedia.marketPlace} = ${marketPlace.id}
-                ORDER BY ${marketPlaceMedia.createdAt}
-                LIMIT 5
-            ),
-            '{}'
-        )`,
-      },
+
       event: {
         id: events.id,
         title: events.title,
@@ -600,10 +603,10 @@ export class CommunityActionsService {
   private static processFeeds(
     feeds: any[],
     currentUserId?: string,
-    userMemberships: any[] = []
+    userMemberships: any[] = [],
   ) {
     const userMembershipMap = new Map(
-      userMemberships.map((m) => [m.groupId, m])
+      userMemberships.map((m) => [m.groupId, m]),
     );
 
     return feeds.map((feed) => {
@@ -614,14 +617,14 @@ export class CommunityActionsService {
       const permissions = this.calculatePermissions(
         isOwner,
         userMembership?.role,
-        isMember
+        isMember,
       );
 
       const metadata = this.createFeedMetadata(
         isOwner,
         isMember,
         userMembership?.role,
-        feed
+        feed,
       );
 
       const communityFeedData: CommunityFeedData = {
@@ -653,7 +656,7 @@ export class CommunityActionsService {
       groupId: string;
       entityId: string;
       requiresApproval: boolean;
-    }
+    },
   ) {
     if (!params.requiresApproval) return;
 
@@ -713,7 +716,7 @@ export class CommunityActionsService {
         await sendEmail(
           email,
           "Invitation to join community",
-          `Join ${group.title}: [Link]`
+          `Join ${group.title}: [Link]`,
         );
       }
 
@@ -814,61 +817,122 @@ export class CommunityActionsService {
   // Create Community Feed
   static async createCommunityFeed({
     userId,
-    groupId,
-    input, // FeedInput
-    db,
+    communityId,
     entityId,
+    priority = "NORMAL",
+    tags = [],
+    metadata = {},
+    input,
+    db,
   }: {
     userId: string;
-    groupId: string;
-    input: any;
-    db: any;
+    communityId: string;
     entityId: string;
+    priority?: FeedPriority;
+    tags?: string[];
+    metadata?: Record<string, any>;
+    input: any;
+    db: AppDatabase;
   }) {
     try {
-      // Create via FeedMutationService
-      const newFeed = await FeedMutationService.addFeed({
-        input: { ...input, groupId }, // ensure groupId is passed
+      this.validateInput({ userId, groupId: communityId, entityId });
+
+      const member = await this.getUserMembership(db, userId, communityId);
+      if (!member) {
+        throw new GraphQLError(
+          "You must be a member to post in this community",
+        );
+      }
+
+      const community = await db.query.groups.findFirst({
+        where: eq(groups.id, communityId),
+      });
+      if (!community) {
+        throw new GraphQLError("Community not found");
+      }
+
+      const isAdminOrManager = ["ADMIN", "MANAGER"].includes(member.role || "");
+      const requiresApproval =
+        community.requireAdminApprovalForPosts && !isAdminOrManager;
+      const status: FeedStatus = requiresApproval ? "PENDING" : "APPROVED";
+      const isApproved = !requiresApproval;
+      const publishedAt = !requiresApproval ? new Date() : null;
+
+      const feed = await FeedMutationService.addFeed({
+        input,
         userId,
         db,
         entityId,
         postedOn: "community",
       });
 
-      // If we need to return full details immediately
-      // The addFeed returns basic info or found record.
-      // We can use getFeedDetailsById to be sure.
-      const feedId = newFeed[0]?.id || newFeed.id; // adjust based on return type of addFeed (it returns array or object?)
-      // FeedMutationService.addFeed returns `feed` which is array from returning()?
-      // Line 105: return feed;
-      // Line 93: return await tx.query.userFeed.findFirst...
-      // Ah, it returns the result of findFirst. So it's an object.
-      // Note: FeedMutationService line 65: transaction returns result of inner function.
-      // Inner function returns findFirst result.
+      const feedPriority: FeedPriority = isAdminOrManager ? "HIGH" : priority;
 
-      const feedDetails = await FeedQueryService.getFeedDetailsById({
-        feedId: feedId || newFeed.id,
-        currentUserId: userId,
-        db,
-      });
+      const [communityFeedRecord] = await db
+        .insert(communityFeed)
+        .values({
+          userFeedId: feed.id,
+          member: member.id,
+          communityId,
+          entityId,
+          status,
+          isApproved,
+          priority: feedPriority,
+          tags,
+          metadata,
+          scheduledFor: input.scheduledFor,
+          publishedAt,
+        })
+        .returning();
 
-      // Update post count
-      await db
-        .update(groups)
-        .set({ numberOfPost: sql`${groups.numberOfPost} + 1` })
-        .where(eq(groups.id, groupId));
+      if (isApproved) {
+        await db
+          .update(groups)
+          .set({ numberOfPost: (community.numberOfPost || 0) + 1 })
+          .where(eq(groups.id, communityId));
+      }
 
-      await GamificationEventService.triggerEvent({
-        triggerId: "tr-com-create",
-        moduleId: "communities",
+      await this.sendApprovalNotification(db, {
         userId,
+        groupId: communityId,
         entityId,
+        requiresApproval,
       });
 
-      return feedDetails;
+      const permissions = this.calculatePermissions(true, member.role, true);
+      const feedMetadata = this.createFeedMetadata(
+        true,
+        true,
+        member.role,
+        feed,
+        requiresApproval,
+      );
+
+      const communityFeedData: CommunityFeedData = {
+        id: communityFeedRecord.id,
+        priority: feedPriority,
+        isPinned: false,
+        tags,
+        status,
+        isApproved,
+        publishedAt,
+        createdAt: communityFeedRecord.createdAt || new Date(),
+      };
+
+      return {
+        ...feed,
+        communityFeedData,
+        group: {
+          id: community.id,
+          title: community.title,
+          cover: community.cover,
+          slug: community.slug,
+        },
+        permissions,
+        metadata: feedMetadata,
+      };
     } catch (error) {
-      log.error("Error in createCommunityFeed", { error, groupId, userId });
-      throw error;
+      log.error("Error in createCommunityFeed", error);
     }
   }
 
@@ -908,7 +972,7 @@ export class CommunityActionsService {
         where: and(
           eq(communityReport.communityId, communityId),
           eq(communityReport.reporterId, reporterId),
-          eq(communityReport.entityId, entityId)
+          eq(communityReport.entityId, entityId),
         ),
       });
 
@@ -972,7 +1036,7 @@ export class CommunityActionsService {
       const communityAdmins = await db.query.groupMember.findMany({
         where: and(
           eq(groupMember.groupId, communityId),
-          eq(groupMember.role, "ADMIN")
+          eq(groupMember.role, "ADMIN"),
         ),
         with: { user: true },
       });
@@ -991,8 +1055,8 @@ export class CommunityActionsService {
               .replace(/_/g, " ")
               .toLowerCase()}`,
             actionUrl: `/community/${communityId}/settings/reports`,
-          })
-        )
+          }),
+        ),
       );
 
       return {
@@ -1031,7 +1095,7 @@ export class CommunityActionsService {
         where: and(
           eq(groupRequest.groupId, groupId),
           eq(groupRequest.userId, userId),
-          eq(groupRequest.memberStatusEnum, "PENDING")
+          eq(groupRequest.memberStatusEnum, "PENDING"),
         ),
       });
 
@@ -1105,11 +1169,14 @@ export class CommunityActionsService {
         .where(
           and(
             eq(communityFeed.userFeedId, feedId),
-            eq(communityFeed.communityId, groupId)
-          )
+            eq(communityFeed.communityId, groupId),
+          ),
         );
 
-      return { success: true };
+      return {
+        success: true,
+        message: `Feed ${action === "PIN" ? "pinned" : "unpinned"} successfully`,
+      };
     } catch (error) {
       log.error("Error in togglePinFeed", { error, feedId, groupId });
       throw error;
@@ -1190,7 +1257,8 @@ export class CommunityActionsService {
 
       const isAuthor = feed.member.userId === userId;
       const member = await this.getUserMembership(db, userId, feed.communityId);
-      const canModerate = member && ["ADMIN", "MANAGER"].includes(member.role);
+      const canModerate =
+        member && ["ADMIN", "MANAGER"].includes(member.role || "");
 
       if (!isAuthor && !canModerate) {
         throw new GraphQLError("Insufficient permissions to delete this post");
@@ -1243,6 +1311,328 @@ export class CommunityActionsService {
       };
     } catch (error) {
       log.error("Error in deleteFeed", { error, feedId, userId });
+      throw error;
+    }
+  }
+
+  private static async getFeedFields(currentUserId: string) {
+    return FeedQueryService.setField(currentUserId);
+  }
+
+  static async getCommunityFeeds({
+    communityId,
+    communityIds,
+    currentUserId,
+    status,
+    limit = FEED_LIMITS.DEFAULT_LIMIT,
+    cursor,
+    priority,
+    entityId,
+    db,
+    sortBy = "DEFAULT",
+  }: {
+    communityId?: string;
+    communityIds?: string[];
+    currentUserId?: string;
+    status?: FeedStatus;
+    limit?: number;
+    cursor?: string | null;
+    priority?: FeedPriority;
+    entityId: string;
+    db: AppDatabase;
+    sortBy?: "DEFAULT" | "LATEST";
+  }) {
+    try {
+      this.validateInput({ entityId, limit });
+
+      const targetCommunityIds = communityId
+        ? [communityId]
+        : communityIds || [];
+
+      const userMemberships =
+        currentUserId && targetCommunityIds.length > 0
+          ? await this.getUserMemberships(db, currentUserId, targetCommunityIds)
+          : [];
+
+      const conditions = this.buildFeedQueryConditions({
+        entityId,
+        communityId,
+        communityIds,
+        status,
+        priority,
+        currentUserId,
+        userMemberships,
+      });
+
+      // Add cursor condition if provided
+      if (cursor) {
+        conditions.push(sql`${userFeed.createdAt} < ${new Date(cursor)}`);
+      }
+
+      const fields = await this.getFeedFields(currentUserId || "");
+      const additionalFields = this.getAdditionalFeedFields();
+
+      const result = await db
+        .select({ ...fields, ...additionalFields })
+        .from(userFeed)
+        .leftJoin(user, eq(userFeed.userId, user.id))
+        .leftJoin(aboutUser, eq(user.id, aboutUser.userId))
+        .leftJoin(groups, eq(userFeed.groupId, groups.id))
+        .innerJoin(communityFeed, eq(communityFeed.userFeedId, userFeed.id))
+        .leftJoin(jobs, eq(userFeed.jobId, jobs.id))
+        .leftJoin(offers, eq(userFeed.offerId, offers.id))
+        .leftJoin(events, eq(userFeed.eventId, events.id))
+        .leftJoin(polls, eq(userFeed.pollId, polls.id))
+        .where(and(...conditions))
+        .orderBy(
+          ...(sortBy === "LATEST"
+            ? [desc(userFeed.createdAt)]
+            : this.getFeedOrderBy()),
+        )
+        .limit(limit + 1);
+
+      const hasNextPage = result.length > limit;
+      const nodes = hasNextPage ? result.slice(0, limit) : result;
+
+      const processedResults = this.processFeeds(
+        nodes,
+        currentUserId,
+        userMemberships,
+      );
+
+      const totalCountResult = await db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(userFeed)
+        .innerJoin(communityFeed, eq(communityFeed.userFeedId, userFeed.id))
+        .where(and(...conditions));
+
+      const totalCount = totalCountResult[0]?.count || 0;
+
+      // Build edges
+      const edges = processedResults.map((feed: any) => ({
+        cursor: (feed.createdAt || new Date()).toISOString(),
+        node: feed,
+      }));
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount,
+      };
+    } catch (error) {
+      log.error("Error in getCommunityFeeds", { error, communityId });
+      throw error;
+    }
+  }
+
+  static async deleteFeedCommunities({
+    feedId,
+    userId,
+    db,
+  }: {
+    feedId: string;
+    userId: string;
+    db: any;
+  }) {
+    try {
+      this.validateInput({ userId });
+
+      const feed = await db.query.communityFeed.findFirst({
+        where: eq(communityFeed.id, feedId),
+      });
+
+      if (!feed) {
+        throw new GraphQLError("Feed not found");
+      }
+
+      const member = await this.getUserMembership(db, userId, feed.communityId);
+      const isAdminOrManager = ["ADMIN", "MANAGER"].includes(
+        member?.role || "",
+      );
+      const isOwner = feed.member === member?.id;
+
+      if (!isAdminOrManager && !isOwner) {
+        throw new GraphQLError(
+          "You do not have permission to delete this feed",
+        );
+      }
+
+      await db.transaction(async (tx: any) => {
+        // Logically delete from communityFeed
+        await tx
+          .update(communityFeed)
+          .set({
+            archivedAt: new Date(),
+            archivedBy: userId,
+            archivedReason: "Deleted by user/admin",
+          })
+          .where(eq(communityFeed.id, feedId));
+
+        // If it was approved, decrement post count
+        if (feed.isApproved) {
+          await tx
+            .update(groups)
+            .set({ numberOfPost: sql`${groups.numberOfPost} - 1` })
+            .where(eq(groups.id, feed.communityId));
+        }
+      });
+
+      return {
+        success: true,
+        message: "Feed deleted successfully",
+      };
+    } catch (error) {
+      log.error("Error in deleteFeedCommunities", error);
+      throw error;
+    }
+  }
+
+  static async getMyJoinedCommunitiesFeed({
+    userId,
+    entityId,
+    limit = FEED_LIMITS.DEFAULT_LIMIT,
+    cursor,
+    db,
+  }: {
+    userId: string;
+    entityId: string;
+    limit?: number;
+    cursor?: string | null;
+    db: AppDatabase;
+  }) {
+    try {
+      // Get all community IDs where user is a member
+      const joinedCommunities = await db
+        .select({ groupId: groupMember.groupId })
+        .from(groupMember)
+        .where(
+          and(
+            eq(groupMember.userId, userId),
+            eq(groupMember.memberStatusEnum, "ACCEPTED"),
+          ),
+        );
+
+      const communityIds = joinedCommunities.map((c) => c.groupId);
+
+      if (communityIds.length === 0) {
+        return {
+          edges: [],
+          pageInfo: {
+            hasNextPage: false,
+            endCursor: null,
+          },
+          totalCount: 0,
+        };
+      }
+
+      return this.getCommunityFeeds({
+        communityIds,
+        currentUserId: userId,
+        status: "APPROVED",
+        limit,
+        cursor,
+        entityId,
+        db,
+        sortBy: "LATEST",
+      });
+    } catch (error) {
+      log.error("Error in getMyJoinedCommunitiesFeed", error);
+      throw error;
+    }
+  }
+
+  static async approveCommunityFeed({
+    feedId,
+    communityId,
+    userId,
+    db,
+  }: {
+    feedId: string;
+    communityId: string;
+    userId: string;
+    db: any;
+  }) {
+    try {
+      this.validateInput({ userId });
+
+      // Check if user is admin or manager
+      const member = await this.getUserMembership(db, userId, communityId);
+      const isAdminOrManager = ["ADMIN", "MANAGER"].includes(
+        member?.role || "",
+      );
+
+      if (!isAdminOrManager) {
+        throw new GraphQLError("Only admins and managers can approve posts");
+      }
+
+      const feed = await db.query.communityFeed.findFirst({
+        where: and(
+          eq(communityFeed.id, feedId),
+          eq(communityFeed.communityId, communityId),
+        ),
+      });
+
+      if (!feed) {
+        throw new GraphQLError("Feed not found");
+      }
+
+      if (feed.status === "APPROVED") {
+        return {
+          success: true,
+          message: "Feed is already approved",
+        };
+      }
+
+      await db.transaction(async (tx: any) => {
+        // Update community feed status
+        await tx
+          .update(communityFeed)
+          .set({
+            status: "APPROVED",
+            isApproved: true,
+            publishedAt: new Date(),
+            moderatedAt: new Date(),
+            moderatedBy: userId,
+          })
+          .where(eq(communityFeed.id, feedId));
+
+        // Increment community post count
+        await tx
+          .update(groups)
+          .set({ numberOfPost: sql`${groups.numberOfPost} + 1` })
+          .where(eq(groups.id, communityId));
+      });
+
+      // Send notification to author
+      // We need to get the author's user ID.
+      // communityFeed.member refers to groupMember.id
+      const memberRecord = await db.query.groupMember.findFirst({
+        where: eq(groupMember.id, feed.member),
+      });
+
+      if (memberRecord) {
+        await BaseCommunityService.sendCommunityNotification({
+          db,
+          userId: memberRecord.userId,
+          groupId: communityId,
+          entityId: feed.entityId,
+          type: "MEMBER_EVENT",
+          title: "Post Approved",
+          message:
+            "Your post has been approved and is now visible in the community.",
+          actionUrl: `/community/${communityId}`,
+        });
+      }
+
+      return {
+        success: true,
+        message: "Feed approved successfully",
+      };
+    } catch (error) {
+      log.error("Error in approveCommunityFeed", error);
       throw error;
     }
   }

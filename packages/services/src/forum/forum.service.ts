@@ -30,7 +30,7 @@ export class ForumService {
       const whereClause = (discussionCategory: any, { eq, and }: any) =>
         and(
           eq(discussionCategory.entity, entityId),
-          eq(discussionCategory.isActive, true)
+          eq(discussionCategory.isActive, true),
         );
 
       const category = await db.query.discussionCategory.findMany({
@@ -72,7 +72,7 @@ export class ForumService {
         where: (discussionForum: any, { eq, and }: any) =>
           and(
             eq(discussionForum.entityId, entityId),
-            eq(discussionForum.userId, userId)
+            eq(discussionForum.userId, userId),
           ),
         orderBy: (discussionForum: any, { desc }: any) =>
           desc(discussionForum.createdAt),
@@ -141,7 +141,7 @@ export class ForumService {
         where: (discussionForum: any, { eq }: any) =>
           and(
             eq(discussionForum.entityId, entityId),
-            eq(discussionForum.status, "APPROVED")
+            eq(discussionForum.status, "APPROVED"),
           ),
         orderBy,
         with: {
@@ -185,7 +185,7 @@ export class ForumService {
           "Entity ID, User ID, and Discussion Forum ID are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -199,7 +199,7 @@ export class ForumService {
         where: (discussionForum: any, { eq, and }: any) =>
           and(
             eq(discussionForum.id, discussionForumId),
-            eq(discussionForum.entityId, entityId)
+            eq(discussionForum.entityId, entityId),
           ),
         with: {
           verification: true,
@@ -210,18 +210,18 @@ export class ForumService {
 
       if (!forum) {
         throw new GraphQLError("Discussion forum not found.", {
-          extensions: { code: "NOT_FOUND" },
+          extensions: { code: "BAD_USER_INPUT" },
         });
       }
 
       const yourVote = Array.isArray(forum.discussionForumVotes)
         ? forum.discussionForumVotes.find(
-            (vote: any) => vote?.votedBy === "USER" && vote?.userId === userId
+            (vote: any) => vote?.votedBy === "USER" && vote?.userId === userId,
           )
         : forum.discussionForumVotes &&
-          (forum.discussionForumVotes as any).votedBy === "ENTITY"
-        ? forum.discussionForumVotes
-        : undefined;
+            (forum.discussionForumVotes as any).votedBy === "ENTITY"
+          ? forum.discussionForumVotes
+          : undefined;
 
       log.info("Discussion forum details retrieved", {
         discussionForumId,
@@ -313,7 +313,7 @@ export class ForumService {
         where: (discussionForum: any, { eq }: any) =>
           and(
             eq(discussionForum.entityId, entityId),
-            eq(discussionForum.title, input.title)
+            eq(discussionForum.title, input.title),
           ),
       });
 
@@ -377,7 +377,7 @@ export class ForumService {
           "Entity ID, User ID, and Forum ID are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -388,7 +388,7 @@ export class ForumService {
           and(
             eq(discussionForum.id, forumId),
             eq(discussionForum.entityId, entityId),
-            eq(discussionForum.userId, userId)
+            eq(discussionForum.userId, userId),
           ),
       });
 
@@ -441,7 +441,7 @@ export class ForumService {
           "Entity ID, User ID, Forum ID, and Title are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -456,7 +456,7 @@ export class ForumService {
           and(
             eq(discussionForum.entityId, entityId),
             eq(discussionForum.title, input.title),
-            ne(discussionForum.id, input.id)
+            ne(discussionForum.id, input.id),
           ),
       });
 
@@ -465,7 +465,7 @@ export class ForumService {
           "Discussion forum with this title already exists.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -478,8 +478,8 @@ export class ForumService {
         .where(
           and(
             eq(discussionForum.id, input.id),
-            eq(discussionForum.entityId, entityId)
-          )
+            eq(discussionForum.entityId, entityId),
+          ),
         )
         .returning();
 
@@ -527,7 +527,7 @@ export class ForumService {
           "User ID, Discussion Forum ID, and Content are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -632,7 +632,7 @@ export class ForumService {
           "Entity ID, Performer ID, Discussion Forum ID, and Comment ID are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -647,7 +647,7 @@ export class ForumService {
         where: (discussionForum: any, { eq, and }: any) =>
           and(
             eq(discussionForum.id, discussionForumId),
-            eq(discussionForum.entityId, entityId)
+            eq(discussionForum.entityId, entityId),
           ),
       });
 
@@ -656,7 +656,7 @@ export class ForumService {
           "Discussion forum not found or not authorized.",
           {
             extensions: { code: "NOT_FOUND" },
-          }
+          },
         );
       }
 
@@ -664,7 +664,7 @@ export class ForumService {
         where: (discussionForumComment: any, { eq, and }: any) =>
           and(
             eq(discussionForumComment.id, commentId),
-            eq(discussionForumComment.discussionForumId, discussionForumId)
+            eq(discussionForumComment.discussionForumId, discussionForumId),
           ),
       });
 
@@ -673,7 +673,7 @@ export class ForumService {
           "Comment not found or not authorized to delete.",
           {
             extensions: { code: "NOT_FOUND" },
-          }
+          },
         );
       }
 
@@ -736,7 +736,7 @@ export class ForumService {
           "User ID and Discussion Forum ID are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -758,7 +758,7 @@ export class ForumService {
           and(
             eq(discussionVotes.discussionForumId, discussionForumId),
             eq(discussionVotes.votedBy, "USER"),
-            eq(discussionVotes.userId, userId)
+            eq(discussionVotes.userId, userId),
           ),
       });
 
@@ -858,7 +858,7 @@ export class ForumService {
           "User ID and Discussion Forum ID are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -880,7 +880,7 @@ export class ForumService {
           and(
             eq(discussionVotes.discussionForumId, discussionForumId),
             eq(discussionVotes.votedBy, "USER"),
-            eq(discussionVotes.userId, userId)
+            eq(discussionVotes.userId, userId),
           ),
       });
 

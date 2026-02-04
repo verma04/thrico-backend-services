@@ -9,21 +9,48 @@ import {
 
 export const userResolvers = {
   Query: {
-    async getUserAnalytics(_: any, { input }: any, context: any) {
+    async getUserAnalytics(_: any, { timeRange }: any, context: any) {
       try {
         const { id, entity, db } = await checkAuth(context);
+
+        let whereClause = and(
+          eq(userToEntity.entityId, entity),
+          eq(userToEntity.isRequested, true),
+        );
+
+        if (timeRange) {
+          const now = new Date();
+          let startDate: Date;
+
+          switch (timeRange) {
+            case "LAST_24_HOURS":
+              startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+              break;
+            case "LAST_7_DAYS":
+              startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+              break;
+            case "LAST_30_DAYS":
+              startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+              break;
+            case "LAST_90_DAYS":
+              startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+              break;
+            default:
+              startDate = new Date(0);
+          }
+
+          whereClause = and(
+            whereClause,
+            sql`${userToEntity.createdAt} >= ${startDate.toISOString()}`,
+          );
+        }
 
         // Total Members
         const totalMembersResult = await db
           .select({ total: sql<number>`COUNT(${userToEntity.id})` })
           .from(userToEntity)
-          .where(
-            and(
-              eq(userToEntity.entityId, entity),
-              eq(userToEntity.isRequested, true)
-            )
-          );
-        const totalMembers = totalMembersResult[0]?.total ?? 0;
+          .where(whereClause);
+        const totalMembers = Number(totalMembersResult[0]?.total ?? 0);
 
         // Verified Members
         const verifiedMembersResult = await db
@@ -31,12 +58,11 @@ export const userResolvers = {
           .from(userToEntity)
           .where(
             and(
-              eq(userToEntity.entityId, entity),
-              eq(userToEntity.isRequested, true),
-              eq(userToEntity.isApproved, true)
-            )
+              whereClause,
+              eq(userToEntity.isApproved, true), // Simplified as whereClause already has entity/requested checks
+            ),
           );
-        const verifiedMembers = verifiedMembersResult[0]?.total || 0;
+        const verifiedMembers = Number(verifiedMembersResult[0]?.total || 0);
 
         // Active Members
         const activeMembersResult = await db
@@ -44,15 +70,16 @@ export const userResolvers = {
           .from(userToEntity)
           .where(
             and(
-              eq(userToEntity.entityId, entity),
-              eq(userToEntity.isRequested, true),
+              whereClause,
               eq(userToEntity.status, "APPROVED"),
-              eq(userToEntity.isApproved, true)
-            )
+              eq(userToEntity.isApproved, true),
+            ),
           );
-        const activeMembers = activeMembersResult[0]?.total || 0;
+        const activeMembers = Number(activeMembersResult[0]?.total || 0);
 
-        // New Members This Month
+        // New Members This Month (Always relative to current month regardless of timeRange?)
+        // Or should it also respect timeRange? The name implies "This Month".
+        // I'll keep it as "This Month" for consistency with existing code.
         const startOfMonth = new Date();
         startOfMonth.setDate(1);
         startOfMonth.setHours(0, 0, 0, 0);
@@ -66,20 +93,20 @@ export const userResolvers = {
               eq(userToEntity.isRequested, true),
               sql`DATE(${userToEntity.createdAt}) >= ${startOfMonth
                 .toISOString()
-                .slice(0, 10)}`
-            )
+                .slice(0, 10)}`,
+            ),
           );
-        const newMembersThisMonth = newMembersResult[0]?.total || 0;
+        const newMembersThisMonth = Number(newMembersResult[0]?.total || 0);
 
         return {
           totalMembers,
           verifiedMembers,
           verifiedPercent: totalMembers
-            ? Number(((verifiedMembers / totalMembers) * 100).toFixed(1))
+            ? Math.round((verifiedMembers / totalMembers) * 100)
             : 0,
           activeMembers,
           activePercent: totalMembers
-            ? Number(((activeMembers / totalMembers) * 100).toFixed(1))
+            ? Math.round((activeMembers / totalMembers) * 100)
             : 0,
           newMembersThisMonth,
         };
@@ -129,6 +156,7 @@ export const userResolvers = {
             ],
           });
 
+          console.log(result);
           return result;
         }
       } catch (error) {
@@ -156,6 +184,105 @@ export const userResolvers = {
         return result;
       } catch (error) {
         console.log(error);
+        throw error;
+      }
+    },
+
+    async getUserGrowth(_: any, { timeRange }: any, context: any) {
+      try {
+        const { entity, db } = await checkAuth(context);
+
+        const now = new Date();
+        let startDate: Date;
+
+        switch (timeRange) {
+          case "LAST_24_HOURS":
+            startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+            break;
+          case "LAST_7_DAYS":
+            startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            break;
+          case "LAST_30_DAYS":
+            startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+            break;
+          case "LAST_90_DAYS":
+            startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+            break;
+          default:
+            startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        }
+
+        const result = await db
+          .select({
+            date: sql<string>`DATE(${userToEntity.createdAt})`,
+            count: sql<number>`COUNT(${userToEntity.id})`,
+          })
+          .from(userToEntity)
+          .where(
+            and(
+              eq(userToEntity.entityId, entity),
+              eq(userToEntity.isRequested, true),
+              sql`${userToEntity.createdAt} >= ${startDate.toISOString()}`,
+            ),
+          )
+          .groupBy(sql`DATE(${userToEntity.createdAt})`)
+          .orderBy(sql`DATE(${userToEntity.createdAt})`);
+
+        return result.map((row: any) => ({
+          date: row.date,
+          count: Number(row.count),
+        }));
+      } catch (error) {
+        console.error("Failed to get user growth:", error);
+        throw error;
+      }
+    },
+
+    async getUserRoleDistribution(_: any, { timeRange }: any, context: any) {
+      try {
+        const { entity, db } = await checkAuth(context);
+
+        const now = new Date();
+        let startDate: Date;
+
+        switch (timeRange) {
+          case "LAST_24_HOURS":
+            startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+            break;
+          case "LAST_7_DAYS":
+            startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            break;
+          case "LAST_30_DAYS":
+            startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+            break;
+          case "LAST_90_DAYS":
+            startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+            break;
+          default:
+            startDate = new Date(0);
+        }
+
+        const result = await db
+          .select({
+            name: userToEntity.status,
+            value: sql<number>`COUNT(${userToEntity.id})`,
+          })
+          .from(userToEntity)
+          .where(
+            and(
+              eq(userToEntity.entityId, entity),
+              eq(userToEntity.isRequested, true),
+              sql`${userToEntity.createdAt} >= ${startDate.toISOString()}`,
+            ),
+          )
+          .groupBy(userToEntity.status);
+
+        return result.map((row: any) => ({
+          name: row.name,
+          value: Number(row.value),
+        }));
+      } catch (error) {
+        console.error("Failed to get user role distribution:", error);
         throw error;
       }
     },
@@ -289,7 +416,9 @@ export const userResolvers = {
         // query above uses `eq(userToEntity.id, userId)`. So input.userId is userToEntity.id.
         // userVerification table uses `userId` which typically refers to `user.id` (Global User ID), NOT `userToEntity.id`.
         // Let's check `user.userId` from the fetched `userToEntity` record.
-        const globalUserId = user.userId;
+        const globalUserId = user.id;
+
+        console.log(action);
 
         if (action === "VERIFY") {
           await db.transaction(async (tx: any) => {

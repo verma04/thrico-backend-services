@@ -21,7 +21,7 @@ const BUCKET_NAME = "thrico";
 
 const uploadImageToFolder = async (
   id: string,
-  images: Promise<FileUpload>[]
+  images: Promise<FileUpload>[],
 ) => {
   if (!images || images.length === 0) {
     return [];
@@ -47,7 +47,7 @@ const uploadImageToFolder = async (
 
       const sharpImage = await sharp(imageBuffer)
         .toFormat("webp")
-        .webp({ quality: 20 })
+        .webp()
         .toBuffer();
 
       const params = {
@@ -62,11 +62,13 @@ const uploadImageToFolder = async (
 
       return {
         originalFilename: filename,
-        url: uploaded.Location,
+        url: `${newFilename}`,
       };
     });
 
     const uploadedImages = await Promise.all(uploadPromises);
+
+    console.log("Uploaded Images:", uploadedImages);
     return uploadedImages;
   } catch (error) {
     console.error("Failed to upload images:", error);

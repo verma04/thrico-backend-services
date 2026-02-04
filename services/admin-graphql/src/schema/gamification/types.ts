@@ -253,9 +253,16 @@ export const gamificationTypes = `#graphql
     getLeaderboard(pagination: PaginationInput): Leaderboard!
     getGamificationStats: GamificationStats!
     getGamificationActivityLog(input: GamificationActivityLogInput): [GamificationActivityEntry!]!
+    getUserGamificationActivityLog(input: UserGamificationActivityLogInput!): [GamificationActivityEntry!]!
   }
 
   input GamificationActivityLogInput {
+    limit: Int
+    offset: Int
+  }
+
+  input UserGamificationActivityLogInput {
+    userId: ID!
     limit: Int
     offset: Int
   }
@@ -266,6 +273,7 @@ export const gamificationTypes = `#graphql
     points: Int
     createdAt: Date!
     user: User
+    gamificationId: ID # Rule ID or Badge ID
     # Points specific
     ruleAction: String
     ruleDescription: String

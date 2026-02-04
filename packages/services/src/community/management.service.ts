@@ -12,6 +12,7 @@ import {
 import { upload } from "../upload";
 import { BaseCommunityService } from "./base.service";
 import generateSlug from "../generateSlug";
+import { GamificationEventService } from "../gamification/gamification-event.service";
 
 export class CommunityManagementService {
   static readonly DEFAULT_COMMUNITY_RULES = [
@@ -91,7 +92,7 @@ export class CommunityManagementService {
           "User ID, Entity ID, Title, and Privacy are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -133,9 +134,7 @@ export class CommunityManagementService {
         customRules,
       } = input;
 
-      let coverUrl = cover
-        ? await upload(cover)
-        : "communities-default-cover-photo.jpg";
+      let coverUrl = cover ? await upload(cover) : "default_communities.png";
 
       let slug = generateSlug(title);
       let communityRules;
@@ -214,12 +213,21 @@ export class CommunityManagementService {
         return newGroup;
       });
 
+      await GamificationEventService.triggerEvent({
+        triggerId: "tr-com-create",
+        moduleId: "communities",
+        userId: userId,
+        entityId: entityId,
+      });
+
       log.info("Community created successfully", {
         userId,
         entityId,
         groupId: createdGroup.id,
         title,
       });
+
+      console.log(createdGroup);
 
       return createdGroup;
     } catch (error) {
@@ -252,7 +260,7 @@ export class CommunityManagementService {
           "User ID, Community ID, Entity ID, and Rules are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -276,7 +284,7 @@ export class CommunityManagementService {
         where: and(
           eq(groupMember.groupId, communityId),
           eq(groupMember.userId, userId),
-          inArray(groupMember.role, ["ADMIN", "MANAGER"])
+          inArray(groupMember.role, ["ADMIN", "MANAGER"]),
         ),
       });
 
@@ -285,7 +293,7 @@ export class CommunityManagementService {
           "Only community admins and managers can update community rules",
           {
             extensions: { code: "FORBIDDEN" },
-          }
+          },
         );
       }
 
@@ -487,13 +495,13 @@ export class CommunityManagementService {
         where: and(
           eq(groupMember.groupId, id),
           eq(groupMember.userId, userId),
-          inArray(groupMember.role, ["ADMIN", "MANAGER"])
+          inArray(groupMember.role, ["ADMIN", "MANAGER"]),
         ),
       });
 
       if (!membership) {
         throw new GraphQLError(
-          "Only community admins and managers can edit community details"
+          "Only community admins and managers can edit community details",
         );
       }
 
@@ -580,13 +588,13 @@ export class CommunityManagementService {
         where: and(
           eq(groupMember.groupId, communityId),
           eq(groupMember.userId, userId),
-          inArray(groupMember.role, ["ADMIN", "MANAGER"])
+          inArray(groupMember.role, ["ADMIN", "MANAGER"]),
         ),
       });
 
       if (!membership) {
         throw new GraphQLError(
-          "Only admins and managers can edit community cover"
+          "Only admins and managers can edit community cover",
         );
       }
 
@@ -672,20 +680,20 @@ export class CommunityManagementService {
         where: and(
           eq(groupMember.groupId, communityId),
           eq(groupMember.userId, userId),
-          inArray(groupMember.role, ["ADMIN", "MANAGER"])
+          inArray(groupMember.role, ["ADMIN", "MANAGER"]),
         ),
       });
 
       if (!membership) {
         throw new GraphQLError(
-          "Only admins and managers can edit community info"
+          "Only admins and managers can edit community info",
         );
       }
 
       // Validate input
       if (!input.title && !input.description && !input.tagline) {
         throw new GraphQLError(
-          "At least one field (title, description, or tagline) must be provided"
+          "At least one field (title, description, or tagline) must be provided",
         );
       }
 
@@ -697,12 +705,12 @@ export class CommunityManagementService {
       if (input.title !== undefined) {
         if (input.title.trim().length < 3) {
           throw new GraphQLError(
-            "Community name must be at least 3 characters long"
+            "Community name must be at least 3 characters long",
           );
         }
         if (input.title.trim().length > 100) {
           throw new GraphQLError(
-            "Community name must be less than 100 characters"
+            "Community name must be less than 100 characters",
           );
         }
         updateData.title = input.title.trim();
@@ -718,7 +726,7 @@ export class CommunityManagementService {
       if (input.description !== undefined) {
         if (input.description.trim().length > 1000) {
           throw new GraphQLError(
-            "Description must be less than 1000 characters"
+            "Description must be less than 1000 characters",
           );
         }
         updateData.description = input.description.trim();
@@ -810,13 +818,13 @@ export class CommunityManagementService {
         where: and(
           eq(groupMember.groupId, communityId),
           eq(groupMember.userId, userId),
-          inArray(groupMember.role, ["ADMIN", "MANAGER"])
+          inArray(groupMember.role, ["ADMIN", "MANAGER"]),
         ),
       });
 
       if (!membership) {
         throw new GraphQLError(
-          "Only admins and managers can edit privacy settings"
+          "Only admins and managers can edit privacy settings",
         );
       }
 
@@ -835,7 +843,7 @@ export class CommunityManagementService {
         const validPrivacySettings = ["PUBLIC", "PRIVATE", "CLOSED"];
         if (!validPrivacySettings.includes(input.privacy)) {
           throw new GraphQLError(
-            "Invalid privacy setting. Must be PUBLIC, PRIVATE, or CLOSED"
+            "Invalid privacy setting. Must be PUBLIC, PRIVATE, or CLOSED",
           );
         }
         updateData.privacy = input.privacy;
@@ -854,7 +862,7 @@ export class CommunityManagementService {
         ];
         if (!validTypes.includes(input.communityType)) {
           throw new GraphQLError(
-            `Invalid community type. Must be one of: ${validTypes.join(", ")}`
+            `Invalid community type. Must be one of: ${validTypes.join(", ")}`,
           );
         }
         updateData.communityType = input.communityType;
@@ -870,8 +878,8 @@ export class CommunityManagementService {
         if (!validJoiningTerms.includes(input.joiningTerms)) {
           throw new GraphQLError(
             `Invalid joining terms. Must be one of: ${validJoiningTerms.join(
-              ", "
-            )}`
+              ", ",
+            )}`,
           );
         }
 
@@ -883,7 +891,7 @@ export class CommunityManagementService {
           input.joiningTerms === "ANYONE_CAN_JOIN"
         ) {
           throw new GraphQLError(
-            "Closed communities cannot have 'anyone can join' setting"
+            "Closed communities cannot have 'anyone can join' setting",
           );
         }
         if (finalPrivacy === "PUBLIC" && input.joiningTerms === "INVITE_ONLY") {
@@ -981,7 +989,7 @@ export class CommunityManagementService {
         where: and(
           eq(groupMember.groupId, communityId),
           eq(groupMember.userId, userId),
-          inArray(groupMember.role, ["ADMIN", "MANAGER"])
+          inArray(groupMember.role, ["ADMIN", "MANAGER"]),
         ),
       });
 
@@ -997,7 +1005,7 @@ export class CommunityManagementService {
         permissions.enableRatingsAndReviews === undefined
       ) {
         throw new GraphQLError(
-          "At least one permission setting must be provided"
+          "At least one permission setting must be provided",
         );
       }
 
@@ -1130,13 +1138,13 @@ export class CommunityManagementService {
         where: and(
           eq(groupMember.groupId, communityId),
           eq(groupMember.userId, userId),
-          eq(groupMember.role, "ADMIN")
+          eq(groupMember.role, "ADMIN"),
         ),
       });
 
       if (!isCreator && !membership) {
         throw new GraphQLError(
-          "Only community creator or admins can delete the community"
+          "Only community creator or admins can delete the community",
         );
       }
 
@@ -1150,13 +1158,13 @@ export class CommunityManagementService {
           where: and(
             eq(groupMember.groupId, communityId),
             eq(groupMember.userId, transferDataTo),
-            inArray(groupMember.role, ["ADMIN", "MANAGER"])
+            inArray(groupMember.role, ["ADMIN", "MANAGER"]),
           ),
         });
 
         if (!transferMembership) {
           throw new GraphQLError(
-            "Transfer user must be an admin or manager of the community"
+            "Transfer user must be an admin or manager of the community",
           );
         }
 
@@ -1185,7 +1193,7 @@ export class CommunityManagementService {
             communityId,
             userId,
             reason,
-            transferDataTo
+            transferDataTo,
           );
         }
 
@@ -1217,7 +1225,7 @@ export class CommunityManagementService {
           entityId,
           deleteType,
           reason,
-          transferUser
+          transferUser,
         );
       }
 
@@ -1239,7 +1247,7 @@ export class CommunityManagementService {
     communityId: string,
     userId: string,
     reason?: string,
-    transferDataTo?: string
+    transferDataTo?: string,
   ) {
     // Mark community as deleted
     await tx
@@ -1270,7 +1278,7 @@ export class CommunityManagementService {
     tx: any,
     communityId: string,
     userId: string,
-    reason?: string
+    reason?: string,
   ) {
     await tx
       .update(groups)
@@ -1305,14 +1313,14 @@ export class CommunityManagementService {
     entityId: string,
     deleteType: string,
     reason?: string,
-    transferUser?: any
+    transferUser?: any,
   ) {
     try {
       const message = this.getDeletionNotificationMessage(
         community.title,
         deleteType,
         reason,
-        transferUser
+        transferUser,
       );
 
       const notificationPromises = community.members
@@ -1327,7 +1335,7 @@ export class CommunityManagementService {
             title: "Community Deleted",
             message,
             actionUrl: "/communities",
-          })
+          }),
         );
 
       await Promise.allSettled(notificationPromises);
@@ -1354,7 +1362,7 @@ export class CommunityManagementService {
     communityTitle: string,
     deleteType: string,
     reason?: string,
-    transferUser?: any
+    transferUser?: any,
   ): string {
     let message = `The community "${communityTitle}" has been `;
 

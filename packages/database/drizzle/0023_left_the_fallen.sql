@@ -1,0 +1,1 @@
+ALTER TYPE "managerRole" ADD VALUE 'MODERATOR';

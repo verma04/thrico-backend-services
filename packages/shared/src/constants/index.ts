@@ -36,6 +36,7 @@ export const REDIS_KEYS = {
   ENTITY_CACHE: "entity:",
   RATE_LIMIT: "rate_limit:",
   REFRESH_TOKEN: "refresh_token:",
+  NOTIFICATION_CACHE: "notification:",
 } as const;
 
 // Error Codes

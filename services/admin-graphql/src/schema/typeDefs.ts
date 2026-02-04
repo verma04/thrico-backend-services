@@ -11,6 +11,7 @@ import { listingTypes } from "./listing/types";
 import { discussionTypes } from "./discussion/types";
 import { websiteTypes } from "./website/types";
 import { customFormTypes } from "./custom-form/types";
+import { surveyTypes } from "./survey/types";
 import { announcementsTypes } from "./announcements/types";
 import { alumniStoriesTypes } from "./alumni-stories/types";
 import { gamificationTypes } from "./gamification/types";
@@ -21,6 +22,8 @@ import { paymentsTypes } from "./payment/types";
 import groupsTypes from "./groups/types";
 import { eventTypes } from "./events/types";
 import { offersTypes } from "./offers/types";
+import { moderationTypes } from "./moderation/types";
+import { shopTypeDefs } from "./shop/types";
 
 const mainTypeDefs = `#graphql
   # User Types
@@ -314,6 +317,7 @@ export const typeDefs = [
   discussionTypes,
   websiteTypes,
   customFormTypes,
+  surveyTypes,
   announcementsTypes,
   alumniStoriesTypes,
   gamificationTypes,
@@ -327,4 +331,6 @@ export const typeDefs = [
   pageTypes,
   dashboardTypes,
   offersTypes,
+  moderationTypes,
+  shopTypeDefs,
 ];

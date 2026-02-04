@@ -14,6 +14,7 @@
     "dev:admin": "npm run dev -w services/admin-graphql",
     "dev:grpc": "npm run dev -w services/grpc-service",
     "dev:gamification": "npm run dev -w services/gamification-worker",
+    "dev:push": "npm run dev -w services/firebase-push",
     "build": "pnpm -r build",
     "migrate": "npm run migrate -w packages/database",
     "test": "npm run test --workspaces",

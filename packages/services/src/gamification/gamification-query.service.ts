@@ -38,8 +38,8 @@ export class GamificationQueryService {
         .where(
           and(
             eq(gamificationUser.user, userId),
-            eq(gamificationUser.entityId, entityId)
-          )
+            eq(gamificationUser.entityId, entityId),
+          ),
         );
 
       if (!user) {
@@ -69,15 +69,19 @@ export class GamificationQueryService {
   }
 
   /**
-   * Fetches a list of badges earned by the user
+   * Fetches a list of badges earned by the user with pagination
    */
   async getUserEarnedBadges({
     userId,
     entityId,
+    limit = 20,
+    cursor,
     db = this.db,
   }: {
     userId: string;
     entityId: string;
+    limit?: number;
+    cursor?: string;
     db?: any;
   }) {
     try {
@@ -88,13 +92,33 @@ export class GamificationQueryService {
         .where(
           and(
             eq(gamificationUser.user, userId),
-            eq(gamificationUser.entityId, entityId)
-          )
+            eq(gamificationUser.entityId, entityId),
+          ),
         );
 
-      if (!user) return [];
+      if (!user) {
+        return {
+          edges: [],
+          pageInfo: {
+            hasNextPage: false,
+            hasPreviousPage: false,
+            limit,
+            totalCount: 0,
+          },
+          totalCount: 0,
+        };
+      }
 
-      return await db
+      const conditions = [
+        eq(userBadges.userId, user.id),
+        eq(userBadges.isCompleted, true),
+      ];
+
+      if (cursor) {
+        conditions.push(lt(userBadges.earnedAt, new Date(cursor)));
+      }
+
+      const badgesQuery = db
         .select({
           id: userBadges.id,
           earnedAt: userBadges.earnedAt,
@@ -110,10 +134,39 @@ export class GamificationQueryService {
         })
         .from(userBadges)
         .innerJoin(badges, eq(userBadges.badgeId, badges.id))
+        .where(and(...conditions))
+        .orderBy(desc(userBadges.earnedAt))
+        .limit(limit + 1);
+
+      const countQuery = db
+        .select({ count: sql<number>`count(*)` })
+        .from(userBadges)
         .where(
-          and(eq(userBadges.userId, user.id), eq(userBadges.isCompleted, true))
-        )
-        .orderBy(desc(userBadges.earnedAt));
+          and(eq(userBadges.userId, user.id), eq(userBadges.isCompleted, true)),
+        );
+
+      const [data, [countResult]] = await Promise.all([
+        badgesQuery,
+        countQuery,
+      ]);
+
+      const hasMore = data.length > limit;
+      const edges = hasMore ? data.slice(0, limit) : data;
+      const totalCount = Number(countResult?.count || 0);
+
+      return {
+        edges: edges.map((node: any) => ({
+          cursor: node.earnedAt.toISOString(),
+          node,
+        })),
+        pageInfo: {
+          hasNextPage: hasMore,
+          hasPreviousPage: !!cursor, // Simplified check
+          limit,
+          totalCount,
+        },
+        totalCount,
+      };
     } catch (error) {
       log.error("Error in getUserEarnedBadges", { error, userId, entityId });
       throw error;
@@ -121,15 +174,19 @@ export class GamificationQueryService {
   }
 
   /**
-   * Fetches the user's points history with descriptions from point rules
+   * Fetches the user's points history with descriptions from point rules with pagination
    */
   async getUserPointsHistory({
     userId,
     entityId,
+    limit = 20,
+    cursor,
     db = this.db,
   }: {
     userId: string;
     entityId: string;
+    limit?: number;
+    cursor?: string;
     db?: any;
   }) {
     try {
@@ -139,13 +196,30 @@ export class GamificationQueryService {
         .where(
           and(
             eq(gamificationUser.user, userId),
-            eq(gamificationUser.entityId, entityId)
-          )
+            eq(gamificationUser.entityId, entityId),
+          ),
         );
 
-      if (!user) return [];
+      if (!user) {
+        return {
+          edges: [],
+          pageInfo: {
+            hasNextPage: false,
+            hasPreviousPage: false,
+            limit,
+            totalCount: 0,
+          },
+          totalCount: 0,
+        };
+      }
 
-      return await db
+      const conditions = [eq(userPointsHistory.userId, user.id)];
+
+      if (cursor) {
+        conditions.push(lt(userPointsHistory.createdAt, new Date(cursor)));
+      }
+
+      const historyQuery = db
         .select({
           id: userPointsHistory.id,
           pointsEarned: userPointsHistory.pointsEarned,
@@ -158,8 +232,37 @@ export class GamificationQueryService {
         })
         .from(userPointsHistory)
         .innerJoin(pointRules, eq(userPointsHistory.pointRuleId, pointRules.id))
-        .where(eq(userPointsHistory.userId, user.id))
-        .orderBy(desc(userPointsHistory.createdAt));
+        .where(and(...conditions))
+        .orderBy(desc(userPointsHistory.createdAt))
+        .limit(limit + 1);
+
+      const countQuery = db
+        .select({ count: sql<number>`count(*)` })
+        .from(userPointsHistory)
+        .where(eq(userPointsHistory.userId, user.id));
+
+      const [data, [countResult]] = await Promise.all([
+        historyQuery,
+        countQuery,
+      ]);
+
+      const hasMore = data.length > limit;
+      const edges = hasMore ? data.slice(0, limit) : data;
+      const totalCount = Number(countResult?.count || 0);
+
+      return {
+        edges: edges.map((node: any) => ({
+          cursor: node.createdAt.toISOString(),
+          node,
+        })),
+        pageInfo: {
+          hasNextPage: hasMore,
+          hasPreviousPage: !!cursor,
+          limit,
+          totalCount,
+        },
+        totalCount,
+      };
     } catch (error) {
       log.error("Error in getUserPointsHistory", { error, userId, entityId });
       throw error;
@@ -211,8 +314,8 @@ export class GamificationQueryService {
         .where(
           and(
             eq(gamificationUser.user, userId),
-            eq(gamificationUser.entityId, entityId)
-          )
+            eq(gamificationUser.entityId, entityId),
+          ),
         );
 
       if (!user) {
@@ -231,7 +334,7 @@ export class GamificationQueryService {
         .select({ count: sql<number>`count(*)` })
         .from(userBadges)
         .where(
-          and(eq(userBadges.userId, user.id), eq(userBadges.isCompleted, true))
+          and(eq(userBadges.userId, user.id), eq(userBadges.isCompleted, true)),
         );
       const totalBadges = Number(totalBadgesRes[0]?.count || 0);
 
@@ -259,8 +362,8 @@ export class GamificationQueryService {
         .where(
           and(
             eq(userPointsHistory.userId, user.id),
-            gte(userPointsHistory.createdAt, startOfWeek)
-          )
+            gte(userPointsHistory.createdAt, startOfWeek),
+          ),
         );
       const weekPoints = Number(weekPointsRes[0]?.sum || 0);
 
@@ -270,8 +373,8 @@ export class GamificationQueryService {
         .where(
           and(
             eq(userPointsHistory.userId, user.id),
-            gte(userPointsHistory.createdAt, startOfMonth)
-          )
+            gte(userPointsHistory.createdAt, startOfMonth),
+          ),
         );
       const monthPoints = Number(monthPointsRes[0]?.sum || 0);
 
@@ -286,8 +389,8 @@ export class GamificationQueryService {
           and(
             eq(userPointsHistory.userId, user.id),
             gte(userPointsHistory.createdAt, startOfLastWeek),
-            lt(userPointsHistory.createdAt, startOfWeek)
-          )
+            lt(userPointsHistory.createdAt, startOfWeek),
+          ),
         );
       const lastWeekPoints = Number(lastWeekPointsRes[0]?.sum || 0);
 
@@ -340,13 +443,14 @@ export class GamificationQueryService {
           metadata: userPointsHistory.metadata,
           createdAt: userPointsHistory.createdAt,
           userId: gamificationUser.user,
+          gamificationId: userPointsHistory.pointRuleId,
           ruleAction: pointRules.action,
           ruleDescription: pointRules.description,
         })
         .from(userPointsHistory)
         .innerJoin(
           gamificationUser,
-          eq(userPointsHistory.userId, gamificationUser.id)
+          eq(userPointsHistory.userId, gamificationUser.id),
         )
         .innerJoin(pointRules, eq(userPointsHistory.pointRuleId, pointRules.id))
         .where(eq(gamificationUser.entityId, entityId))
@@ -363,6 +467,7 @@ export class GamificationQueryService {
           metadata: sql<any>`null`,
           createdAt: userBadges.earnedAt,
           userId: gamificationUser.user,
+          gamificationId: userBadges.badgeId,
           badgeName: badges.name,
           badgeDescription: badges.description,
           badgeIcon: badges.icon,
@@ -373,8 +478,8 @@ export class GamificationQueryService {
         .where(
           and(
             eq(gamificationUser.entityId, entityId),
-            eq(userBadges.isCompleted, true)
-          )
+            eq(userBadges.isCompleted, true),
+          ),
         )
         .orderBy(desc(userBadges.earnedAt))
         .limit(limit)
@@ -384,7 +489,7 @@ export class GamificationQueryService {
       const combined = [...pointsHistory, ...badgesEarned]
         .sort(
           (a, b) =>
-            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
         )
         .slice(0, limit);
 
@@ -404,6 +509,108 @@ export class GamificationQueryService {
       }));
     } catch (error) {
       log.error("Error in getGamificationActivityLog", { error, entityId });
+      throw error;
+    }
+  }
+
+  /**
+   * Fetches a unified activity log of points and badges for a specific user
+   */
+  async getUserGamificationActivityLog({
+    userId,
+    entityId,
+    limit = 20,
+    offset = 0,
+    db = this.db,
+  }: {
+    userId: string;
+    entityId: string;
+    limit?: number;
+    offset?: number;
+    db?: any;
+  }) {
+    try {
+      // 1. Fetch Points History
+      const pointsHistory = await db
+        .select({
+          id: userPointsHistory.id,
+          type: sql<string>`'POINTS'`,
+          points: userPointsHistory.pointsEarned,
+          metadata: userPointsHistory.metadata,
+          createdAt: userPointsHistory.createdAt,
+          userId: gamificationUser.user,
+          gamificationId: userPointsHistory.pointRuleId,
+          ruleAction: pointRules.action,
+          ruleDescription: pointRules.description,
+        })
+        .from(userPointsHistory)
+        .innerJoin(
+          gamificationUser,
+          eq(userPointsHistory.userId, gamificationUser.id),
+        )
+        .innerJoin(pointRules, eq(userPointsHistory.pointRuleId, pointRules.id))
+        .where(
+          and(
+            eq(gamificationUser.user, userId),
+            eq(gamificationUser.entityId, entityId),
+          ),
+        )
+        .orderBy(desc(userPointsHistory.createdAt))
+        .limit(limit)
+        .offset(offset);
+
+      // 2. Fetch Badges Earned
+      const badgesEarned = await db
+        .select({
+          id: userBadges.id,
+          type: sql<string>`'BADGE'`,
+          points: sql<number>`0`,
+          metadata: sql<any>`null`,
+          createdAt: userBadges.earnedAt,
+          userId: gamificationUser.user,
+          gamificationId: userBadges.badgeId,
+          badgeName: badges.name,
+          badgeDescription: badges.description,
+          badgeIcon: badges.icon,
+        })
+        .from(userBadges)
+        .innerJoin(gamificationUser, eq(userBadges.userId, gamificationUser.id))
+        .innerJoin(badges, eq(userBadges.badgeId, badges.id))
+        .where(
+          and(
+            eq(gamificationUser.user, userId),
+            eq(gamificationUser.entityId, entityId),
+            eq(userBadges.isCompleted, true),
+          ),
+        )
+        .orderBy(desc(userBadges.earnedAt))
+        .limit(limit)
+        .offset(offset);
+
+      // 3. Combine and Sort
+      const combined = [...pointsHistory, ...badgesEarned]
+        .sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        )
+        .slice(0, limit);
+
+      // 4. Fetch User Detail
+      const [userData] = await db
+        .select()
+        .from(user)
+        .where(eq(user.id, userId));
+
+      return combined.map((entry) => ({
+        ...entry,
+        user: userData,
+      }));
+    } catch (error) {
+      log.error("Error in getUserGamificationActivityLog", {
+        error,
+        userId,
+        entityId,
+      });
       throw error;
     }
   }
@@ -455,8 +662,8 @@ export class GamificationQueryService {
           .where(
             and(
               eq(userBadges.userId, entry.id),
-              eq(userBadges.isCompleted, true)
-            )
+              eq(userBadges.isCompleted, true),
+            ),
           );
 
         let currentRank = null;
@@ -484,8 +691,8 @@ export class GamificationQueryService {
       // 4. Enrich page entries
       const leaderboardEntries = await Promise.all(
         entries.map((entry: any, index: number) =>
-          formatEntry(entry, offset + index + 1)
-        )
+          formatEntry(entry, offset + index + 1),
+        ),
       );
 
       // 5. Fetch specific user's entry if requested
@@ -502,8 +709,8 @@ export class GamificationQueryService {
           .where(
             and(
               eq(gamificationUser.user, userId),
-              eq(gamificationUser.entityId, entityId)
-            )
+              eq(gamificationUser.entityId, entityId),
+            ),
           );
 
         if (userProfile) {
@@ -514,13 +721,13 @@ export class GamificationQueryService {
             .where(
               and(
                 eq(gamificationUser.entityId, entityId),
-                sql`${gamificationUser.totalPoints} > ${userProfile.totalPoints}`
-              )
+                sql`${gamificationUser.totalPoints} > ${userProfile.totalPoints}`,
+              ),
             );
 
           userEntry = await formatEntry(
             userProfile,
-            Number(rankRes?.count || 0) + 1
+            Number(rankRes?.count || 0) + 1,
           );
         }
       }
@@ -532,6 +739,110 @@ export class GamificationQueryService {
       };
     } catch (error) {
       log.error("Error in getLeaderboard", { error, entityId, userId });
+      throw error;
+    }
+  }
+
+  /**
+   * Fetches the user's progress towards the next level
+   */
+  async getUserNextLevelProgress({
+    userId,
+    entityId,
+    db = this.db,
+  }: {
+    userId: string;
+    entityId: string;
+    db?: any;
+  }) {
+    try {
+      // 1. Get user and current rank
+      const profile = await this.getUserGamificationProfile({
+        userId,
+        entityId,
+        db,
+      });
+
+      if (!profile) {
+        return {
+          currentPoints: 0,
+          nextLevelPoints: 0,
+          pointsToNextLevel: 0,
+          percentage: 0,
+          currentRank: null,
+          nextRank: null,
+        };
+      }
+
+      // 2. Get all active ranks for the entity, sorted by minPoints
+      const allRanks = await db
+        .select()
+        .from(ranks)
+        .where(and(eq(ranks.entityId, entityId), eq(ranks.isActive, true)))
+        .orderBy(ranks.minPoints);
+
+      if (allRanks.length === 0) {
+        return {
+          currentPoints: profile.totalPoints,
+          nextLevelPoints: 0,
+          pointsToNextLevel: 0,
+          percentage: 0,
+          currentRank: profile.currentRank,
+          nextRank: null,
+        };
+      }
+
+      // 3. Find current rank and next rank
+      let currentRank = profile.currentRank;
+      let nextRank = null;
+
+      if (!currentRank) {
+        nextRank = allRanks[0];
+      } else {
+        const currentIndex = allRanks.findIndex(
+          (r: any) => r.id === currentRank.id,
+        );
+        if (currentIndex !== -1 && currentIndex < allRanks.length - 1) {
+          nextRank = allRanks[currentIndex + 1];
+        }
+      }
+
+      // 4. Calculate progress
+      if (!nextRank) {
+        // Max level reached
+        return {
+          currentPoints: profile.totalPoints,
+          nextLevelPoints: currentRank?.minPoints || 0,
+          pointsToNextLevel: 0,
+          percentage: 100,
+          currentRank,
+          nextRank: null,
+        };
+      }
+
+      const pointsInCurrentRank = currentRank ? currentRank.minPoints : 0;
+      const pointsForNextRank = nextRank.minPoints;
+
+      const totalPointsNeeded = pointsForNextRank - pointsInCurrentRank;
+      const pointsEarnedInLevel = profile.totalPoints - pointsInCurrentRank;
+
+      let percentage = (pointsEarnedInLevel / totalPointsNeeded) * 100;
+      percentage = Math.max(0, Math.min(100, percentage)); // Clamp between 0-100
+
+      return {
+        currentPoints: profile.totalPoints,
+        nextLevelPoints: pointsForNextRank,
+        pointsToNextLevel: Math.max(0, pointsForNextRank - profile.totalPoints),
+        percentage: Math.round(percentage * 100) / 100,
+        currentRank,
+        nextRank,
+      };
+    } catch (error) {
+      log.error("Error in getUserNextLevelProgress", {
+        error,
+        userId,
+        entityId,
+      });
       throw error;
     }
   }

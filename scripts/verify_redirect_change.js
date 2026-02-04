@@ -6,38 +6,38 @@ const yaml = {
     dump: (obj) => JSON.stringify(obj),
     load: (str) => JSON.parse(str)
 };
-    console.log(`[MOCK] Writing to ${path}`);
-    const config = yaml.load(content);
+console.log(`[MOCK] Writing to ${path}`);
+const config = yaml.load(content);
 
-    // VERIFICATION LOGIC
-    try {
-        const domain = "example.com";
-        const safeBrandId = "test_brand";
-        const baseRouterKey = "example-com";
-        const wwwRouterKey = "www-example-com";
-        const redirectMiddleware = `redirect-to-base-${safeBrandId}`;
+// VERIFICATION LOGIC
+try {
+    const domain = "example.com";
+    const safeBrandId = "test_brand";
+    const baseRouterKey = "example-com";
+    const wwwRouterKey = "www-example-com";
+    const redirectMiddleware = `redirect-to-base-${safeBrandId}`;
 
-        // Check 1: Base Router should exist and point to service
-        assert(config.http.routers[baseRouterKey], "Base router missing");
-        assert.strictEqual(config.http.routers[baseRouterKey].service, `brand-${safeBrandId}`, "Base router should point to service");
-        assert(!config.http.routers[baseRouterKey].middlewares.includes(redirectMiddleware), "Base router should NOT have redirect middleware");
+    // Check 1: Base Router should exist and point to service
+    assert(config.http.routers[baseRouterKey], "Base router missing");
+    assert.strictEqual(config.http.routers[baseRouterKey].service, `brand-${safeBrandId}`, "Base router should point to service");
+    assert(!config.http.routers[baseRouterKey].middlewares.includes(redirectMiddleware), "Base router should NOT have redirect middleware");
 
-        // Check 2: WWW Router should exist and redirect
-        assert(config.http.routers[wwwRouterKey], "WWW router missing");
-        assert(config.http.routers[wwwRouterKey].middlewares.includes(redirectMiddleware), "WWW router MUST have redirect middleware");
+    // Check 2: WWW Router should exist and redirect
+    assert(config.http.routers[wwwRouterKey], "WWW router missing");
+    assert(config.http.routers[wwwRouterKey].middlewares.includes(redirectMiddleware), "WWW router MUST have redirect middleware");
 
-        // Check 3: Middleware configuration
-        const middlewareConfig = config.http.middlewares[redirectMiddleware];
-        assert(middlewareConfig, "Redirect middleware missing");
-        assert.strictEqual(middlewareConfig.redirectRegex.replacement, `https://${domain}/$1`, "Redirect replacement incorrect");
+    // Check 3: Middleware configuration
+    const middlewareConfig = config.http.middlewares[redirectMiddleware];
+    assert(middlewareConfig, "Redirect middleware missing");
+    assert.strictEqual(middlewareConfig.redirectRegex.replacement, `https://${domain}/$1`, "Redirect replacement incorrect");
 
-        console.log("✅ VERIFICATION PASSED: Logic correctly redirects WWW -> Base");
+    console.log("✅ VERIFICATION PASSED: Logic correctly redirects WWW -> Base");
 
-    } catch (e) {
-        console.error("❌ VERIFICATION FAILED:", e.message);
-        process.exit(1);
-    }
-};
+} catch (e) {
+    console.error("❌ VERIFICATION FAILED:", e.message);
+    process.exit(1);
+}
+
 
 const mockExists = async () => false; // File doesn't exist for fresh start
 

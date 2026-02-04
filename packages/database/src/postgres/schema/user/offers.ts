@@ -37,6 +37,7 @@ export const offers = pgTable("offers", {
   userId: uuid("user_id").references(() => user.id),
   claimsCount: integer("claims_count").default(0).notNull(),
   viewsCount: integer("views_count").default(0).notNull(),
+  sharesCount: integer("shares_count").default(0).notNull(),
   location: jsonb("location"),
   company: jsonb("company"),
   timeline: jsonb("timeline"),
@@ -88,7 +89,7 @@ export const offerCategoriesRelations = relations(
   offerCategories,
   ({ many }) => ({
     offers: many(offers),
-  })
+  }),
 );
 
 export const offerVerificationRelations = relations(
@@ -102,7 +103,7 @@ export const offerVerificationRelations = relations(
       fields: [offerVerification.verifiedBy],
       references: [user.id],
     }),
-  })
+  }),
 );
 
 export const offerAuditLogRelations = relations(offerAuditLogs, ({ one }) => ({

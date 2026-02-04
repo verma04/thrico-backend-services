@@ -7,6 +7,7 @@ import {
 } from "@thrico/database";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import { GraphQLError } from "graphql";
+import upload from "../../utils/upload/upload";
 
 export const offersResolvers = {
   Query: {
@@ -116,22 +117,16 @@ export const offersResolvers = {
       try {
         const { entity, db } = await checkAuth(context);
 
-        console.log({
-          ...input,
-          entityId: entity,
-          validityStart: input.validityStart
-            ? new Date(input.validityStart)
-            : null,
-          validityEnd: input.validityEnd ? new Date(input.validityEnd) : null,
-          isApprovedAt: input.isApprovedAt
-            ? new Date(input.isApprovedAt)
-            : null,
-          addedBy: "ENTITY",
-        });
+        let imageUrl = input.image;
+        if (input.image && typeof input.image !== "string") {
+          imageUrl = await upload(input.image);
+        }
+
         const [newOffer] = await db
           .insert(offers)
           .values({
             ...input,
+            image: imageUrl,
             status: "APPROVED",
             entityId: entity,
             validityStart: input.validityStart
@@ -163,6 +158,11 @@ export const offersResolvers = {
         const { entity, db } = await checkAuth(context);
 
         const updateData = { ...input };
+
+        if (input.image && typeof input.image !== "string") {
+          updateData.image = await upload(input.image);
+        }
+
         if (input.validityStart)
           updateData.validityStart = new Date(input.validityStart);
         if (input.validityEnd)

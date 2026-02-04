@@ -44,6 +44,27 @@ export const feedTypes = `#graphql
     limit: Int
   }
 
+  input FeedCursorInput {
+    cursor: String
+    limit: Int
+  }
+
+  type FeedEdge {
+    cursor: String!
+    node: feed!
+  }
+
+  type PageInfo {
+    hasNextPage: Boolean!
+    endCursor: String
+  }
+
+  type FeedConnection {
+    edges: [FeedEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
+  }
+
   type poll {
     id: ID
     title: String
@@ -166,11 +187,11 @@ export const feedTypes = `#graphql
     isOwner: Boolean
     source: String
     media: [String]
-    # group: group
+    group: group
     privacy: feedPrivacy
     job: jobFeed
     offer: Offer
-    marketPlace: listing
+    listing: listing
     repostId: ID
     # event: event
     # story: stories
@@ -181,9 +202,12 @@ export const feedTypes = `#graphql
     videoUrl: String
     thumbnailUrl: String
     status: Status
+    isPinned: Boolean
+    pinnedAt: Date
     permissions: feedPermissions
     communityFeedData: communityFeedData
-  }
+    surveyId: ID  
+    }
 
   type communityFeedData {
     status: String
@@ -196,15 +220,16 @@ export const feedTypes = `#graphql
     getJobFeed: [feed]
     getUserEventsFeed: [feed]
 
-    getFeed(input: pagination): [feed]
-    getFeedComment(input: inputId): [comment]
+    getFeed(input: FeedCursorInput): FeedConnection!
+    getFeedComment(input: CommentCursorInput!): CommentConnection!
     getPersonalizedFeed: [feed]
     getMarketPlaceFeed: [feed]
     getFeedDetailsById(input: inputId): feed
     # checkUserOnline is already in typeDefs.ts, should check conflict
     # checkUserOnline: status # Commented out to avoid conflict if it exists
     getUserActivityFeed(input: inputId!): [feed]
-    getMyFeed(input: pagination): [feed]
+    getMyFeed(input: FeedCursorInput): FeedConnection!
+    # getCommunitiesFeedList(input: FeedCursorInput, id: ID!): FeedConnection!
     getFeedStats(input: GetFeedStatsInput!): FeedStats!
     getFeedReactions(input: GetFeedReactionsInput!): [FeedReaction!]!
  # Added missing query def based on resolver
@@ -224,6 +249,11 @@ export const feedTypes = `#graphql
   input inputCelebration {
     type: String
     image: String
+  }
+
+  input EditFeedCommentInput {
+    commentId: ID!
+    content: String!
   }
 
   input inputForum {
@@ -268,6 +298,12 @@ export const feedTypes = `#graphql
     feedId: ID!
     commentId: ID!
   }
+  type CommentPermissions {
+    canDelete: Boolean!
+    canEdit: Boolean!
+    canReport: Boolean!
+  }
+
   type comment {
     id: ID
     content: String
@@ -275,6 +311,24 @@ export const feedTypes = `#graphql
     user: user
     isOwner: Boolean
     isPostOwner: Boolean
+    permissions: CommentPermissions
+  }
+
+  input CommentCursorInput {
+    feedId: ID!
+    cursor: String
+    limit: Int
+  }
+
+  type CommentEdge {
+    cursor: String!
+    node: comment!
+  }
+
+  type CommentConnection {
+    edges: [CommentEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
   }
   type status {
     status: Boolean
@@ -289,6 +343,11 @@ export const feedTypes = `#graphql
     privacy: feedPrivacy!
   }
 
+  input pinFeedInput {
+    feedId: ID!
+    isPinned: Boolean!
+  }
+
   extend type Mutation {
     addFeedCommunities(input: inputGroupFeed): feed
     wishListFeed(input: inputId): status
@@ -298,6 +357,9 @@ export const feedTypes = `#graphql
     addComment(input: inputComment): comment
     deleteFeed(input: inputId): feed
     deleteCommentFeed(input: inputDeleteFeedComment): comment
- # Added based on resolver
+    pinFeed(input: pinFeedInput!): feed
+    editFeedComment(input: EditFeedCommentInput!): comment!
   }
+ # Added based on resolver
+  
 `;

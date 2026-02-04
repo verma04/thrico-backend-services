@@ -1,4 +1,4 @@
-import { eq, and, sql, desc, count, asc, inArray } from "drizzle-orm";
+import { eq, and, sql, desc, count, asc, inArray, ne } from "drizzle-orm";
 import { GraphQLError } from "graphql";
 import { log } from "@thrico/logging";
 import {
@@ -12,19 +12,20 @@ import {
 } from "@thrico/database";
 
 export class CommunityQueryService {
-  // Get All Communities with Trending & Membership Status and Pagination
+  // Get All Communities with Trending & Membership Status and Pagination (Cursor-based)
   static async getAllCommunities({
     currentUserId,
     entityId,
     db,
-    page = 1,
+    cursor,
     limit = 10,
     searchTerm,
+    filters,
   }: {
     currentUserId: string;
     entityId: string;
     db: AppDatabase;
-    page?: number;
+    cursor?: string | null;
     limit?: number;
     searchTerm?: string;
     filters?: {
@@ -34,10 +35,6 @@ export class CommunityQueryService {
     };
   }) {
     try {
-      const entityDetails = await db.query.entity.findFirst({
-        where: (tcg, { eq }) => eq(tcg.id, entityId),
-      });
-      console.log(entityDetails);
       const condition = await db.query.trendingConditionsGroups.findFirst({
         where: (tcg, { eq }) => eq(tcg.entity, entityId),
       });
@@ -45,7 +42,7 @@ export class CommunityQueryService {
       // Build dynamic where conditions based on filters
       const whereConditions = [
         eq(groups.entity, entityId),
-        eq(groups.isApproved, true),
+        // eq(groups.isApproved, true),
       ];
 
       // Add search term condition
@@ -55,18 +52,14 @@ export class CommunityQueryService {
             groups.description
           } ILIKE ${`%${searchTerm}%`} OR ${
             groups.tagline
-          } ILIKE ${`%${searchTerm}%`})`
+          } ILIKE ${`%${searchTerm}%`})`,
         );
       }
 
-      // Get total count for pagination
-      const [totalCount] = await db
-        .select({ value: count() })
-        .from(groups)
-        .where(and(...whereConditions));
-
-      // Calculate offset
-      const offset = (page - 1) * limit;
+      // Add cursor condition
+      if (cursor) {
+        whereConditions.push(sql`${groups.createdAt} < ${new Date(cursor)}`);
+      }
 
       // Build order by clause
       let orderByClause = [desc(groups.createdAt)];
@@ -100,22 +93,22 @@ export class CommunityQueryService {
           END
         `.as("status"),
           isGroupMember: sql<boolean>`${groupMember.userId} IS NOT NULL`.as(
-            "isGroupMember"
+            "isGroupMember",
           ),
           isJoinRequest:
             sql<boolean>`${groupRequest.userId} IS NOT NULL AND ${groupRequest.memberStatusEnum} = 'PENDING'`.as(
-              "isJoinRequest"
+              "isJoinRequest",
             ),
           isGroupAdmin: sql<boolean>`${groupMember.role} = 'ADMIN'`.as(
-            "isGroupAdmin"
+            "isGroupAdmin",
           ),
           isGroupManager:
             sql<boolean>`${groupMember.role} IN ('ADMIN', 'MANAGER')`.as(
-              "isGroupManager"
+              "isGroupManager",
             ),
           groupSettings: communitySettings,
           isWishlist: sql<boolean>`${communityWishlist.userId} IS NOT NULL`.as(
-            "isWishlist"
+            "isWishlist",
           ),
           creator: {
             id: user?.id,
@@ -131,27 +124,26 @@ export class CommunityQueryService {
           groupMember,
           and(
             eq(groupMember.groupId, groups.id),
-            eq(groupMember.userId, currentUserId)
-          )
+            eq(groupMember.userId, currentUserId),
+          ),
         )
         .leftJoin(
           groupRequest,
           and(
             eq(groupRequest.groupId, groups.id),
-            eq(groupRequest.userId, currentUserId)
-          )
+            eq(groupRequest.userId, currentUserId),
+          ),
         )
         .leftJoin(
           communityWishlist,
           and(
             eq(communityWishlist.groupId, groups.id),
-            eq(communityWishlist.userId, currentUserId)
-          )
+            eq(communityWishlist.userId, currentUserId),
+          ),
         )
         .leftJoin(user, eq(user.id, groups.creator))
         .leftJoin(communitySettings, eq(communitySettings.groupId, groups.id))
-        .limit(limit)
-        .offset(offset);
+        .limit(limit + 1);
 
       // Get members for each community
       const communityIds = result.map((community: any) => community.id);
@@ -190,33 +182,36 @@ export class CommunityQueryService {
         });
       }
 
-      const topValue = result
-        .sort((a, b) => b.rank - a.rank)
+      const hasNextPage = result.length > limit;
+      const nodes = hasNextPage ? result.slice(0, limit) : result;
+
+      const topValue = [...nodes]
+        .sort((a: any, b: any) => b.rank - a.rank)
         .slice(0, condition?.length);
 
-      const communitiesWithTrending = result.map((community) => ({
+      const processedCommunities = nodes.map((community: any) => ({
         ...community,
         isTrending: topValue.some((t) => t.id === community.id),
         members: membersData.get(community.id) || [],
       }));
 
-      // Calculate pagination metadata
-      const totalPages = Math.ceil(totalCount.value / limit);
-      const hasNextPage = page < totalPages;
-      const hasPreviousPage = page > 1;
+      const edges = processedCommunities.map((community: any) => ({
+        cursor: community.group.createdAt.toISOString(),
+        node: community,
+      }));
 
-      console.log(communitiesWithTrending);
+      const [totalCountResult] = await db
+        .select({ value: count() })
+        .from(groups)
+        .where(and(eq(groups.entity, entityId)));
 
       return {
-        communities: communitiesWithTrending,
-        pagination: {
-          currentPage: page,
-          totalPages,
-          totalCount: totalCount.value,
-          limit,
+        edges,
+        pageInfo: {
           hasNextPage,
-          hasPreviousPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
         },
+        totalCount: totalCountResult?.value || 0,
       };
     } catch (error) {
       console.log(error);
@@ -263,7 +258,7 @@ export class CommunityQueryService {
       const membership = await db.query.groupMember.findFirst({
         where: and(
           eq(groupMember.groupId, groupId),
-          eq(groupMember.userId, currentUserId)
+          eq(groupMember.userId, currentUserId),
         ),
       });
 
@@ -272,14 +267,14 @@ export class CommunityQueryService {
         where: and(
           eq(groupRequest.groupId, groupId),
           eq(groupRequest.userId, currentUserId),
-          eq(groupRequest.memberStatusEnum, "PENDING")
+          eq(groupRequest.memberStatusEnum, "PENDING"),
         ),
       });
 
       const topMembers = await db.query.groupMember.findMany({
         where: and(
           eq(groupMember.groupId, groupId),
-          eq(groupMember.memberStatusEnum, "ACCEPTED")
+          eq(groupMember.memberStatusEnum, "ACCEPTED"),
         ),
         limit: 4,
         orderBy: [asc(groupMember.createdAt)],
@@ -301,10 +296,10 @@ export class CommunityQueryService {
       });
 
       const trendingScore =
-        (condition?.user ? community!.numberOfUser ?? 0 : 0) +
-        (condition?.likes ? community!.numberOfLikes ?? 0 : 0) +
-        (condition?.discussion ? community!.numberOfPost ?? 0 : 0) +
-        (condition?.views ? community!.numberOfViews ?? 0 : 0);
+        (condition?.user ? (community!.numberOfUser ?? 0) : 0) +
+        (condition?.likes ? (community!.numberOfLikes ?? 0) : 0) +
+        (condition?.discussion ? (community!.numberOfPost ?? 0) : 0) +
+        (condition?.views ? (community!.numberOfViews ?? 0) : 0);
 
       // Get all communities for ranking
       const allCommunities = await db
@@ -317,7 +312,7 @@ export class CommunityQueryService {
           } + ${condition?.views ? groups.numberOfViews : 0})`,
         })
         .from(groups)
-        .where(and(eq(groups.entity, entityId), eq(groups.isApproved, true)))
+        .where(and(eq(groups.entity, entityId)))
         .leftJoin(user, eq(user.id, groups.creator))
         .orderBy(
           desc(
@@ -325,8 +320,8 @@ export class CommunityQueryService {
               condition?.likes ? groups.numberOfLikes : 0
             } + ${condition?.discussion ? groups.numberOfPost : 0} + ${
               condition?.views ? groups.numberOfViews : 0
-            })`
-          )
+            })`,
+          ),
         );
 
       const topTrendingIds = allCommunities
@@ -356,18 +351,18 @@ export class CommunityQueryService {
           where: and(
             eq(communityWishlist.groupId, groupId),
             eq(communityWishlist.userId, currentUserId),
-            eq(communityWishlist.entityId, entityId)
+            eq(communityWishlist.entityId, entityId),
           ),
         });
         isWishlist = !!wishlist;
       }
 
       // Get rating summary (overrating)
-      let overrating = null;
+      let ratingSummary = null;
       if (community.ratingSummary) {
-        overrating = community.ratingSummary.averageRating;
+        ratingSummary = community.ratingSummary;
       }
-      console.log(community);
+
       return {
         id: community.id,
         group: community,
@@ -391,7 +386,7 @@ export class CommunityQueryService {
           role: member.role,
           joinedAt: member.createdAt,
         })),
-        overrating,
+        ratingSummary,
       };
     } catch (err) {
       console.error("Error in getCommunityDetails", err);
@@ -400,27 +395,23 @@ export class CommunityQueryService {
     }
   }
 
-  // Get Communities Owned by Current User
+  // Get Communities Owned by Current User (Cursor-based)
   static async getMyOwnedCommunities({
     currentUserId,
     entityId,
     db,
-    page = 1,
+    cursor,
     limit = 10,
     searchTerm,
   }: {
     currentUserId: string;
     entityId: string;
     db: AppDatabase;
-    page?: number;
+    cursor?: string | null;
     limit?: number;
     searchTerm?: string;
   }) {
     try {
-      const entityDetails = await db.query.entity.findFirst({
-        where: (tcg, { eq }) => eq(tcg.id, entityId),
-      });
-
       const condition = await db.query.trendingConditionsGroups.findFirst({
         where: (tcg, { eq }) => eq(tcg.entity, entityId),
       });
@@ -439,18 +430,14 @@ export class CommunityQueryService {
             groups.description
           } ILIKE ${`%${searchTerm}%`} OR ${
             groups.tagline
-          } ILIKE ${`%${searchTerm}%`})`
+          } ILIKE ${`%${searchTerm}%`})`,
         );
       }
 
-      // Get total count for pagination
-      const [totalCount] = await db
-        .select({ value: count() })
-        .from(groups)
-        .where(and(...whereConditions));
-
-      // Calculate offset
-      const offset = (page - 1) * limit;
+      // Add cursor condition
+      if (cursor) {
+        whereConditions.push(sql`${groups.createdAt} < ${new Date(cursor)}`);
+      }
 
       // Build order by clause
       let orderByClause = [desc(groups.createdAt)];
@@ -478,7 +465,7 @@ export class CommunityQueryService {
           isGroupManager: sql<boolean>`true`.as("isGroupManager"),
           groupSettings: communitySettings,
           isWishlist: sql<boolean>`${communityWishlist.userId} IS NOT NULL`.as(
-            "isWishlist"
+            "isWishlist",
           ),
           creator: {
             id: user?.id,
@@ -494,13 +481,12 @@ export class CommunityQueryService {
           communityWishlist,
           and(
             eq(communityWishlist.groupId, groups.id),
-            eq(communityWishlist.userId, currentUserId)
-          )
+            eq(communityWishlist.userId, currentUserId),
+          ),
         )
         .leftJoin(user, eq(user.id, groups.creator))
         .leftJoin(communitySettings, eq(communitySettings.groupId, groups.id))
-        .limit(limit)
-        .offset(offset);
+        .limit(limit + 1);
 
       // Get members for each community
       const communityIds = result.map((community) => community.id);
@@ -539,31 +525,38 @@ export class CommunityQueryService {
         });
       }
 
-      const topValue = result
+      const hasNextPage = result.length > limit;
+      const nodes = hasNextPage ? result.slice(0, limit) : result;
+
+      const topValue = [...nodes]
         .sort((a, b) => b.rank - a.rank)
         .slice(0, condition?.length);
 
-      const communitiesWithTrending = result.map((community) => ({
+      const processedCommunities = nodes.map((community) => ({
         ...community,
         isTrending: topValue.some((t) => t.id === community.id),
         members: membersData.get(community.id) || [],
       }));
 
-      // Calculate pagination metadata
-      const totalPages = Math.ceil(totalCount.value / limit);
-      const hasNextPage = page < totalPages;
-      const hasPreviousPage = page > 1;
+      const edges = processedCommunities.map((community) => ({
+        cursor: community.group.createdAt?.toISOString() || "",
+        node: community,
+      }));
+
+      const [totalCountResult] = await db
+        .select({ value: count() })
+        .from(groups)
+        .where(
+          and(eq(groups.entity, entityId), eq(groups.creator, currentUserId)),
+        );
 
       return {
-        communities: communitiesWithTrending,
-        pagination: {
-          currentPage: page,
-          totalPages,
-          totalCount: totalCount.value,
-          limit,
+        edges,
+        pageInfo: {
           hasNextPage,
-          hasPreviousPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
         },
+        totalCount: totalCountResult?.value || 0,
       };
     } catch (error) {
       console.log(error);
@@ -572,27 +565,23 @@ export class CommunityQueryService {
     }
   }
 
-  // Get Featured Communities
+  // Get Featured Communities (Cursor-based)
   static async getFeaturedCommunities({
     currentUserId,
     entityId,
     db,
-    page = 1,
+    cursor,
     limit = 10,
     searchTerm,
   }: {
     currentUserId: string;
     entityId: string;
     db: AppDatabase;
-    page?: number;
+    cursor?: string | null;
     limit?: number;
     searchTerm?: string;
   }) {
     try {
-      const entityDetails = await db.query.entity.findFirst({
-        where: (tcg, { eq }) => eq(tcg.id, entityId),
-      });
-
       const condition = await db.query.trendingConditionsGroups.findFirst({
         where: (tcg, { eq }) => eq(tcg.entity, entityId),
       });
@@ -611,18 +600,14 @@ export class CommunityQueryService {
             groups.description
           } ILIKE ${`%${searchTerm}%`} OR ${
             groups.tagline
-          } ILIKE ${`%${searchTerm}%`})`
+          } ILIKE ${`%${searchTerm}%`})`,
         );
       }
 
-      // Get total count for pagination
-      const [totalCount] = await db
-        .select({ value: count() })
-        .from(groups)
-        .where(and(...whereConditions));
-
-      // Calculate offset
-      const offset = (page - 1) * limit;
+      // Add cursor condition
+      if (cursor) {
+        whereConditions.push(sql`${groups.createdAt} < ${new Date(cursor)}`);
+      }
 
       const result = await db
         .select({
@@ -653,22 +638,22 @@ export class CommunityQueryService {
             END
           `.as("status"),
           isGroupMember: sql<boolean>`${groupMember.userId} IS NOT NULL`.as(
-            "isGroupMember"
+            "isGroupMember",
           ),
           isJoinRequest:
             sql<boolean>`${groupRequest.userId} IS NOT NULL AND ${groupRequest.memberStatusEnum} = 'PENDING'`.as(
-              "isJoinRequest"
+              "isJoinRequest",
             ),
           isGroupAdmin: sql<boolean>`${groupMember.role} = 'ADMIN'`.as(
-            "isGroupAdmin"
+            "isGroupAdmin",
           ),
           isGroupManager:
             sql<boolean>`${groupMember.role} IN ('ADMIN', 'MANAGER')`.as(
-              "isGroupManager"
+              "isGroupManager",
             ),
           groupSettings: communitySettings,
           isWishlist: sql<boolean>`${communityWishlist.userId} IS NOT NULL`.as(
-            "isWishlist"
+            "isWishlist",
           ),
           creator: {
             id: user?.id,
@@ -684,27 +669,26 @@ export class CommunityQueryService {
           groupMember,
           and(
             eq(groupMember.groupId, groups.id),
-            eq(groupMember.userId, currentUserId)
-          )
+            eq(groupMember.userId, currentUserId),
+          ),
         )
         .leftJoin(
           groupRequest,
           and(
             eq(groupRequest.groupId, groups.id),
-            eq(groupRequest.userId, currentUserId)
-          )
+            eq(groupRequest.userId, currentUserId),
+          ),
         )
         .leftJoin(
           communityWishlist,
           and(
             eq(communityWishlist.groupId, groups.id),
-            eq(communityWishlist.userId, currentUserId)
-          )
+            eq(communityWishlist.userId, currentUserId),
+          ),
         )
         .leftJoin(user, eq(user.id, groups.creator))
         .leftJoin(communitySettings, eq(communitySettings.groupId, groups.id))
-        .limit(limit)
-        .offset(offset);
+        .limit(limit + 1);
 
       // Get members for each community
       const communityIds = result.map((community) => community.id);
@@ -743,27 +727,32 @@ export class CommunityQueryService {
         });
       }
 
-      const communitiesWithMembers = result.map((community) => ({
+      const hasNextPage = result.length > limit;
+      const nodes = hasNextPage ? result.slice(0, limit) : result;
+
+      const processedCommunities = nodes.map((community) => ({
         ...community,
         isTrending: false,
         members: membersData.get(community.id) || [],
       }));
 
-      // Calculate pagination metadata
-      const totalPages = Math.ceil(totalCount.value / limit);
-      const hasNextPage = page < totalPages;
-      const hasPreviousPage = page > 1;
+      const edges = processedCommunities.map((community) => ({
+        cursor: community.group.createdAt?.toISOString() || "",
+        node: community,
+      }));
+
+      const [totalCountResult] = await db
+        .select({ value: count() })
+        .from(groups)
+        .where(and(eq(groups.entity, entityId), eq(groups.isFeatured, true)));
 
       return {
-        communities: communitiesWithMembers,
-        pagination: {
-          currentPage: page,
-          totalPages,
-          totalCount: totalCount.value,
-          limit,
+        edges,
+        pageInfo: {
           hasNextPage,
-          hasPreviousPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
         },
+        totalCount: totalCountResult?.value || 0,
       };
     } catch (error) {
       console.log(error);
@@ -772,27 +761,23 @@ export class CommunityQueryService {
     }
   }
 
-  // Get Trending Communities
+  // Get Trending Communities (Cursor-based)
   static async getTrendingCommunities({
     currentUserId,
     entityId,
     db,
-    page = 1,
+    cursor,
     limit = 10,
     searchTerm,
   }: {
     currentUserId: string;
     entityId: string;
     db: AppDatabase;
-    page?: number;
+    cursor?: string | null;
     limit?: number;
     searchTerm?: string;
   }) {
     try {
-      const entityDetails = await db.query.entity.findFirst({
-        where: (tcg, { eq }) => eq(tcg.id, entityId),
-      });
-
       const condition = await db.query.trendingConditionsGroups.findFirst({
         where: (tcg, { eq }) => eq(tcg.entity, entityId),
       });
@@ -810,7 +795,7 @@ export class CommunityQueryService {
             groups.description
           } ILIKE ${`%${searchTerm}%`} OR ${
             groups.tagline
-          } ILIKE ${`%${searchTerm}%`})`
+          } ILIKE ${`%${searchTerm}%`})`,
         );
       }
 
@@ -843,22 +828,22 @@ export class CommunityQueryService {
             END
           `.as("status"),
           isGroupMember: sql<boolean>`${groupMember.userId} IS NOT NULL`.as(
-            "isGroupMember"
+            "isGroupMember",
           ),
           isJoinRequest:
             sql<boolean>`${groupRequest.userId} IS NOT NULL AND ${groupRequest.memberStatusEnum} = 'PENDING'`.as(
-              "isJoinRequest"
+              "isJoinRequest",
             ),
           isGroupAdmin: sql<boolean>`${groupMember.role} = 'ADMIN'`.as(
-            "isGroupAdmin"
+            "isGroupAdmin",
           ),
           isGroupManager:
             sql<boolean>`${groupMember.role} IN ('ADMIN', 'MANAGER')`.as(
-              "isGroupManager"
+              "isGroupManager",
             ),
           groupSettings: communitySettings,
           isWishlist: sql<boolean>`${communityWishlist.userId} IS NOT NULL`.as(
-            "isWishlist"
+            "isWishlist",
           ),
           creator: {
             id: user?.id,
@@ -875,29 +860,29 @@ export class CommunityQueryService {
               condition?.likes ? groups.numberOfLikes : 0
             } + ${condition?.discussion ? groups.numberOfPost : 0} + ${
               condition?.views ? groups.numberOfViews : 0
-            })`
-          )
+            })`,
+          ),
         )
         .leftJoin(
           groupMember,
           and(
             eq(groupMember.groupId, groups.id),
-            eq(groupMember.userId, currentUserId)
-          )
+            eq(groupMember.userId, currentUserId),
+          ),
         )
         .leftJoin(
           groupRequest,
           and(
             eq(groupRequest.groupId, groups.id),
-            eq(groupRequest.userId, currentUserId)
-          )
+            eq(groupRequest.userId, currentUserId),
+          ),
         )
         .leftJoin(
           communityWishlist,
           and(
             eq(communityWishlist.groupId, groups.id),
-            eq(communityWishlist.userId, currentUserId)
-          )
+            eq(communityWishlist.userId, currentUserId),
+          ),
         )
         .leftJoin(user, eq(user.id, groups.creator))
         .leftJoin(communitySettings, eq(communitySettings.groupId, groups.id));
@@ -906,12 +891,18 @@ export class CommunityQueryService {
       const trendingLength = condition?.length || 10;
       const topTrending = result.slice(0, trendingLength);
 
-      // Apply pagination to the trending results
-      const offset = (page - 1) * limit;
-      const paginatedResults = topTrending.slice(offset, offset + limit);
+      // Simple implementation for trending: use page/offset internally but return Connection
+      // For real cursor-based trending, we'd need a stable sortable value.
+      // Since it's a small list (condition.length), we can just slice.
+      let startIndex = 0;
+      if (cursor) {
+        startIndex = topTrending.findIndex((t) => t.id === cursor) + 1;
+      }
+
+      const nodes = topTrending.slice(startIndex, startIndex + limit);
 
       // Get members for each community
-      const communityIds = paginatedResults.map((community) => community.id);
+      const communityIds = nodes.map((community) => community.id);
       const membersData = new Map();
 
       if (communityIds.length > 0) {
@@ -947,27 +938,26 @@ export class CommunityQueryService {
         });
       }
 
-      const communitiesWithMembers = paginatedResults.map((community) => ({
+      const hasNextPage = startIndex + limit < topTrending.length;
+
+      const processedCommunities = nodes.map((community) => ({
         ...community,
         isTrending: true,
         members: membersData.get(community.id) || [],
       }));
 
-      // Calculate pagination metadata
-      const totalPages = Math.ceil(topTrending.length / limit);
-      const hasNextPage = page < totalPages;
-      const hasPreviousPage = page > 1;
+      const edges = processedCommunities.map((community) => ({
+        cursor: community.id, // Use ID as cursor for rank-based lists
+        node: community,
+      }));
 
       return {
-        communities: communitiesWithMembers,
-        pagination: {
-          currentPage: page,
-          totalPages,
-          totalCount: topTrending.length,
-          limit,
+        edges,
+        pageInfo: {
           hasNextPage,
-          hasPreviousPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
         },
+        totalCount: topTrending.length,
       };
     } catch (error) {
       console.log(error);
@@ -976,27 +966,23 @@ export class CommunityQueryService {
     }
   }
 
-  // Get Communities Joined by Current User
+  // Get Communities Joined by Current User (Cursor-based)
   static async getMyJoinedCommunities({
     currentUserId,
     entityId,
     db,
-    page = 1,
+    cursor,
     limit = 10,
     searchTerm,
   }: {
     currentUserId: string;
     entityId: string;
     db: AppDatabase;
-    page?: number;
+    cursor?: string | null;
     limit?: number;
     searchTerm?: string;
   }) {
     try {
-      const entityDetails = await db.query.entity.findFirst({
-        where: (tcg, { eq }) => eq(tcg.id, entityId),
-      });
-
       const condition = await db.query.trendingConditionsGroups.findFirst({
         where: (tcg, { eq }) => eq(tcg.entity, entityId),
       });
@@ -1007,6 +993,7 @@ export class CommunityQueryService {
         eq(groups.isApproved, true),
         eq(groupMember.userId, currentUserId), // Only communities where user is a member
         eq(groupMember.memberStatusEnum, "ACCEPTED"),
+        ne(groups.creator, currentUserId), // Exclude communities created by the user (Owned)
       ];
 
       // Add search term condition
@@ -1016,19 +1003,16 @@ export class CommunityQueryService {
             groups.description
           } ILIKE ${`%${searchTerm}%`} OR ${
             groups.tagline
-          } ILIKE ${`%${searchTerm}%`})`
+          } ILIKE ${`%${searchTerm}%`})`,
         );
       }
 
-      // Get total count for pagination
-      const [totalCount] = await db
-        .select({ value: count() })
-        .from(groups)
-        .innerJoin(groupMember, eq(groupMember.groupId, groups.id))
-        .where(and(...whereConditions));
-
-      // Calculate offset
-      const offset = (page - 1) * limit;
+      // Add cursor condition
+      if (cursor) {
+        whereConditions.push(
+          sql`${groupMember.createdAt} < ${new Date(cursor)}`,
+        );
+      }
 
       const result = await db
         .select({
@@ -1050,15 +1034,15 @@ export class CommunityQueryService {
           isGroupMember: sql<boolean>`true`.as("isGroupMember"),
           isJoinRequest: sql<boolean>`false`.as("isJoinRequest"),
           isGroupAdmin: sql<boolean>`${groupMember.role} = 'ADMIN'`.as(
-            "isGroupAdmin"
+            "isGroupAdmin",
           ),
           isGroupManager:
             sql<boolean>`${groupMember.role} IN ('ADMIN', 'MANAGER')`.as(
-              "isGroupManager"
+              "isGroupManager",
             ),
           groupSettings: communitySettings,
           isWishlist: sql<boolean>`${communityWishlist.userId} IS NOT NULL`.as(
-            "isWishlist"
+            "isWishlist",
           ),
           creator: {
             id: user?.id,
@@ -1076,13 +1060,12 @@ export class CommunityQueryService {
           communityWishlist,
           and(
             eq(communityWishlist.groupId, groups.id),
-            eq(communityWishlist.userId, currentUserId)
-          )
+            eq(communityWishlist.userId, currentUserId),
+          ),
         )
         .leftJoin(user, eq(user.id, groups.creator))
         .leftJoin(communitySettings, eq(communitySettings.groupId, groups.id))
-        .limit(limit)
-        .offset(offset);
+        .limit(limit + 1);
 
       // Get members for each community
       const communityIds = result.map((community) => community.id);
@@ -1121,31 +1104,43 @@ export class CommunityQueryService {
         });
       }
 
-      const topValue = result
+      const hasNextPage = result.length > limit;
+      const nodes = hasNextPage ? result.slice(0, limit) : result;
+
+      const topValue = [...nodes]
         .sort((a, b) => b.rank - a.rank)
         .slice(0, condition?.length);
 
-      const communitiesWithTrending = result.map((community) => ({
+      const processedCommunities = nodes.map((community) => ({
         ...community,
         isTrending: topValue.some((t) => t.id === community.id),
         members: membersData.get(community.id) || [],
       }));
 
-      // Calculate pagination metadata
-      const totalPages = Math.ceil(totalCount.value / limit);
-      const hasNextPage = page < totalPages;
-      const hasPreviousPage = page > 1;
+      const edges = processedCommunities.map((community) => ({
+        cursor: community.joinedAt?.toISOString() || "",
+        node: community,
+      }));
+
+      const [totalCountResult] = await db
+        .select({ value: count() })
+        .from(groups)
+        .innerJoin(groupMember, eq(groupMember.groupId, groups.id))
+        .where(
+          and(
+            eq(groups.entity, entityId),
+            eq(groupMember.userId, currentUserId),
+            eq(groupMember.memberStatusEnum, "ACCEPTED"),
+          ),
+        );
 
       return {
-        communities: communitiesWithTrending,
-        pagination: {
-          currentPage: page,
-          totalPages,
-          totalCount: totalCount.value,
-          limit,
+        edges,
+        pageInfo: {
           hasNextPage,
-          hasPreviousPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
         },
+        totalCount: totalCountResult?.value || 0,
       };
     } catch (error) {
       console.log(error);
@@ -1154,27 +1149,23 @@ export class CommunityQueryService {
     }
   }
 
-  // Get Saved Communities (Wishlist)
+  // Get Saved Communities (Wishlist) (Cursor-based)
   static async getMySavedCommunities({
     currentUserId,
     entityId,
     db,
-    page = 1,
+    cursor,
     limit = 10,
     searchTerm,
   }: {
     currentUserId: string;
     entityId: string;
     db: AppDatabase;
-    page?: number;
+    cursor?: string | null;
     limit?: number;
     searchTerm?: string;
   }) {
     try {
-      const entityDetails = await db.query.entity.findFirst({
-        where: (tcg, { eq }) => eq(tcg.id, entityId),
-      });
-
       const condition = await db.query.trendingConditionsGroups.findFirst({
         where: (tcg, { eq }) => eq(tcg.entity, entityId),
       });
@@ -1194,19 +1185,16 @@ export class CommunityQueryService {
             groups.description
           } ILIKE ${`%${searchTerm}%`} OR ${
             groups.tagline
-          } ILIKE ${`%${searchTerm}%`})`
+          } ILIKE ${`%${searchTerm}%`})`,
         );
       }
 
-      // Get total count for pagination
-      const [totalCount] = await db
-        .select({ value: count() })
-        .from(groups)
-        .innerJoin(communityWishlist, eq(communityWishlist.groupId, groups.id))
-        .where(and(...whereConditions));
-
-      // Calculate offset
-      const offset = (page - 1) * limit;
+      // Add cursor condition
+      if (cursor) {
+        whereConditions.push(
+          sql`${communityWishlist.createdAt} < ${new Date(cursor)}`,
+        );
+      }
 
       const result = await db
         .select({
@@ -1237,18 +1225,18 @@ export class CommunityQueryService {
             END
           `.as("status"),
           isGroupMember: sql<boolean>`${groupMember.userId} IS NOT NULL`.as(
-            "isGroupMember"
+            "isGroupMember",
           ),
           isJoinRequest:
             sql<boolean>`${groupRequest.userId} IS NOT NULL AND ${groupRequest.memberStatusEnum} = 'PENDING'`.as(
-              "isJoinRequest"
+              "isJoinRequest",
             ),
           isGroupAdmin: sql<boolean>`${groupMember.role} = 'ADMIN'`.as(
-            "isGroupAdmin"
+            "isGroupAdmin",
           ),
           isGroupManager:
             sql<boolean>`${groupMember.role} IN ('ADMIN', 'MANAGER')`.as(
-              "isGroupManager"
+              "isGroupManager",
             ),
           groupSettings: communitySettings,
           isWishlist: sql<boolean>`true`.as("isWishlist"),
@@ -1268,20 +1256,19 @@ export class CommunityQueryService {
           groupMember,
           and(
             eq(groupMember.groupId, groups.id),
-            eq(groupMember.userId, currentUserId)
-          )
+            eq(groupMember.userId, currentUserId),
+          ),
         )
         .leftJoin(
           groupRequest,
           and(
             eq(groupRequest.groupId, groups.id),
-            eq(groupRequest.userId, currentUserId)
-          )
+            eq(groupRequest.userId, currentUserId),
+          ),
         )
         .leftJoin(user, eq(user.id, groups.creator))
         .leftJoin(communitySettings, eq(communitySettings.groupId, groups.id))
-        .limit(limit)
-        .offset(offset);
+        .limit(limit + 1);
 
       // Get members for each community
       const communityIds = result.map((community) => community.id);
@@ -1320,31 +1307,42 @@ export class CommunityQueryService {
         });
       }
 
-      const topValue = result
+      const hasNextPage = result.length > limit;
+      const nodes = hasNextPage ? result.slice(0, limit) : result;
+
+      const topValue = [...nodes]
         .sort((a, b) => b.rank - a.rank)
         .slice(0, condition?.length);
 
-      const communitiesWithTrending = result.map((community) => ({
+      const processedCommunities = nodes.map((community) => ({
         ...community,
         isTrending: topValue.some((t) => t.id === community.id),
         members: membersData.get(community.id) || [],
       }));
 
-      // Calculate pagination metadata
-      const totalPages = Math.ceil(totalCount.value / limit);
-      const hasNextPage = page < totalPages;
-      const hasPreviousPage = page > 1;
+      const edges = processedCommunities.map((community) => ({
+        cursor: community.savedAt?.toISOString() || "",
+        node: community,
+      }));
+
+      const [totalCountResult] = await db
+        .select({ value: count() })
+        .from(groups)
+        .innerJoin(communityWishlist, eq(communityWishlist.groupId, groups.id))
+        .where(
+          and(
+            eq(groups.entity, entityId),
+            eq(communityWishlist.userId, currentUserId),
+          ),
+        );
 
       return {
-        communities: communitiesWithTrending,
-        pagination: {
-          currentPage: page,
-          totalPages,
-          totalCount: totalCount.value,
-          limit,
+        edges,
+        pageInfo: {
           hasNextPage,
-          hasPreviousPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
         },
+        totalCount: totalCountResult?.value || 0,
       };
     } catch (error) {
       console.log(error);
@@ -1357,22 +1355,18 @@ export class CommunityQueryService {
     userId,
     entityId,
     db,
-    page = 1,
+    cursor,
     limit = 10,
     searchTerm,
   }: {
     userId: string;
     entityId: string;
     db: AppDatabase;
-    page?: number;
+    cursor?: string | null;
     limit?: number;
     searchTerm?: string;
   }) {
     try {
-      const entityDetails = await db.query.entity.findFirst({
-        where: (tcg, { eq }) => eq(tcg.id, entityId),
-      });
-
       const condition = await db.query.trendingConditionsGroups.findFirst({
         where: (tcg, { eq }) => eq(tcg.entity, entityId),
       });
@@ -1391,18 +1385,14 @@ export class CommunityQueryService {
             groups.description
           } ILIKE ${`%${searchTerm}%`} OR ${
             groups.tagline
-          } ILIKE ${`%${searchTerm}%`})`
+          } ILIKE ${`%${searchTerm}%`})`,
         );
       }
 
-      // Get total count for pagination
-      const [totalCount] = await db
-        .select({ value: count() })
-        .from(groups)
-        .where(and(...whereConditions));
-
-      // Calculate offset
-      const offset = (page - 1) * limit;
+      // Add cursor condition
+      if (cursor) {
+        whereConditions.push(sql`${groups.createdAt} < ${new Date(cursor)}`);
+      }
 
       // Build order by clause
       let orderByClause = [desc(groups.createdAt)];
@@ -1430,7 +1420,7 @@ export class CommunityQueryService {
           isGroupManager: sql<boolean>`true`.as("isGroupManager"),
           groupSettings: communitySettings,
           isWishlist: sql<boolean>`${communityWishlist.userId} IS NOT NULL`.as(
-            "isWishlist"
+            "isWishlist",
           ),
           creator: {
             id: user?.id,
@@ -1446,13 +1436,12 @@ export class CommunityQueryService {
           communityWishlist,
           and(
             eq(communityWishlist.groupId, groups.id),
-            eq(communityWishlist.userId, userId)
-          )
+            eq(communityWishlist.userId, userId),
+          ),
         )
         .leftJoin(user, eq(user.id, groups.creator))
         .leftJoin(communitySettings, eq(communitySettings.groupId, groups.id))
-        .limit(limit)
-        .offset(offset);
+        .limit(limit + 1);
 
       // Get members for each community
       const communityIds = result.map((community: any) => community.id);
@@ -1491,31 +1480,36 @@ export class CommunityQueryService {
         });
       }
 
-      const topValue = result
+      const hasNextPage = result.length > limit;
+      const nodes = hasNextPage ? result.slice(0, limit) : result;
+
+      const topValue = [...nodes]
         .sort((a: any, b: any) => b.rank - a.rank)
         .slice(0, condition?.length);
 
-      const communitiesWithTrending = result.map((community: any) => ({
+      const processedCommunities = nodes.map((community: any) => ({
         ...community,
         isTrending: topValue.some((t: any) => t.id === community.id),
         members: membersData.get(community.id) || [],
       }));
 
-      // Calculate pagination metadata
-      const totalPages = Math.ceil(totalCount.value / limit);
-      const hasNextPage = page < totalPages;
-      const hasPreviousPage = page > 1;
+      const edges = processedCommunities.map((community: any) => ({
+        cursor: community.group.createdAt.toISOString(),
+        node: community,
+      }));
+
+      const [totalCountResult] = await db
+        .select({ value: count() })
+        .from(groups)
+        .where(and(eq(groups.entity, entityId), eq(groups.creator, userId)));
 
       return {
-        communities: communitiesWithTrending,
-        pagination: {
-          currentPage: page,
-          totalPages,
-          totalCount: totalCount.value,
-          limit,
+        edges,
+        pageInfo: {
           hasNextPage,
-          hasPreviousPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
         },
+        totalCount: totalCountResult?.value || 0,
       };
     } catch (error) {
       console.log(error);

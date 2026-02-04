@@ -92,4 +92,5 @@ export const reportStatusEnum = pgEnum("reportStatus", [
   "APPROVED",
   "REJECTED",
   "DISMISSED",
+  "RESOLVED",
 ]);

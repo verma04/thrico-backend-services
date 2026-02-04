@@ -14,7 +14,7 @@ import {
   pollResults,
   polls,
   discussionForum,
-  customFormSubmissions,
+  formResponses,
   customForms,
   offers,
   userFeed,
@@ -26,7 +26,7 @@ const dashboardResolvers = {
     async getDashboardStats(
       _: any,
       { timeRange }: { timeRange: string },
-      context: any
+      context: any,
     ) {
       const { db, entityId } = await checkAuth(context);
 
@@ -77,8 +77,8 @@ const dashboardResolvers = {
         .where(
           and(
             eq(userToEntity.entityId, entityId),
-            lt(userToEntity.createdAt, startDate)
-          )
+            lt(userToEntity.createdAt, startDate),
+          ),
         );
       const prevTotalUsers = prevTotalUsersResult[0]?.count || 0;
       const totalUsersChange =
@@ -93,8 +93,8 @@ const dashboardResolvers = {
         .where(
           and(
             eq(userToEntity.entityId, entityId),
-            gte(userToEntity.lastActive, startDate.toISOString())
-          )
+            gte(userToEntity.lastActive, startDate.toISOString()),
+          ),
         );
       const activeUsers = activeUsersResult[0]?.count || 0;
 
@@ -106,8 +106,8 @@ const dashboardResolvers = {
           and(
             eq(userToEntity.entityId, entityId),
             gte(userToEntity.lastActive, previousStartDate.toISOString()),
-            lt(userToEntity.lastActive, previousEndDate.toISOString())
-          )
+            lt(userToEntity.lastActive, previousEndDate.toISOString()),
+          ),
         );
       const prevActiveUsers = prevActiveUsersResult[0]?.count || 0;
       const activeUsersChange =
@@ -121,7 +121,10 @@ const dashboardResolvers = {
         .from(groupViews)
         .innerJoin(groups, eq(groupViews.group, groups.id))
         .where(
-          and(eq(groups.entity, entityId), gte(groupViews.createdAt, startDate))
+          and(
+            eq(groups.entity, entityId),
+            gte(groupViews.createdAt, startDate),
+          ),
         );
       const pageViews = pageViewsResult[0]?.count || 0;
 
@@ -134,8 +137,8 @@ const dashboardResolvers = {
           and(
             eq(groups.entity, entityId),
             gte(groupViews.createdAt, previousStartDate),
-            lt(groupViews.createdAt, previousEndDate)
-          )
+            lt(groupViews.createdAt, previousEndDate),
+          ),
         );
       const prevPageViews = prevPageViewsResult[0]?.count || 0;
       const pageViewsChange =
@@ -170,7 +173,7 @@ const dashboardResolvers = {
     async getModuleActivity(
       _: any,
       { timeRange }: { timeRange: string },
-      context: any
+      context: any,
     ) {
       const { db, entityId } = await checkAuth(context);
 
@@ -210,9 +213,8 @@ const dashboardResolvers = {
 
       let enabledModules: string[] = [];
       try {
-        const subscription = await subscriptionClient.checkEntitySubscription(
-          entityId
-        );
+        const subscription =
+          await subscriptionClient.checkEntitySubscription(entityId);
         // Assuming details has subscription info or we need to call subscriptionClient?
         // Let's use a safe fallback or fetch multiple if needed.
         // Based on entityResolvers, entityDetails does not return subscription directly usually?
@@ -240,8 +242,8 @@ const dashboardResolvers = {
           .where(
             and(
               eq(groups.entity, entityId),
-              gte(groupMember.createdAt, startDate)
-            )
+              gte(groupMember.createdAt, startDate),
+            ),
           );
         results.push({
           name: "Communities",
@@ -258,8 +260,8 @@ const dashboardResolvers = {
           .where(
             and(
               eq(events.entityId, entityId),
-              gte(eventsAttendees.createdAt, startDate)
-            )
+              gte(eventsAttendees.createdAt, startDate),
+            ),
           );
         results.push({
           name: "Events",
@@ -275,8 +277,8 @@ const dashboardResolvers = {
           .where(
             and(
               eq(marketPlace.entityId, entityId),
-              gte(marketPlace.createdAt, startDate)
-            )
+              gte(marketPlace.createdAt, startDate),
+            ),
           );
         results.push({
           name: "Listing",
@@ -290,7 +292,7 @@ const dashboardResolvers = {
           .select({ count: count(jobs.id) })
           .from(jobs)
           .where(
-            and(eq(jobs.entityId, entityId), gte(jobs.createdAt, startDate))
+            and(eq(jobs.entityId, entityId), gte(jobs.createdAt, startDate)),
           );
         results.push({
           name: "Jobs",
@@ -306,8 +308,8 @@ const dashboardResolvers = {
           .where(
             and(
               eq(mentorShip.entity, entityId),
-              gte(mentorShip.createdAt, startDate)
-            )
+              gte(mentorShip.createdAt, startDate),
+            ),
           );
         results.push({
           name: "Mentorship",
@@ -324,8 +326,8 @@ const dashboardResolvers = {
           .where(
             and(
               eq(polls.entityId, entityId),
-              gte(pollResults.createdAt, startDate)
-            )
+              gte(pollResults.createdAt, startDate),
+            ),
           );
         results.push({
           name: "Polls",
@@ -341,8 +343,8 @@ const dashboardResolvers = {
           .where(
             and(
               eq(discussionForum.entityId, entityId),
-              gte(discussionForum.createdAt, startDate)
-            )
+              gte(discussionForum.createdAt, startDate),
+            ),
           );
         results.push({
           name: "Forums",
@@ -353,17 +355,14 @@ const dashboardResolvers = {
       // 8. Surveys (Custom Forms)
       if (enabledModules.includes("Surveys")) {
         const surveyUsers = await db
-          .select({ count: count(customFormSubmissions.id) })
-          .from(customFormSubmissions)
-          .innerJoin(
-            customForms,
-            eq(customFormSubmissions.formId, customForms.id)
-          )
+          .select({ count: count(formResponses.id) })
+          .from(formResponses)
+          .innerJoin(customForms, eq(formResponses.formId, customForms.id))
           .where(
             and(
               eq(customForms.entityId, entityId),
-              gte(customFormSubmissions.createdAt, startDate)
-            )
+              gte(formResponses.submittedAt, startDate),
+            ),
           );
         results.push({
           name: "Surveys",
@@ -377,7 +376,10 @@ const dashboardResolvers = {
           .select({ count: count(offers.id) })
           .from(offers)
           .where(
-            and(eq(offers.entityId, entityId), gte(offers.createdAt, startDate))
+            and(
+              eq(offers.entityId, entityId),
+              gte(offers.createdAt, startDate),
+            ),
           );
         results.push({
           name: "Offers",
@@ -391,7 +393,7 @@ const dashboardResolvers = {
     async getPlatformModuleActivity(
       _: any,
       { timeRange }: { timeRange: string },
-      context: any
+      context: any,
     ) {
       const { db, entityId } = await checkAuth(context);
 
@@ -426,9 +428,8 @@ const dashboardResolvers = {
 
       let enabledModules: string[] = [];
       try {
-        const subscription = await subscriptionClient.checkEntitySubscription(
-          entityId
-        );
+        const subscription =
+          await subscriptionClient.checkEntitySubscription(entityId);
         if (subscription && subscription.modules) {
           enabledModules = subscription.modules
             .filter((t: any) => t.enabled)
@@ -448,8 +449,8 @@ const dashboardResolvers = {
           .where(
             and(
               eq(userFeed.entity, entityId),
-              gte(userFeed.createdAt, startDate)
-            )
+              gte(userFeed.createdAt, startDate),
+            ),
           );
         results.push({
           name: "Feed",
@@ -463,7 +464,7 @@ const dashboardResolvers = {
           .select({ count: count(groups.id) })
           .from(groups)
           .where(
-            and(eq(groups.entity, entityId), gte(groups.createdAt, startDate))
+            and(eq(groups.entity, entityId), gte(groups.createdAt, startDate)),
           );
         results.push({
           name: "Communities",
@@ -477,7 +478,10 @@ const dashboardResolvers = {
           .select({ count: count(events.id) })
           .from(events)
           .where(
-            and(eq(events.entityId, entityId), gte(events.createdAt, startDate))
+            and(
+              eq(events.entityId, entityId),
+              gte(events.createdAt, startDate),
+            ),
           );
         results.push({
           name: "Events",
@@ -493,8 +497,8 @@ const dashboardResolvers = {
           .where(
             and(
               eq(marketPlace.entityId, entityId),
-              gte(marketPlace.createdAt, startDate)
-            )
+              gte(marketPlace.createdAt, startDate),
+            ),
           );
         results.push({
           name: "Listing",
@@ -508,7 +512,7 @@ const dashboardResolvers = {
           .select({ count: count(jobs.id) })
           .from(jobs)
           .where(
-            and(eq(jobs.entityId, entityId), gte(jobs.createdAt, startDate))
+            and(eq(jobs.entityId, entityId), gte(jobs.createdAt, startDate)),
           );
         results.push({
           name: "Jobs",
@@ -524,8 +528,8 @@ const dashboardResolvers = {
           .where(
             and(
               eq(mentorShip.entity, entityId),
-              gte(mentorShip.createdAt, startDate)
-            )
+              gte(mentorShip.createdAt, startDate),
+            ),
           );
         results.push({
           name: "Mentorship",
@@ -539,7 +543,7 @@ const dashboardResolvers = {
           .select({ count: count(polls.id) })
           .from(polls)
           .where(
-            and(eq(polls.entityId, entityId), gte(polls.createdAt, startDate))
+            and(eq(polls.entityId, entityId), gte(polls.createdAt, startDate)),
           );
         results.push({
           name: "Polls",
@@ -555,8 +559,8 @@ const dashboardResolvers = {
           .where(
             and(
               eq(discussionForum.entityId, entityId),
-              gte(discussionForum.createdAt, startDate)
-            )
+              gte(discussionForum.createdAt, startDate),
+            ),
           );
         results.push({
           name: "Forums",
@@ -572,8 +576,8 @@ const dashboardResolvers = {
           .where(
             and(
               eq(customForms.entityId, entityId),
-              gte(customForms.createdAt, startDate)
-            )
+              gte(customForms.createdAt, startDate),
+            ),
           );
         results.push({
           name: "Surveys",
@@ -587,7 +591,10 @@ const dashboardResolvers = {
           .select({ count: count(offers.id) })
           .from(offers)
           .where(
-            and(eq(offers.entityId, entityId), gte(offers.createdAt, startDate))
+            and(
+              eq(offers.entityId, entityId),
+              gte(offers.createdAt, startDate),
+            ),
           );
         results.push({
           name: "Offers",
@@ -598,7 +605,7 @@ const dashboardResolvers = {
       // Calculate summary statistics
       const total = results.reduce(
         (sum, module) => sum + Number(module.itemCount),
-        0
+        0,
       );
       const active = results.filter((module) => module.itemCount > 0).length;
       const inactive = enabledModules.length - active;

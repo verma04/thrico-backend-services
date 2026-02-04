@@ -1,0 +1,1 @@
+ALTER TABLE "form_responses" ADD COLUMN "is_submitted" boolean DEFAULT false;

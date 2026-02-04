@@ -17,7 +17,7 @@ export class JobService {
     if (!search) return undefined;
     return or(
       sql`${jobs.title} ILIKE '%' || ${search} || '%'`,
-      sql`${jobs.description} ILIKE '%' || ${search} || '%'`
+      sql`${jobs.description} ILIKE '%' || ${search} || '%'`,
     );
   }
 
@@ -57,8 +57,8 @@ export class JobService {
 
       const trendingScoreExpr = sql<number>`
         (${condition?.views ? jobs.numberOfViews : 0} + ${
-        condition?.applicant ? jobs.numberOfApplicant : 0
-      })
+          condition?.applicant ? jobs.numberOfApplicant : 0
+        })
       `;
 
       const whereConditions = [eq(jobs.entityId, entityId)];
@@ -90,7 +90,7 @@ export class JobService {
 
       const sorted = [...result].sort((a, b) => b.rank - a.rank);
       const topValue = new Set(
-        sorted.slice(0, condition?.length || 0).map((j) => j.id)
+        sorted.slice(0, condition?.length || 0).map((j) => j.id),
       );
       const final = result.map((set: any) => {
         const isOwner = currentUserId ? set.postedBy === currentUserId : false;
@@ -145,8 +145,8 @@ export class JobService {
 
       const trendingScoreExpr = sql<number>`
         (${condition?.views ? jobs.numberOfViews : 0} + ${
-        condition?.applicant ? jobs.numberOfApplicant : 0
-      })
+          condition?.applicant ? jobs.numberOfApplicant : 0
+        })
       `;
 
       const whereConditions = [eq(jobs.entityId, entityId)];
@@ -325,7 +325,7 @@ export class JobService {
 
       if (!job || job.postedBy !== ownerId) {
         throw new Error(
-          "You are not authorized to view applicants for this job."
+          "You are not authorized to view applicants for this job.",
         );
       }
 
@@ -464,7 +464,7 @@ export class JobService {
           "Job ID, User ID, name, and email are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -476,30 +476,39 @@ export class JobService {
         .where(
           and(
             eq(jobApplications.jobId, jobId),
-            eq(jobApplications.userId, userId)
-          )
+            eq(jobApplications.userId, userId),
+          ),
         );
 
-      if (applications.length >= 3) {
-        throw new GraphQLError(
-          "You have reached the maximum number of applications (3) for this job.",
-          {
-            extensions: { code: "BAD_USER_INPUT" },
-          }
-        );
+      if (applications.length > 0) {
+        throw new GraphQLError("You have already applied to this job.", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
       }
 
-      const [application] = await db
-        .insert(jobApplications)
-        .values({
-          jobId,
-          userId,
-          name,
-          email,
-          resume: resume || "",
-          appliedAt: new Date(),
-        })
-        .returning();
+      let application: any;
+      try {
+        const [app] = await db
+          .insert(jobApplications)
+          .values({
+            jobId,
+            userId,
+            name,
+            email,
+            resume: resume || "",
+            appliedAt: new Date(),
+          })
+          .returning();
+        application = app;
+      } catch (e: any) {
+        if (e.code === "23505") {
+          // Unique violation
+          throw new GraphQLError("You have already applied to this job.", {
+            extensions: { code: "BAD_USER_INPUT" },
+          });
+        }
+        throw e;
+      }
 
       await db
         .update(jobs)
@@ -670,8 +679,8 @@ export class JobService {
             and(
               eq(jobViews.jobId, jobId),
               eq(jobViews.userId, currentUserId),
-              sql`${jobViews.viewedAt} > ${oneHourAgo}`
-            )
+              sql`${jobViews.viewedAt} > ${oneHourAgo}`,
+            ),
           )
           .limit(1);
 
@@ -731,7 +740,7 @@ export class JobService {
           "Job ID, Reporter ID, Entity ID, and Reason are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -746,7 +755,7 @@ export class JobService {
       ] as const;
       type AllowedReason = (typeof allowedReasons)[number];
       const mappedReason: AllowedReason = allowedReasons.includes(
-        reason as AllowedReason
+        reason as AllowedReason,
       )
         ? (reason as AllowedReason)
         : "OTHER";

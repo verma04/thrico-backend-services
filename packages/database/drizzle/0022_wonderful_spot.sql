@@ -1,0 +1,1 @@
+ALTER TABLE "shop_products" ADD COLUMN "sku" varchar(100);

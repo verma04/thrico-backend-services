@@ -22,7 +22,7 @@ import {
 } from "@thrico/services";
 import { log } from "@thrico/logging";
 
-const feedResolvers = {
+const feedResolvers: any = {
   Query: {
     async getAllOffer(_: any, { input }: any, context: any) {
       const { db, entityId } = await checkAuth(context);
@@ -31,7 +31,7 @@ const feedResolvers = {
 
       whereClause = and(
         eq(offers.isActive, true),
-        eq(offers.entityId, entityId)
+        eq(offers.entityId, entityId),
       );
 
       const result = await db
@@ -49,24 +49,18 @@ const feedResolvers = {
       let id: string = "";
 
       try {
-        const auth = await checkAuth(context);
-        db = auth.db;
-        id = auth.id;
-        userId = auth.userId;
-        entityId = auth.entityId;
+        const { db, userId, entityId } = await checkAuth(context);
 
         const currentUserId = userId;
-        const { offset, limit } = input;
+        const { cursor, limit } = input || {};
 
         const result = await FeedQueryService.getUserFeed({
           currentUserId,
           db,
-          offset,
+          cursor,
           limit,
           entity: entityId,
         });
-
-        console.log(result);
 
         return result;
       } catch (error) {
@@ -76,22 +70,24 @@ const feedResolvers = {
     },
 
     async getMyFeed(_: any, { input }: any, context: any) {
+      let userId: string = "";
       try {
-        const { db, id, userId, entityId } = await checkAuth(context);
+        const { db, id, userId: uid, entityId } = await checkAuth(context);
+        userId = uid;
 
         const currentUserId = userId;
-        const { offset, limit } = input;
+        const { cursor, limit } = input || {};
 
         const result = await FeedQueryService.getMyFeed({
           currentUserId,
           db,
-          offset,
+          cursor,
           limit,
           entity: entityId,
         });
         return result;
       } catch (error) {
-        console.log(error);
+        log.error("Error in getMyFeed", { error, userId, input });
         throw error;
       }
     },
@@ -108,7 +104,7 @@ const feedResolvers = {
 
         return result;
       } catch (error) {
-        console.log(error);
+        log.error("Error in getMarketPlaceFeed", { error });
         throw error;
       }
     },
@@ -126,7 +122,7 @@ const feedResolvers = {
 
         return result;
       } catch (error) {
-        console.log(error);
+        log.error("Error in getUserEventsFeed", { error });
         throw error;
       }
     },
@@ -139,7 +135,7 @@ const feedResolvers = {
 
         return result;
       } catch (error) {
-        console.log(error);
+        log.error("Error in getJobFeed", { error });
         throw error;
       }
     },
@@ -154,7 +150,7 @@ const feedResolvers = {
         });
         return result;
       } catch (error) {
-        console.log(error);
+        log.error("Error in getCommunitiesFeed", { error });
         throw error;
       }
     },
@@ -196,35 +192,35 @@ const feedResolvers = {
 
         return result;
       } catch (error) {
-        log.error("Error in getPersonalizedFeed", { error, user });
+        log.error("Error in getPersonalizedFeed", {
+          error,
+        });
         throw error;
       }
     },
 
-    // async getCommunitiesFeedList(_: any, { input }: any, context: any) {
-    //   try {
-    //     const { userId, db, entityId } = await checkAuth(context);
-    //     console.log(input);
-    //     const { offset, limit } = input;
+    async getCommunitiesFeedList(_: any, { input }: any, context: any) {
+      let userId: string = "";
+      try {
+        const { userId: uid, db, entityId } = await checkAuth(context);
+        userId = uid;
+        const { cursor, limit } = input || {};
 
-    //     const data = await CommunityActionsService.getCommunityFeeds({
-    //       communityId: input?.id,
-    //       currentUserId: userId,
+        // const data = await CommunityActionsService.getCommunityFeeds({
+        //   communityId: input?.id,
+        //   currentUserId: userId,
+        //   limit,
+        //   cursor,
+        //   entityId: entityId,
+        //   db,
+        // });
 
-    //       limit,
-    //       offset,
-    //       entityId: entityId,
-    //       db,
-    //     });
-
-    //     console.log(data);
-
-    //     return data;
-    //   } catch (error) {
-    //     console.log(error);
-    //     throw error;
-    //   }
-    // },
+        // return data;
+      } catch (error) {
+        log.error("Error in getCommunitiesFeedList", { error, userId, input });
+        throw error;
+      }
+    },
 
     async getUserActivityFeed(_: any, { input }: any, context: any) {
       let userId: string = "";
@@ -248,19 +244,20 @@ const feedResolvers = {
 
     async getFeedComment(_: any, { input }: any, context: any) {
       let userId: string = "";
-      let db: any;
       try {
-        const auth = await checkAuth(context);
-        userId = auth.userId;
-        db = auth.db;
+        const { db, userId: uid } = await checkAuth(context);
+        userId = uid;
 
-        const currentUserId = userId;
+        const { feedId, cursor, limit } = input;
 
         const result = await FeedQueryService.getFeedComment({
-          currentUserId,
-          input,
+          currentUserId: userId,
+          feedId,
+          cursor,
+          limit,
           db,
         });
+
         return result;
       } catch (error) {
         log.error("Error in getFeedComment", { error, userId, input });
@@ -271,14 +268,12 @@ const feedResolvers = {
     async getFeedDetailsById(_: any, { input }: any, context: any) {
       let userId: string = "";
       try {
-        const auth = await checkAuth(context);
-        userId = auth.userId;
-        const { db } = auth;
-        const currentUserId = userId;
+        const { db, userId: uid } = await checkAuth(context);
+        userId = uid;
 
         return await FeedQueryService.getFeedDetailsById({
           feedId: input.id,
-          currentUserId,
+          currentUserId: userId,
           db,
         });
       } catch (error) {
@@ -290,8 +285,6 @@ const feedResolvers = {
     async getPollByIdForUser(_: any, { input }: any, context: any) {
       try {
         const data = await checkAuth(context);
-
-        console.log(input, "sd");
 
         return FeedPollService.getPollByIdForUser({
           input,
@@ -318,13 +311,13 @@ const feedResolvers = {
 
         return result;
       } catch (error) {
-        console.log(error);
+        log.error("Error in getFeedStats", { error, input });
         throw error;
       }
     },
     async getFeedReactions(_: any, { input }: any, context: any) {
       try {
-        const { userId, db } = await checkAuth(context);
+        const { userId: currentUserId, db } = await checkAuth(context);
         const { feedId, offset = 0, limit = 20 } = input;
 
         const reactions = await db
@@ -349,7 +342,7 @@ const feedResolvers = {
 
         return reactions;
       } catch (error) {
-        console.log(error);
+        log.error("Error in getFeedReactions", { error, input });
         throw error;
       }
     },
@@ -379,14 +372,13 @@ const feedResolvers = {
     async addFeed(_: any, { input }: any, context: any) {
       const { userId, db, entityId } = await checkAuth(context);
       try {
-        console.log(input);
         const set = await FeedMutationService.addFeed({
           input,
           userId,
           db,
           entityId,
         });
-        console.log(set);
+
         return set;
       } catch (error) {
         log.error("Error in addFeed", { error, userId, input });
@@ -408,14 +400,14 @@ const feedResolvers = {
         const feed = await CommunityActionsService.createCommunityFeed({
           userId: userId,
           entityId: entityId,
-          groupId: input.groupId,
+          communityId: input.groupId,
           db,
           input: input,
         });
 
         return feed;
       } catch (error) {
-        log.error("Error in addFeedCommunities", { error, user, input });
+        log.error("Error in addFeedCommunities", { error, input });
         throw error;
       }
     },
@@ -580,6 +572,35 @@ const feedResolvers = {
         });
       } catch (error) {
         log.error("Error in voteOnPoll", { error, userId: data.userId, input });
+        throw error;
+      }
+    },
+    async pinFeed(_: any, { input }: any, context: any) {
+      const { userId, db } = await checkAuth(context);
+      try {
+        return await FeedMutationService.pinFeed({
+          feedId: input.feedId,
+          isPinned: input.isPinned,
+          currentUserId: userId,
+          db,
+        });
+      } catch (error) {
+        log.error("Error in pinFeed", { error, userId, input });
+        throw error;
+      }
+    },
+    async editFeedComment(_: any, { input }: any, context: any) {
+      const { userId, db, entityId } = await checkAuth(context);
+      try {
+        return await FeedMutationService.editFeedComment({
+          currentUserId: userId,
+          commentId: input.commentId,
+          content: input.content,
+          db,
+          entity: entityId,
+        });
+      } catch (error) {
+        log.error("Error in editFeedComment", { error, userId, input });
         throw error;
       }
     },

@@ -27,7 +27,7 @@ export class ProfileService {
           "User ID, Entity ID, and Profile ID are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -42,9 +42,9 @@ export class ProfileService {
       });
 
       if (!profile?.profile) {
-        throw new GraphQLError("Profile not found.", {
-          extensions: { code: "NOT_FOUND" },
-        });
+        // throw new GraphQLError("Profile not found.", {
+        //   extensions: { code: "NOT_FOUND" },
+        // });
       }
 
       // Get connections count
@@ -57,8 +57,8 @@ export class ProfileService {
           and(
             eq(connections.entity, entityId),
             eq(connections.connectionStatusEnum, "ACCEPTED"),
-            or(eq(connections.user1, id), eq(connections.user2, id))
-          )
+            or(eq(connections.user1, id), eq(connections.user2, id)),
+          ),
         );
 
       log.debug("Connections count retrieved", {
@@ -80,20 +80,20 @@ export class ProfileService {
           or(
             and(
               eq(connections.user1, id),
-              eq(connections.user2, userToEntity.id)
+              eq(connections.user2, userToEntity.id),
             ),
             and(
               eq(connections.user2, id),
-              eq(connections.user1, userToEntity.id)
-            )
-          )
+              eq(connections.user1, userToEntity.id),
+            ),
+          ),
         )
         .innerJoin(user, eq(userToEntity.userId, user.id))
         .where(
           and(
             eq(connections.entity, entityId),
-            eq(connections.connectionStatusEnum, "ACCEPTED")
-          )
+            eq(connections.connectionStatusEnum, "ACCEPTED"),
+          ),
         )
         .limit(5);
 
@@ -106,8 +106,8 @@ export class ProfileService {
         .where(
           and(
             eq(userFollows.followingId, profile.id),
-            eq(userFollows.entityId, entityId)
-          )
+            eq(userFollows.entityId, entityId),
+          ),
         );
 
       // Get following count
@@ -119,8 +119,8 @@ export class ProfileService {
         .where(
           and(
             eq(userFollows.followerId, profile.id),
-            eq(userFollows.entityId, entityId)
-          )
+            eq(userFollows.entityId, entityId),
+          ),
         );
 
       const {

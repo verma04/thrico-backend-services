@@ -46,11 +46,14 @@ const connectionPools: Map<
 > = new Map();
 const dbInstances: Map<DatabaseRegion, AppDatabase> = new Map();
 
+// Map to track pools by their configuration string to allow sharing across regions
+const poolsByConfig: Map<string, ReturnType<typeof postgres>> = new Map();
+
 /**
  * Get or create a database connection for a specific region
  */
 export function getDb(
-  region: DatabaseRegion = DatabaseRegion.IND
+  region: DatabaseRegion = DatabaseRegion.IND,
 ): AppDatabase {
   // Return cached instance if exists
   if (dbInstances.has(region)) {
@@ -59,28 +62,41 @@ export function getDb(
 
   try {
     const config = getDbConfig(region);
+    const configKey =
+      typeof config === "string" ? config : JSON.stringify(config);
 
     log.info(`Connecting to PostgreSQL database`, { region });
 
-    // Create postgres connection - supports both URL string and config object
-    const sql =
-      typeof config === "string"
-        ? postgres(config, {
-            max: 10,
-            idle_timeout: 20,
-            connect_timeout: 10,
-            ssl: { rejectUnauthorized: false },
-          })
-        : postgres({
-            host: config.host,
-            port: config.port,
-            username: config.user,
-            password: config.password,
-            database: config.database,
-            max: 10,
-            idle_timeout: 20,
-            connect_timeout: 10,
-          });
+    // Check if we already have a pool for this configuration
+    let sql = poolsByConfig.get(configKey);
+
+    if (!sql) {
+      log.info(`Creating new connection pool for config`, { region });
+      // Create postgres connection - supports both URL string and config object
+      // Reduced max connections for development to prevent exhaustion across services
+      sql =
+        typeof config === "string"
+          ? postgres(config, {
+              max: 3,
+              idle_timeout: 10,
+              connect_timeout: 10,
+              ssl: { rejectUnauthorized: false },
+            })
+          : postgres({
+              host: config.host,
+              port: config.port,
+              username: config.user,
+              password: config.password,
+              database: config.database,
+              max: 3,
+              idle_timeout: 10,
+              connect_timeout: 10,
+            });
+
+      poolsByConfig.set(configKey, sql);
+    } else {
+      log.info(`Reusing existing connection pool for region`, { region });
+    }
 
     // Create drizzle instance
     const db: AppDatabase = drizzle(sql, { schema });

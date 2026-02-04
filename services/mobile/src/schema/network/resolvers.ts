@@ -9,7 +9,7 @@ export const networkResolvers = {
       try {
         const { id, db, entityId } = await checkAuth(context);
 
-        return await NetworkService.getNetwork({
+        const data = await NetworkService.getNetwork({
           db,
           currentUserId: id,
           entityId,
@@ -17,6 +17,9 @@ export const networkResolvers = {
           offset: input?.offset || 0,
           search: input?.search || "",
         });
+
+        console.log(data);
+        return data;
       } catch (error: any) {
         log.error("Error in getNetwork", { error, input });
         throw error;
@@ -41,6 +44,22 @@ export const networkResolvers = {
       }
     },
 
+    async getNetworkUserProfile(_: any, { input }: any, context: any) {
+      try {
+        const { db, id, entityId } = await checkAuth(context);
+
+        return await NetworkService.getNetworkUserProfile({
+          db,
+          currentUserId: id,
+          entityId,
+          id: input.id,
+        });
+      } catch (error: any) {
+        log.error("Error in getNetworkUserProfile", { error, input });
+        throw error;
+      }
+    },
+
     async getUserProfile(_: any, { input }: any, context: any) {
       try {
         const { db, id, entityId } = await checkAuth(context);
@@ -49,7 +68,7 @@ export const networkResolvers = {
           db,
           currentUserId: id,
           entityId,
-          id: input.id,
+          userId: input.id,
         });
       } catch (error: any) {
         log.error("Error in getUserProfile", { error, input });
@@ -131,7 +150,7 @@ export const networkResolvers = {
               code: 400,
               http: { status: 400 },
             },
-          }
+          },
         );
       }
     },
@@ -200,7 +219,7 @@ export const networkResolvers = {
               code: 400,
               http: { status: 400 },
             },
-          }
+          },
         );
       }
     },

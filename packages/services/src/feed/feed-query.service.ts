@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, or, sql, asc } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql, asc, isNull } from "drizzle-orm";
 import {
   feedReactions,
   feedWishList,
@@ -19,13 +19,41 @@ import {
   polls,
   celebration,
   offers,
+  userToEntity,
 } from "@thrico/database";
 import { log } from "@thrico/logging";
 import type { FeedQueryParams } from "./types";
 
+interface FeedPermissions {
+  canEdit: boolean;
+  canDelete: boolean;
+  canPin: boolean;
+  canModerate: boolean;
+  canReport: boolean;
+}
+
 export class FeedQueryService {
+  // Calculate feed permissions based on user role and ownership
+  private static calculateFeedPermissions(
+    isOwner: boolean,
+    groupRole?: string | null,
+  ): FeedPermissions {
+    // Group-level permissions (for community feeds)
+    const isGroupAdmin = groupRole === "ADMIN";
+    const isGroupManager = groupRole === "MANAGER";
+    const isGroupModerator = groupRole === "MODERATOR";
+
+    return {
+      canEdit: isOwner,
+      canDelete: isOwner || isGroupAdmin || isGroupManager,
+      canPin: isGroupAdmin || isGroupManager,
+      canModerate: isGroupAdmin || isGroupManager || isGroupModerator,
+      canReport: !isOwner, // Can't report own feed
+    };
+  }
+
   // Helper to set common fields
-  private static async setField(currentUserId: string) {
+  static async setField(currentUserId: string) {
     return {
       id: userFeed.id,
       description: userFeed.description,
@@ -34,6 +62,7 @@ export class FeedQueryService {
       totalComment: userFeed.totalComment,
       totalReactions: userFeed.totalReactions,
       totalReShare: userFeed.totalReShare,
+      isPinned: userFeed.isPinned,
       privacy: userFeed.privacy,
       addedBy: userFeed.addedBy,
       videoUrl: userFeed.videoUrl,
@@ -50,14 +79,17 @@ export class FeedQueryService {
         id: offers.id,
         title: offers.title,
         description: offers.description,
-        discount: offers.discount,
-        image: offers.image,
+        location: offers.location,
+        company: offers.company,
+        timeline: offers.timeline,
       },
+
       user: {
         id: user.id,
         firstName: user.firstName,
         lastName: user.lastName,
         avatar: user.avatar,
+        headline: aboutUser.headline,
       },
       isLiked: sql<boolean>`EXISTS (
         SELECT 1 FROM ${feedReactions}
@@ -75,20 +107,65 @@ export class FeedQueryService {
         WHERE ${media.feedId} = ${userFeed.id}
       )`,
       isOwner: sql<boolean>`${userFeed.userId} = ${currentUserId}`,
+      // Get user's group role for permission calculation
+      groupRole: sql<string | null>`(
+        SELECT ${groupMember.role}
+        FROM ${groupMember}
+        WHERE ${groupMember.userId} = ${currentUserId}
+        AND ${groupMember.groupId} = ${userFeed.groupId}
+        LIMIT 1
+      )`,
     };
   }
 
-  // Get user's own feed
+  // Process feeds and add permissions
+  private static processFeedsWithPermissions(feeds: any[]): any[] {
+    return feeds.map((feed) => {
+      const permissions = this.calculateFeedPermissions(
+        feed.isOwner,
+        feed.groupRole,
+      );
+
+      // Remove the role field from the response
+      const { groupRole, ...feedWithoutRoles } = feed;
+
+      return {
+        ...feedWithoutRoles,
+        permissions,
+      };
+    });
+  }
+
+  // Get user's own feed with cursor-based pagination
   static async getMyFeed({
     currentUserId,
     db,
-    offset = 0,
-    limit = 2,
+    cursor,
+    limit = 20,
     entity,
-  }: FeedQueryParams) {
+  }: {
+    currentUserId: string;
+    db: any;
+    cursor?: string;
+    limit?: number;
+    entity: string;
+  }) {
     try {
       const fields = await this.setField(currentUserId);
 
+      // Build conditions
+      const conditions = [
+        eq(userFeed.userId, currentUserId),
+        eq(userFeed.entity, entity),
+        isNull(userFeed.groupId),
+      ];
+
+      // Add cursor condition if provided
+      if (cursor) {
+        conditions.push(sql`${userFeed.createdAt} < ${new Date(cursor)}`);
+      }
+
+      // Fetch limit + 1 to determine if there's a next page
       const result = await db
         .select({
           ...fields,
@@ -103,20 +180,55 @@ export class FeedQueryService {
         .leftJoin(groups, eq(userFeed.groupId, groups.id))
         .leftJoin(offers, eq(userFeed.offerId, offers.id))
         .leftJoin(aboutUser, eq(user.id, aboutUser.userId))
-        .where(
-          and(eq(userFeed.userId, currentUserId), eq(userFeed.entity, entity))
+        .where(and(...conditions))
+        .orderBy(
+          desc(userFeed.isPinned),
+          desc(userFeed.pinnedAt),
+          desc(userFeed.createdAt),
         )
-        .orderBy(desc(userFeed.createdAt))
-        .limit(limit)
-        .offset(offset);
+        .limit(limit + 1);
 
-      return result;
+      // Determine if there's a next page
+      const hasNextPage = result.length > limit;
+      const nodes = hasNextPage ? result.slice(0, limit) : result;
+
+      // Get total count
+      const [countResult] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(userFeed)
+        .where(
+          and(
+            eq(userFeed.userId, currentUserId),
+            eq(userFeed.entity, entity),
+            isNull(userFeed.groupId),
+          ),
+        );
+
+      const totalCount = Number(countResult?.count || 0);
+
+      // Process feeds with permissions
+      const processedFeeds = this.processFeedsWithPermissions(nodes);
+
+      // Build edges
+      const edges = processedFeeds.map((feed: any) => ({
+        cursor: feed.createdAt.toISOString(),
+        node: feed,
+      }));
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount,
+      };
     } catch (error) {
       log.error("Error in getMyFeed", {
         error,
         currentUserId,
         entity,
-        offset,
+        cursor,
         limit,
       });
       throw error;
@@ -139,7 +251,6 @@ export class FeedQueryService {
       const result = await db
         .select({
           ...fields,
-          repostId: userFeed?.repostId,
           group: {
             id: groups.id,
             title: groups.title,
@@ -154,7 +265,8 @@ export class FeedQueryService {
         .where(eq(userFeed.id, feedId))
         .limit(1);
 
-      return result?.[0] || null;
+      const processed = this.processFeedsWithPermissions(result);
+      return processed?.[0] || null;
     } catch (error) {
       log.error("Error in getFeedDetailsById", {
         error,
@@ -166,17 +278,30 @@ export class FeedQueryService {
   }
 
   // Get communities feed list
+  // Get communities feed list with cursor-based pagination
   static async getCommunitiesFeedList({
     currentUserId,
     db,
     id,
-    offset = 0,
-    limit = 2,
+    cursor,
+    limit = 20,
     entity,
   }: FeedQueryParams & { id: string }) {
     try {
       const fields = await this.setField(currentUserId);
 
+      // Build conditions
+      const conditions = [
+        eq(userFeed.groupId, id),
+        eq(userFeed.entity, entity),
+      ];
+
+      // Add cursor condition if provided
+      if (cursor) {
+        conditions.push(sql`${userFeed.createdAt} < ${new Date(cursor)}`);
+      }
+
+      // Fetch limit + 1 to determine if there's a next page
       const result = await db
         .select({
           ...fields,
@@ -191,19 +316,46 @@ export class FeedQueryService {
         .leftJoin(groups, eq(userFeed.groupId, groups.id))
         .leftJoin(offers, eq(userFeed.offerId, offers.id))
         .leftJoin(aboutUser, eq(user.id, aboutUser.userId))
-        .where(and(eq(userFeed.groupId, id), eq(userFeed.entity, entity)))
+        .where(and(...conditions))
         .orderBy(desc(userFeed.createdAt))
-        .limit(limit)
-        .offset(offset);
+        .limit(limit + 1);
 
-      return result;
+      // Determine if there's a next page
+      const hasNextPage = result.length > limit;
+      const nodes = hasNextPage ? result.slice(0, limit) : result;
+
+      // Get total count
+      const [countResult] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(userFeed)
+        .where(and(eq(userFeed.groupId, id), eq(userFeed.entity, entity)));
+
+      const totalCount = Number(countResult?.count || 0);
+
+      // Process feeds with permissions
+      const processedFeeds = this.processFeedsWithPermissions(nodes);
+
+      // Build edges
+      const edges = processedFeeds.map((feed: any) => ({
+        cursor: feed.createdAt.toISOString(),
+        node: feed,
+      }));
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount,
+      };
     } catch (error) {
       log.error("Error in getCommunitiesFeedList", {
         error,
         currentUserId,
         id,
         entity,
-        offset,
+        cursor,
         limit,
       });
       throw error;
@@ -238,7 +390,7 @@ export class FeedQueryService {
         .orderBy(desc(userFeed.createdAt))
         .limit(50);
 
-      return result;
+      return this.processFeedsWithPermissions(result);
     } catch (error) {
       log.error("Error in getMarketPlaceFeed", { error, currentUserId });
       throw error;
@@ -273,7 +425,7 @@ export class FeedQueryService {
         .orderBy(desc(userFeed.createdAt))
         .limit(50);
 
-      return result;
+      return this.processFeedsWithPermissions(result);
     } catch (error) {
       log.error("Error in getJobFeed", { error, currentUserId });
       throw error;
@@ -297,8 +449,8 @@ export class FeedQueryService {
         .where(
           and(
             eq(connectionsRequest.sender, currentUserId),
-            eq(connectionsRequest.connectionStatusEnum, "PENDING")
-          )
+            eq(connectionsRequest.connectionStatusEnum, "PENDING"),
+          ),
         )
         .union(
           db
@@ -307,9 +459,9 @@ export class FeedQueryService {
             .where(
               and(
                 eq(connections.user1, currentUserId),
-                eq(connections.connectionStatusEnum, "ACCEPTED")
-              )
-            )
+                eq(connections.connectionStatusEnum, "ACCEPTED"),
+              ),
+            ),
         )
         .union(
           db
@@ -318,9 +470,9 @@ export class FeedQueryService {
             .where(
               and(
                 eq(connections.user2, currentUserId),
-                eq(connections.connectionStatusEnum, "ACCEPTED")
-              )
-            )
+                eq(connections.connectionStatusEnum, "ACCEPTED"),
+              ),
+            ),
         );
 
       const result = await db
@@ -349,15 +501,15 @@ export class FeedQueryService {
           and(
             or(
               inArray(userFeed.userId, followingUsersSubQuery),
-              eq(userFeed.userId, currentUserId)
+              eq(userFeed.userId, currentUserId),
             ),
-            eq(userFeed.source, "event")
-          )
+            eq(userFeed.source, "event"),
+          ),
         )
         .orderBy(desc(userFeed.createdAt))
         .limit(50);
 
-      return result;
+      return this.processFeedsWithPermissions(result);
     } catch (error) {
       log.error("Error in getUserEventsFeed", { error, currentUserId });
       throw error;
@@ -365,61 +517,147 @@ export class FeedQueryService {
   }
 
   // Get feed comments
+  // Get feed comments with cursor-based pagination and permissions
   static async getFeedComment({
     currentUserId,
-    input,
+    feedId,
+    cursor,
+    limit = 20,
     db,
   }: {
     currentUserId: string;
-    input: { feedId: string };
+    feedId: string;
+    cursor?: string;
+    limit?: number;
     db: any;
   }) {
     try {
-      const result = await db.query.feedComment.findMany({
-        where: eq(feedComment.feedId, input.feedId),
-        with: {
+      // Build conditions
+      const conditions = [eq(feedComment.feedId, feedId)];
+
+      // Add cursor condition if provided
+      if (cursor) {
+        conditions.push(sql`${feedComment.createdAt} < ${new Date(cursor)}`);
+      }
+
+      // Fetch comments along with post owner, group ID, and current user's role in that group
+      const result = await db
+        .select({
+          id: feedComment.id,
+          content: feedComment.content,
+          createdAt: feedComment.createdAt,
           user: {
-            with: {
-              about: true,
+            id: user.id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            avatar: user.avatar,
+            about: {
+              headline: aboutUser.headline,
             },
           },
-          replies: {
-            with: {
-              user: {
-                with: {
-                  about: true,
-                },
-              },
-            },
+          postOwnerId: userFeed.userId,
+          commentAuthorId: feedComment.user,
+          currentUserRole: groupMember.role,
+        })
+        .from(feedComment)
+        .leftJoin(user, eq(feedComment.user, user.id))
+        .leftJoin(aboutUser, eq(user.id, aboutUser.userId))
+        .leftJoin(userFeed, eq(feedComment.feedId, userFeed.id))
+        .leftJoin(
+          groupMember,
+          and(
+            eq(userFeed.groupId, groupMember.groupId),
+            eq(groupMember.userId, currentUserId),
+          ),
+        )
+        .where(and(...conditions))
+        .orderBy(desc(feedComment.createdAt))
+        .limit(limit + 1);
+
+      // Determine if there's a next page
+      const hasNextPage = result.length > limit;
+      const nodes = hasNextPage ? result.slice(0, limit) : result;
+
+      // Get total count
+      const [countResult] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(feedComment)
+        .where(eq(feedComment.feedId, feedId));
+
+      const totalCount = Number(countResult?.count || 0);
+
+      // Map results and calculate permissions
+      const processedComments = nodes.map((comment: any) => {
+        const isCommentAuthor = comment.commentAuthorId === currentUserId;
+        const isPostOwner = comment.postOwnerId === currentUserId;
+        const isAdmin = ["ADMIN", "MANAGER", "MODERATOR"].includes(
+          comment.currentUserRole || "",
+        );
+
+        return {
+          id: comment.id,
+          content: comment.content,
+          createdAt: comment.createdAt,
+          user: comment.user,
+          isOwner: isCommentAuthor,
+          isPostOwner: isPostOwner,
+          permissions: {
+            canDelete: isCommentAuthor || isPostOwner || isAdmin,
+            canEdit: isCommentAuthor,
+            canReport: !isCommentAuthor,
           },
-        },
-        orderBy: [desc(feedComment.createdAt)],
+        };
       });
 
-      return result;
+      // Build edges
+      const edges = processedComments.map((comment: any) => ({
+        cursor: comment.createdAt.toISOString(),
+        node: comment,
+      }));
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount,
+      };
     } catch (error) {
-      log.error("Error in getFeedComment", { error, currentUserId, input });
+      log.error("Error in getFeedComment", { error, currentUserId, feedId });
       throw error;
     }
   }
 
-  // Get user feed (all posts from a specific user)
+  // Get user feed (all posts from entity) with cursor-based pagination
   static async getUserFeed({
     currentUserId,
     db,
-    offset = 0,
-    limit = 10,
+    cursor,
+    limit = 20,
     entity,
   }: {
     currentUserId: string;
     db: any;
-    offset?: number;
+    cursor?: string;
     limit?: number;
     entity: string;
   }) {
     try {
       const fields = await this.setField(currentUserId);
 
+      // Build conditions
+      const conditions = [
+        eq(userFeed.entity, entity),
+        isNull(userFeed.groupId),
+      ];
+
+      // Add cursor condition if provided
+      if (cursor) {
+        conditions.push(sql`${userFeed.createdAt} < ${new Date(cursor)}`);
+      }
+
+      // Fetch limit + 1 to determine if there's a next page
       const result = await db
         .select({
           ...fields,
@@ -452,25 +690,51 @@ export class FeedQueryService {
         .from(userFeed)
         .leftJoin(user, eq(userFeed.userId, user.id))
         .leftJoin(groups, eq(userFeed.groupId, groups.id))
+        .leftJoin(marketPlace, eq(userFeed.marketPlaceId, marketPlace.id))
         .leftJoin(jobs, eq(userFeed.jobId, jobs.id))
         .leftJoin(polls, eq(userFeed.pollId, polls.id))
         .leftJoin(offers, eq(userFeed.offerId, offers.id))
         .leftJoin(celebration, eq(userFeed.celebrationId, celebration.id))
         .leftJoin(aboutUser, eq(user.id, aboutUser.userId))
-        .where(eq(userFeed.entity, entity))
+        .where(and(...conditions))
         .orderBy(desc(userFeed.createdAt))
-        .limit(limit)
-        .offset(offset);
+        .limit(limit + 1);
 
-      console.log(result.length);
+      // Determine if there's a next page
+      const hasNextPage = result.length > limit;
+      const nodes = hasNextPage ? result.slice(0, limit) : result;
 
-      return result;
+      // Get total count
+      const [countResult] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(userFeed)
+        .where(and(eq(userFeed.entity, entity), isNull(userFeed.groupId)));
+
+      const totalCount = Number(countResult?.count || 0);
+
+      // Process feeds with permissions
+      const processedFeeds = this.processFeedsWithPermissions(nodes);
+
+      // Build edges
+      const edges = processedFeeds.map((feed: any) => ({
+        cursor: feed.createdAt.toISOString(),
+        node: feed,
+      }));
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount,
+      };
     } catch (error) {
       log.error("Error in getUserFeed", {
         error,
         currentUserId,
         entity,
-        offset,
+        cursor,
         limit,
       });
       throw error;
@@ -509,7 +773,7 @@ export class FeedQueryService {
         .orderBy(desc(userFeed.createdAt))
         .limit(50);
 
-      return result;
+      return this.processFeedsWithPermissions(result);
     } catch (error) {
       log.error("Error in getUserActivityFeed", {
         error,
@@ -549,15 +813,15 @@ export class FeedQueryService {
         .leftJoin(aboutUser, eq(user.id, aboutUser.userId))
         .leftJoin(
           groupMember,
-          sql`${userFeed.groupId} = ${groupMember.groupId}`
+          sql`${userFeed.groupId} = ${groupMember.groupId}`,
         )
         .where(
-          sql`${groupMember.userId} = ${currentUserId} AND ${userFeed.groupId} IS NOT NULL`
+          sql`${groupMember.userId} = ${currentUserId} AND ${userFeed.groupId} IS NOT NULL`,
         )
         .orderBy(desc(userFeed.createdAt))
         .limit(50);
 
-      return result;
+      return this.processFeedsWithPermissions(result);
     } catch (error) {
       log.error("Error in getCommunitiesFeed", { error, currentUserId });
       throw error;

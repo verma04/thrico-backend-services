@@ -24,6 +24,7 @@ import {
   CommunityManagementService,
 } from "@thrico/services";
 import { BaseCommunityService } from "@thrico/services/dist/community/base.service";
+import { logger } from "@thrico/logging";
 
 interface AuthContext {
   db: AppDatabase;
@@ -32,7 +33,7 @@ interface AuthContext {
   userId?: string;
 }
 
-const communitiesResolvers = {
+const communitiesResolvers: any = {
   Query: {
     async getCommunityDetails(_: any, { input }: any, context: AuthContext) {
       try {
@@ -46,7 +47,7 @@ const communitiesResolvers = {
           db,
         });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in getCommunityDetails: ${error}`);
         throw error;
       }
     },
@@ -55,7 +56,7 @@ const communitiesResolvers = {
       try {
         const { db, id, userId } = await checkAuth(context);
 
-        console.log(input);
+        logger.info(`Tracking community view for group ${input.id}`);
         await BaseCommunityService.trackCommunityView({
           userId,
           groupId: input.id,
@@ -64,7 +65,7 @@ const communitiesResolvers = {
 
         return true;
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in trackCommunityView: ${error}`);
         throw error;
       }
     },
@@ -89,8 +90,8 @@ const communitiesResolvers = {
           .where(
             and(
               eq(groupMember.groupId, groupId),
-              sql`${user.updatedAt} >= NOW() - INTERVAL '30 days'`
-            )
+              sql`${user.updatedAt} >= NOW() - INTERVAL '30 days'`,
+            ),
           );
 
         // Posts this month: count posts in this group created in current month
@@ -131,7 +132,7 @@ const communitiesResolvers = {
           }
 
           return `${status} - ${description}  on ${moment(createdAt).format(
-            "YYYY-MM-DD HH:mm:ss"
+            "YYYY-MM-DD HH:mm:ss",
           )} (Status: ${type})`;
         });
 
@@ -143,7 +144,7 @@ const communitiesResolvers = {
           recentActivity,
         };
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in getCommunityAnalytics: ${error}`);
         throw error;
       }
     },
@@ -156,10 +157,12 @@ const communitiesResolvers = {
           groupId,
           db,
         });
-        console.log(result);
+        logger.info(
+          `Fetched ${result.length} join requests for group ${groupId}`,
+        );
         return result;
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in getGroupJoinRequests: ${error}`);
         throw error;
       }
     },
@@ -169,7 +172,7 @@ const communitiesResolvers = {
 
         // return communityTypeEnum?.enumValues;
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in getCommunitiesModeType: ${error}`);
         throw error;
       }
     },
@@ -198,7 +201,7 @@ const communitiesResolvers = {
         const admin = await db.query.groupMember.findMany({
           where: and(
             eq(groupMember.groupId, groupId),
-            eq(groupMember.role, "ADMIN")
+            eq(groupMember.role, "ADMIN"),
           ),
           with: {
             user: {
@@ -211,7 +214,7 @@ const communitiesResolvers = {
             },
           },
         });
-        console.log(admin);
+        logger.info(`Fetched admin info for group ${groupId}`);
         // Fetch post rating summary
         // const postRatingSummary =
         //   await CommunityService.comm({
@@ -236,7 +239,43 @@ const communitiesResolvers = {
           postRatingSummary: {}, // Placeholder
         };
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in getCommunityAboutById: ${error}`);
+        throw error;
+      }
+    },
+    async getCommunityReportReasons(_: any, {}: any, context: AuthContext) {
+      try {
+        context;
+
+        // Return available report reasons
+        return Object.values({
+          INAPPROPRIATE_CONTENT: "Inappropriate Content",
+          SPAM: "Spam",
+          HARASSMENT: "Harassment",
+          FAKE_COMMUNITY: "Fake Community",
+          VIOLENCE: "Violence",
+          HATE_SPEECH: "Hate Speech",
+          SCAM_FRAUD: "Scam/Fraud",
+          COPYRIGHT_VIOLATION: "Copyright Violation",
+          MISINFORMATION: "Misinformation",
+          OTHER: "Other",
+        }).map((label, index) => ({
+          value: Object.keys({
+            INAPPROPRIATE_CONTENT: "Inappropriate Content",
+            SPAM: "Spam",
+            HARASSMENT: "Harassment",
+            FAKE_COMMUNITY: "Fake Community",
+            VIOLENCE: "Violence",
+            HATE_SPEECH: "Hate Speech",
+            SCAM_FRAUD: "Scam/Fraud",
+            COPYRIGHT_VIOLATION: "Copyright Violation",
+            MISINFORMATION: "Misinformation",
+            OTHER: "Other",
+          })[index],
+          label,
+        }));
+      } catch (error) {
+        logger.error(`Error in getCommunityReportReasons: ${error}`);
         throw error;
       }
     },
@@ -247,7 +286,7 @@ const communitiesResolvers = {
 
         return privacyEnum?.enumValues;
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in getCommunitiesPrivacyEnum: ${error}`);
         throw error;
       }
     },
@@ -257,7 +296,7 @@ const communitiesResolvers = {
         const { id, entityId, db, userId } = await checkAuth(context);
         const currentUserId = userId;
 
-        const page = input?.page || 1;
+        const cursor = input?.cursor;
         const limit = input?.limit || 10;
         const filters = input?.filters || {};
         const searchTerm = input?.searchTerm;
@@ -266,127 +305,130 @@ const communitiesResolvers = {
           currentUserId,
           entityId,
           db,
-          page,
+          cursor,
           limit,
-
           searchTerm,
+          filters,
         });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in getAllCommunities: ${error}`);
         throw error;
       }
     },
 
     async getCommunitiesByUserId(_: any, { input }: any, context: any) {
       try {
-        const { id, entityId, db } = await checkAuth(context);
-
-        const page = input?.page || 1;
-        const limit = input?.limit || 10;
-        const filters = input?.filters || {};
-        const searchTerm = input?.searchTerm;
+        const { entityId, db } = await checkAuth(context);
 
         return CommunityQueryService.getCommunitiesByUserId({
-          userId: input.userId,
           entityId,
           db,
-          page,
-          limit,
-          searchTerm,
+          ...input,
         });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in getCommunitiesByUserId: ${error}`);
         throw error;
       }
     },
 
     async getMyOwnedCommunities(_: any, { input }: any, context: any) {
       try {
-        const { id, entityId, db, userId } = await checkAuth(context);
+        const { entityId, db, userId } = await checkAuth(context);
         const currentUserId = userId;
-
-        const page = input?.page || 1;
-        const limit = input?.limit || 10;
-        const filters = input?.filters || {};
-        const searchTerm = input?.searchTerm;
 
         return CommunityQueryService.getMyOwnedCommunities({
           currentUserId,
           entityId,
           db,
-          page,
-          limit,
-
-          searchTerm,
+          ...input,
         });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in getMyOwnedCommunities: ${error}`);
         throw error;
       }
     },
 
     async getFeaturedCommunities(_: any, { input }: any, context: any) {
       try {
-        const { id, entityId, db, userId } = await checkAuth(context);
+        const { entityId, db, userId } = await checkAuth(context);
         const currentUserId = userId;
-
-        const page = input?.page || 1;
-        const limit = input?.limit || 10;
-        const searchTerm = input?.searchTerm;
 
         return CommunityQueryService.getFeaturedCommunities({
           currentUserId,
           entityId,
           db,
-          page,
-          limit,
-          searchTerm,
+          ...input,
         });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in getFeaturedCommunities: ${error}`);
         throw error;
       }
     },
 
     async getTrendingCommunities(_: any, { input }: any, context: any) {
       try {
-        const { id, entityId, db, userId } = await checkAuth(context);
+        const { entityId, db, userId } = await checkAuth(context);
         const currentUserId = userId;
-
-        const page = input?.page || 1;
-        const limit = input?.limit || 10;
-        const searchTerm = input?.searchTerm;
 
         return CommunityQueryService.getTrendingCommunities({
           currentUserId,
           entityId,
           db,
-          page,
-          limit,
-          searchTerm,
+          ...input,
         });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in getTrendingCommunities: ${error}`);
         throw error;
       }
     },
 
     async getMyCommunities(_: any, { input }: any, context: any) {
       try {
-        const { id, entityId, db, userId } = await checkAuth(context);
+        const { entityId, db, userId } = await checkAuth(context);
         const currentUserId = userId;
-
-        const page = input?.page || 1;
-        const limit = input?.limit || 10;
-        const searchTerm = input?.searchTerm;
 
         return CommunityQueryService.getMyJoinedCommunities({
           currentUserId,
           entityId,
           db,
-          page,
-          limit,
-          searchTerm,
+          ...input,
+        });
+      } catch (error) {
+        logger.error(`Error in getMyCommunities: ${error}`);
+        throw error;
+      }
+    },
+
+    async getSavedCommunities(_: any, { input }: any, context: any) {
+      try {
+        const { entityId, db, userId } = await checkAuth(context);
+        const currentUserId = userId;
+
+        return CommunityQueryService.getMySavedCommunities({
+          currentUserId,
+          entityId,
+          db,
+          ...input,
+        });
+      } catch (error) {
+        logger.error(`Error in getSavedCommunities: ${error}`);
+        throw error;
+      }
+    },
+
+    async getCommunityRatings(_: any, { input }: any, context: any) {
+      try {
+        const { userId, entityId, db } = await checkAuth(context);
+
+        return CommunityRatingService.getCommunityRatings({
+          groupId: input.communityId,
+          entityId,
+          currentUserId: userId,
+          cursor: input.cursor,
+          limit: input.limit || 10,
+          sortBy: input.sortBy || "newest",
+          verifiedOnly: input.verifiedOnly || false,
+          db,
         });
       } catch (error) {
         console.log(error);
@@ -394,25 +436,115 @@ const communitiesResolvers = {
       }
     },
 
-    async getSavedCommunities(_: any, { input }: any, context: any) {
+    async getCommunityRatingSummary(_: any, { input }: any, context: any) {
       try {
-        const { id, entityId, db, userId } = await checkAuth(context);
-        const currentUserId = userId;
+        const { db } = await checkAuth(context);
 
-        const page = input?.page || 1;
-        const limit = input?.limit || 10;
-        const searchTerm = input?.searchTerm;
-
-        return CommunityQueryService.getMySavedCommunities({
-          currentUserId,
-          entityId,
+        return CommunityRatingService.getCommunityRatingSummary({
+          groupId: input.id,
           db,
-          page,
-          limit,
-          searchTerm,
         });
       } catch (error) {
         console.log(error);
+        throw error;
+      }
+    },
+
+    async getCommunitiesFeedList(_: any, { input }: any, context: any) {
+      try {
+        const { userId, db, entityId } = await checkAuth(context);
+        const { cursor, limit } = input;
+
+        const data = await CommunityActionsService.getCommunityFeeds({
+          communityId: input?.id,
+          currentUserId: userId,
+          limit,
+          cursor,
+          entityId: entityId,
+          db,
+        });
+
+        return data;
+      } catch (error) {
+        logger.error(`Error in getCommunitiesFeedList: ${error}`);
+        throw error;
+      }
+    },
+
+    async getPendingFeedCommunities(_: any, { input }: any, context: any) {
+      try {
+        const { userId, db, entityId } = await checkAuth(context);
+        const { cursor, limit } = input;
+
+        const data = await CommunityActionsService.getCommunityFeeds({
+          communityId: input?.id,
+          currentUserId: userId,
+          status: "PENDING",
+          limit,
+          cursor,
+          entityId: entityId,
+          db,
+        });
+
+        return data;
+      } catch (error) {
+        logger.error(`Error in getPendingFeedCommunities: ${error}`);
+        throw error;
+      }
+    },
+
+    async getAllPinnedFeeds(_: any, { input }: any, context: any) {
+      try {
+        const { userId, db, entityId } = await checkAuth(context);
+        const { cursor, limit } = input;
+
+        // return CommunityActionsService.getAllPinnedFeeds({
+        //   communityId: input?.id,
+        //   currentUserId: userId,
+        //   limit,
+        //   cursor,
+        //   entityId,
+        //   db,
+        // });
+      } catch (error) {
+        logger.error(`Error in getAllPinnedFeeds: ${error}`);
+        throw error;
+      }
+    },
+
+    async getAllFlaggedFeeds(_: any, { input }: any, context: any) {
+      try {
+        const { userId, db, entityId } = await checkAuth(context);
+        const { cursor, limit } = input;
+
+        // return CommunityActionsService.getAllFlaggedFeeds({
+        //   communityId: input?.id,
+        //   currentUserId: userId,
+        //   limit,
+        //   cursor,
+        //   entityId,
+        //   db,
+        // });
+      } catch (error) {
+        logger.error(`Error in getAllFlaggedFeeds: ${error}`);
+        throw error;
+      }
+    },
+
+    async getMyJoinedCommunitiesFeed(_: any, { input }: any, context: any) {
+      try {
+        const { userId, db, entityId } = await checkAuth(context);
+        const { cursor, limit } = input;
+
+        return CommunityActionsService.getMyJoinedCommunitiesFeed({
+          userId,
+          entityId,
+          limit,
+          cursor,
+          db,
+        });
+      } catch (error) {
+        logger.error(`Error in getMyJoinedCommunitiesFeed: ${error}`);
         throw error;
       }
     },
@@ -431,7 +563,7 @@ const communitiesResolvers = {
           input,
         });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in createCommunities: ${error}`);
         throw error;
       }
     },
@@ -439,7 +571,7 @@ const communitiesResolvers = {
     async deleteCommunityFeed(_: any, { input }: any, context: any) {
       const { userId, db } = await checkAuth(context);
 
-      console.log(input);
+      logger.info(`Deleting community feed: ${input.id}`);
       try {
         await CommunityActionsService.deleteCommunityFeed({
           feedId: input.id,
@@ -451,7 +583,72 @@ const communitiesResolvers = {
           id: input.id,
         };
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in deleteCommunityFeed: ${error}`);
+        throw error;
+      }
+    },
+
+    async deleteFeedCommunities(_: any, { input }: any, context: any) {
+      try {
+        const { userId, db } = await checkAuth(context);
+
+        return CommunityActionsService.deleteFeedCommunities({
+          feedId: input.id,
+          userId,
+          db,
+        });
+      } catch (error) {
+        logger.error(`Error in deleteFeedCommunities: ${error}`);
+        throw error;
+      }
+    },
+
+    async pinCommunityFeed(_: any, { input }: any, context: any) {
+      try {
+        const { userId, db } = await checkAuth(context);
+
+        return CommunityActionsService.togglePinFeed({
+          userId,
+          feedId: input.feedId,
+          groupId: input.communityId,
+          db,
+          action: "PIN",
+        });
+      } catch (error) {
+        logger.error(`Error in pinCommunityFeed: ${error}`);
+        throw error;
+      }
+    },
+
+    async unpinCommunityFeed(_: any, { input }: any, context: any) {
+      try {
+        const { userId, db } = await checkAuth(context);
+
+        return CommunityActionsService.togglePinFeed({
+          userId,
+          feedId: input.feedId,
+          groupId: input.communityId,
+          db,
+          action: "UNPIN",
+        });
+      } catch (error) {
+        logger.error(`Error in unpinCommunityFeed: ${error}`);
+        throw error;
+      }
+    },
+
+    async approveCommunityFeed(_: any, { input }: any, context: any) {
+      try {
+        const { userId, db } = await checkAuth(context);
+
+        return CommunityActionsService.approveCommunityFeed({
+          userId,
+          feedId: input.feedId,
+          communityId: input.communityId,
+          db,
+        });
+      } catch (error) {
+        logger.error(`Error in approveCommunityFeed: ${error}`);
         throw error;
       }
     },
@@ -466,7 +663,7 @@ const communitiesResolvers = {
           input,
         });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in editCommunity: ${error}`);
         throw error;
       }
     },
@@ -475,7 +672,6 @@ const communitiesResolvers = {
       try {
         const { id, entityId, db, userId } = await checkAuth(context);
 
-        console.log(input);
         return CommunityActionsService.joinCommunity({
           userId,
           groupId: input.id,
@@ -484,7 +680,7 @@ const communitiesResolvers = {
           db,
         });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in joinCommunity: ${error}`);
         throw error;
       }
     },
@@ -492,7 +688,7 @@ const communitiesResolvers = {
     async wishListCommunity(_: any, { input }: any, context: any) {
       const { db, id, entityId, userId } = await checkAuth(context);
 
-      console.log(input);
+      logger.info(`Toggling community wishlist for group: ${input.id}`);
       try {
         return CommunityActionsService.toggleCommunityWishlist({
           userId,
@@ -501,7 +697,7 @@ const communitiesResolvers = {
           db,
         });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in wishListCommunity: ${error}`);
         throw error;
       }
     },
@@ -518,7 +714,7 @@ const communitiesResolvers = {
           db,
         });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in toggleCommunityWishlist: ${error}`);
         throw error;
       }
     },
@@ -531,29 +727,50 @@ const communitiesResolvers = {
 
         return CommunityRatingService.addCommunityRating({
           userId,
-          groupId: input.groupId,
+          groupId: input.communityId,
           entityId,
           rating: input.rating.toString() as "1" | "2" | "3" | "4" | "5",
           review: input.review,
           db,
         });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in addCommunityRating: ${error}`);
+        throw error;
+      }
+    },
+
+    async updateCommunityRating(_: any, { input }: any, context: any) {
+      try {
+        const { userId, entityId, db } = await checkAuth(context);
+
+        return CommunityRatingService.updateCommunityRating({
+          ratingId: input.id,
+          userId,
+          groupId: input.communityId,
+          entityId,
+          rating: input.rating.toString() as "1" | "2" | "3" | "4" | "5",
+          review: input.review,
+          db,
+        });
+      } catch (error) {
+        logger.error(`Error in updateCommunityRating: ${error}`);
         throw error;
       }
     },
 
     async deleteCommunityRating(_: any, { input }: any, context: any) {
       try {
-        const { db, id, userId } = await checkAuth(context);
+        const { db, id, userId, entityId } = await checkAuth(context);
 
-        // return CommunityRatingService.deleteCommunityRating({
-        //   ratingId: input.id,
-        //   userId,
-        //   db,
-        // });
+        return CommunityRatingService.deleteCommunityRating({
+          ratingId: input.id,
+          userId,
+          db,
+          groupId: input.communityId,
+          entityId: entityId,
+        });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in deleteCommunityRating: ${error}`);
         throw error;
       }
     },
@@ -569,7 +786,7 @@ const communitiesResolvers = {
         //   db,
         // });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in voteRatingHelpfulness: ${error}`);
         throw error;
       }
     },
@@ -586,7 +803,7 @@ const communitiesResolvers = {
         //   db,
         // });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in verifyRating: ${error}`);
         throw error;
       }
     },
@@ -607,7 +824,7 @@ const communitiesResolvers = {
           db,
         });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in addCommunityMedia: ${error}`);
         throw error;
       }
     },
@@ -625,7 +842,7 @@ const communitiesResolvers = {
         //   db,
         // });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in updateCommunityMedia: ${error}`);
         throw error;
       }
     },
@@ -640,7 +857,7 @@ const communitiesResolvers = {
         //   db,
         // });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in deleteCommunityMedia: ${error}`);
         throw error;
       }
     },
@@ -656,7 +873,7 @@ const communitiesResolvers = {
         //   db,
         // });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in reorderCommunityMedia: ${error}`);
         throw error;
       }
     },
@@ -677,7 +894,7 @@ const communitiesResolvers = {
           db,
         });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in updateMemberRole: ${error}`);
         throw error;
       }
     },
@@ -696,7 +913,7 @@ const communitiesResolvers = {
           db,
         });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in removeMemberFromCommunity: ${error}`);
         throw error;
       }
     },
@@ -706,15 +923,15 @@ const communitiesResolvers = {
         const { db, id, entityId, userId } = await checkAuth(context);
         const currentUserId = userId;
 
+        logger.info(`User ${currentUserId} leaving community ${input.groupId}`);
         // Use the same service method with memberId = currentUserId
         return CommunityActionsService.leaveCommunity({
           groupId: input.groupId,
           userId: currentUserId,
-
           db,
         });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in leaveCommunity: ${error}`);
         throw error;
       }
     },
@@ -774,7 +991,7 @@ const communitiesResolvers = {
           results,
         };
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in bulkUpdateMemberRoles: ${error}`);
         throw error;
       }
     },
@@ -823,7 +1040,7 @@ const communitiesResolvers = {
           results,
         };
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in bulkRemoveMembers: ${error}`);
         throw error;
       }
     },
@@ -844,8 +1061,8 @@ const communitiesResolvers = {
           .where(
             and(
               eq(groupMember.groupId, input.groupId),
-              eq(groupMember.userId, currentUserId)
-            )
+              eq(groupMember.userId, currentUserId),
+            ),
           );
 
         return {
@@ -853,7 +1070,7 @@ const communitiesResolvers = {
           message: "Member activity updated",
         };
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in updateMemberActivity: ${error}`);
         throw error;
       }
     },
@@ -871,7 +1088,7 @@ const communitiesResolvers = {
           db,
         });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in respondToJoinRequest: ${error}`);
         throw error;
       }
     },
@@ -889,7 +1106,7 @@ const communitiesResolvers = {
           db,
         });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in reportCommunity: ${error}`);
         throw error;
       }
     },
@@ -905,10 +1122,11 @@ const communitiesResolvers = {
           db,
         });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in withdrawJoinRequest: ${error}`);
         throw error;
       }
     },
+
     // ...existing mutations...
   },
 };
@@ -926,6 +1144,27 @@ const communityMemberResolvers: any = {
           viewerId,
           entityId,
           db,
+        });
+      } catch (error) {
+        logger.error(`Error in getCommunityMemberStats: ${error}`);
+        throw error;
+      }
+    },
+    async getCommunityMembersWithRoles(_: any, { input }: any, context: any) {
+      try {
+        const { db, id, entityId, userId } = await checkAuth(context);
+        const currentUserId = userId;
+
+        return CommunityMemberService.getCommunityMembersWithRoles({
+          groupId: input.groupId,
+          currentUserId,
+          entityId,
+          db,
+          page: input.page || 1,
+          limit: input.limit || 20,
+          role: input.role,
+          searchTerm: input.searchTerm,
+          sortBy: input.sortBy || "newest",
         });
       } catch (error) {
         console.log(error);
@@ -949,7 +1188,7 @@ const communityMemberResolvers: any = {
           db,
         });
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in getCommunityMembersWithStats: ${error}`);
         throw error;
       }
     },
@@ -965,6 +1204,40 @@ const communityMemberResolvers: any = {
           period: input.period || "all",
           category: input.category || "overall",
           limit: input.limit || 10,
+          db,
+        });
+      } catch (error) {
+        logger.error(`Error in getCommunityLeaderboard: ${error}`);
+        throw error;
+      }
+    },
+
+    async getPendingJoinRequests(_: any, { input }: any, context: any) {
+      try {
+        const { db, userId, entityId } = await checkAuth(context);
+
+        return await CommunityMemberService.getPendingJoinRequests({
+          groupId: input.id,
+          currentUserId: userId,
+          entityId,
+          db,
+          cursor: input.cursor,
+          limit: input.limit || 20,
+        });
+      } catch (error) {
+        console.log(error);
+        throw error;
+      }
+    },
+
+    async getPendingJoinRequestsCount(_: any, { input }: any, context: any) {
+      try {
+        const { db, userId, entityId } = await checkAuth(context);
+
+        return await CommunityMemberService.getPendingJoinRequestsCount({
+          groupId: input.id,
+          currentUserId: userId,
+          entityId,
           db,
         });
       } catch (error) {

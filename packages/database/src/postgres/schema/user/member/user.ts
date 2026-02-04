@@ -16,14 +16,13 @@ import {
 
 import { events } from "../events";
 import { groupRequest, groupMember, groupView } from "../communities";
-import { feedReactions, media, userFeed } from "../feed";
+import { feedComment, feedReactions, media, userFeed } from "../feed";
 import { marketPlace } from "../marketPlace";
 import { entity } from "../../tenant/entity/details";
 import { gender, userEntityStatus, userPronounsStatus } from "../enum";
 import { pollResults } from "../polls";
 import { discussionForumComment } from "../discussion-forum";
 import { gamificationUser } from "../gamification";
-import { int } from "drizzle-orm/mysql-core";
 
 export const user = pgTable(
   "thricoUser",
@@ -47,33 +46,8 @@ export const user = pgTable(
     return {
       unq: unique().on(table.thricoId, table.entityId),
     };
-  }
+  },
 );
-
-export const userRelations = relations(user, ({ one, many }) => ({
-  profile: one(userProfile),
-  about: one(aboutUser),
-  gamification: one(gamificationUser),
-  relations: many(feedReactions),
-  userEntity: one(userToEntity),
-  discussionForumComment: one(discussionForumComment),
-  otp: one(userOtp),
-  resume: many(userToEntity),
-  marketPlaceListing: many(marketPlace),
-  location: many(userLocation),
-
-  entity: one(entity, {
-    fields: [user.entityId],
-    references: [entity.id],
-  }),
-  warnings: many(warnings),
-  feed: many(userFeed),
-  pollResult: many(pollResults),
-  media: many(media),
-  groupMember: many(groupMember),
-  groupRequest: many(groupRequest),
-  groupViews: many(groupView),
-}));
 
 export const warnings = pgTable("warnings", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -186,7 +160,7 @@ export const userToEntity = pgTable(
     return {
       unq: unique().on(table.userId, table.entityId),
     };
-  }
+  },
 );
 
 export const userToEntityRelations = relations(
@@ -218,7 +192,7 @@ export const userToEntityRelations = relations(
       fields: [userToEntity.entityId],
       references: [entity.id],
     }),
-  })
+  }),
 );
 
 export const userKyc = pgTable("userKycs", {
@@ -256,7 +230,7 @@ export const userConnection = pgTable(
       unq: unique().on(table.followingId, table.followerId),
       unq2: unique("userConnection").on(table.followingId, table.followerId),
     };
-  }
+  },
 );
 
 export const userConnectionRelations = relations(
@@ -272,7 +246,7 @@ export const userConnectionRelations = relations(
       references: [userToEntity.userId],
       relationName: "followers",
     }),
-  })
+  }),
 );
 
 export const userRequest = pgTable(
@@ -289,7 +263,7 @@ export const userRequest = pgTable(
       unq: unique().on(table.userId, table.senderId),
       unq2: unique("userRequest").on(table.userId, table.senderId),
     };
-  }
+  },
 );
 
 export const userRequestRelations = relations(userRequest, ({ one, many }) => ({
@@ -357,5 +331,30 @@ export const userVerificationRelations = relations(
       fields: [userVerification.userId],
       references: [userToEntity.id],
     }),
-  })
+  }),
 );
+
+export const userRelations = relations(user, ({ one, many }) => ({
+  profile: one(userProfile),
+  about: one(aboutUser),
+  gamification: one(gamificationUser),
+  relations: many(feedReactions),
+  userEntity: one(userToEntity),
+  discussionForumComment: one(discussionForumComment),
+  otp: one(userOtp),
+  resume: many(userToEntity),
+  marketPlaceListing: many(marketPlace),
+  location: many(userLocation),
+  feedComment: many(feedComment),
+  entity: one(entity, {
+    fields: [user.entityId],
+    references: [entity.id],
+  }),
+  warnings: many(warnings),
+  feed: many(userFeed),
+  pollResult: many(pollResults),
+  media: many(media),
+  groupMember: many(groupMember),
+  groupRequest: many(groupRequest),
+  groupViews: many(groupView),
+}));

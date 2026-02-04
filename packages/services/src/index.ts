@@ -1,8 +1,17 @@
 // Export all services
-export { SurveyService } from "./survey/survey.service";
+export {
+  SurveyService,
+  SurveyTemplate,
+  SurveyTemplateQuestion,
+} from "./survey/survey.service";
+export { CustomFormService } from "./survey/custom-form.service";
 export { StoryService } from "./story/story.service";
 export { ProfileService } from "./profile/profile.service";
 export { NotificationService } from "./notification/notification.service";
+export {
+  FirebaseService,
+  PushNotificationPayload,
+} from "./notification/firebase";
 export { MentorshipService } from "./mentorship/mentorship.service";
 export { NetworkService } from "./network/network.service";
 export { JobService } from "./job/job.service";
@@ -41,6 +50,8 @@ export { GamificationEventService } from "./gamification/gamification-event.serv
 export { default as generateSlug } from "./generateSlug";
 export * from "./utils/common.utils";
 export { upload } from "./upload";
+export { RabbitMQService } from "./utils/rabbitmq.service";
+export { ModerationPublisher } from "./utils/moderation-publisher";
 export * from "./feed/types";
 
 // Export types

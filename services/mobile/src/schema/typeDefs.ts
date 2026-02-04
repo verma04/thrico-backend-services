@@ -65,6 +65,7 @@ export const typeDefs = `#graphql
     deviceType: String
     deviceToken: String
     deviceName: String
+    deviceOs: String
     country: String!
   }
   input inputSwitchAccount {
@@ -158,5 +159,16 @@ export const typeDefs = `#graphql
     chooseAccountSignup(input: inputAccount): chooseAccount
     switchAccount(input: inputSwitchAccount): chooseAccount
     signupWithEmail(input: inputSignup): success # Add signup mutation
+    registerDeviceToken(token: String!, deviceId: String, deviceOs: String): GenericResponse
+    updateActiveEntity(entityId: ID!): GenericResponse
+  }
+
+  type Subscription {
+    _empty: String
+  }
+
+  type GenericResponse {
+    success: Boolean!
+    message: String
   }
 `;

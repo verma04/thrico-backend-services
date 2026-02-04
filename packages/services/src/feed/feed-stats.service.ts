@@ -37,10 +37,30 @@ export class FeedStatsService {
 
     return {
       feedId,
-      totalReactions: feed.totalReactions,
-      totalComments: totalComments[0]?.count || 0,
-      totalShares: feed.totalReShare || 0,
+      basicStats: {
+        totalReactions: feed.totalReactions || 0,
+        totalComments: totalComments[0]?.count || 0,
+        totalShares: feed.totalReShare || 0,
+        createdAt: feed.createdAt
+          ? new Date(feed.createdAt).toISOString()
+          : new Date().toISOString(),
+      },
       reactionBreakdown: reactions,
+      commentsOverTime: [], // Placeholder
+      engagementByConnections: [
+        {
+          isConnection: true,
+          reactions: 0,
+          comments: 0,
+        },
+        {
+          isConnection: false,
+          reactions: 0,
+          comments: 0,
+        },
+      ], // Placeholder
+      impressions: 0, // Placeholder
+      reach: 0, // Placeholder
     };
   }
 

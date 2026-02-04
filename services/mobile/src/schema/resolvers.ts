@@ -188,5 +188,41 @@ export const resolvers = {
         throw error;
       }
     },
+
+    async registerDeviceToken(
+      _: any,
+      { token, deviceId, deviceOs }: any,
+      context: any,
+    ) {
+      try {
+        const { sessionId } = context.user || (await checkAuth(context));
+        return AuthService.updateSession({
+          sessionId,
+          input: {
+            deviceToken: token,
+            deviceId,
+            deviceOs,
+          },
+        });
+      } catch (error) {
+        log.error("Error in registerDeviceToken", { error });
+        throw error;
+      }
+    },
+
+    async updateActiveEntity(_: any, { entityId }: any, context: any) {
+      try {
+        const { sessionId } = context.user || (await checkAuth(context));
+        return AuthService.updateSession({
+          sessionId,
+          input: {
+            activeEntityId: entityId,
+          },
+        });
+      } catch (error) {
+        log.error("Error in updateActiveEntity", { error });
+        throw error;
+      }
+    },
   },
 };

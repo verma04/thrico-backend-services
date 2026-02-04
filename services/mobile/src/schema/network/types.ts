@@ -4,6 +4,7 @@ export const networkTypes = `#graphql
     firstName: String
     avatar: String
     lastName: String
+   
     user: profileCreation
     status: connectionStatus
     isOnline: Boolean
@@ -45,8 +46,8 @@ export const networkTypes = `#graphql
   }
 
   type profile {
-    experience: String
-    education: String
+    experience: JSON
+    education: JSON
   }
 
   type network {
@@ -148,6 +149,7 @@ export const networkTypes = `#graphql
     getNetwork(input: paginationInput): networkResponse
     getMyConnection(input: paginationInput): networkResponse
     getUserProfile(input: inputId): networkUser
+    getNetworkUserProfile(input: inputId): networkUser
     getConnectionRequests(input: paginationInput): connectionRequestResponse
     getConnectionStats: connectionStats
     getBlockedUsers(input: paginationInput): blockedUsersResponse

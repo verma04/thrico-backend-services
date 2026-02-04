@@ -2,6 +2,8 @@ import { log } from "@thrico/logging";
 import { GraphQLError } from "graphql";
 import { eq, and, sql, desc, count, inArray, asc } from "drizzle-orm";
 import {
+  AppDatabase,
+  communityActivityLog,
   communityFeed,
   communityFeedInteraction,
   communityFeedReport,
@@ -48,7 +50,7 @@ export class CommunityMemberService {
     groupId: string;
     currentUserId: string;
     entityId: string;
-    db: any;
+    db: AppDatabase;
     page?: number;
     limit?: number;
     role?: "ADMIN" | "MANAGER" | "MODERATOR" | "USER";
@@ -61,7 +63,7 @@ export class CommunityMemberService {
           "Group ID, User ID, and Entity ID are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -74,10 +76,7 @@ export class CommunityMemberService {
       });
 
       const community = await db.query.groups.findFirst({
-        where: and(
-          eq(db.schema.groups.id, groupId),
-          eq(db.schema.groups.entity, entityId)
-        ),
+        where: and(eq(groups.id, groupId), eq(groups.entity, entityId)),
       });
 
       if (!community) {
@@ -88,9 +87,9 @@ export class CommunityMemberService {
 
       const currentUserMembership = await db.query.groupMember.findFirst({
         where: and(
-          eq(db.schema.groupMember.groupId, groupId),
-          eq(db.schema.groupMember.userId, currentUserId),
-          eq(db.schema.groupMember.memberStatusEnum, "ACCEPTED")
+          eq(groupMember.groupId, groupId),
+          eq(groupMember.userId, currentUserId),
+          eq(groupMember.memberStatusEnum, "ACCEPTED"),
         ),
       });
 
@@ -101,32 +100,32 @@ export class CommunityMemberService {
       }
 
       const isCurrentUserAdmin = ["ADMIN", "MANAGER"].includes(
-        currentUserMembership.role
+        currentUserMembership.role ?? "",
       );
 
       const whereConditions = [
-        eq(db.schema.groupMember.groupId, groupId),
-        eq(db.schema.groupMember.memberStatusEnum, "ACCEPTED"),
+        eq(groupMember.groupId, groupId),
+        eq(groupMember.memberStatusEnum, "ACCEPTED"),
       ];
 
       if (role) {
         if (["ADMIN", "MANAGER", "USER", "NOT_MEMBER"].includes(role)) {
-          whereConditions.push(eq(db.schema.groupMember.role, role as any));
+          whereConditions.push(eq(groupMember.role, role as any));
         }
       }
 
       const [totalCount] = await db
         .select({ value: count() })
-        .from(db.schema.groupMember)
+        .from(groupMember)
         .where(and(...whereConditions));
 
       let searchConditions = [...whereConditions];
 
       if (searchTerm) {
         searchConditions.push(
-          sql`(${db.schema.user.firstName} ILIKE ${`%${searchTerm}%`} OR ${
-            db.schema.user.lastName
-          } ILIKE ${`%${searchTerm}%`})`
+          sql`(${user.firstName} ILIKE ${`%${searchTerm}%`} OR ${
+            user.lastName
+          } ILIKE ${`%${searchTerm}%`})`,
         );
       }
 
@@ -134,52 +133,49 @@ export class CommunityMemberService {
 
       const members = await db
         .select({
-          id: db.schema.groupMember.id,
-          userId: db.schema.groupMember.userId,
-          role: db.schema.groupMember.role,
-          joinedAt: db.schema.groupMember.createdAt,
+          id: groupMember.id,
+          userId: groupMember.userId,
+          role: groupMember.role,
+          joinedAt: groupMember.createdAt,
           user: {
-            id: db.schema.user?.id,
-            firstName: db.schema.user?.firstName,
-            lastName: db.schema.user?.lastName,
-            avatar: db.schema.user?.avatar,
+            id: user?.id,
+            firstName: user?.firstName,
+            lastName: user?.lastName,
+            avatar: user?.avatar,
           },
-          isCurrentUser: sql<boolean>`${db.schema.groupMember.userId} = ${currentUserId}`,
+          isCurrentUser: sql<boolean>`${groupMember.userId} = ${currentUserId}`,
           canEdit: sql<boolean>`${
             isCurrentUserAdmin ||
             (currentUserMembership.role === "MANAGER" &&
-              sql`${db.schema.groupMember.role} NOT IN ('ADMIN')`) ||
+              sql`${groupMember.role} NOT IN ('ADMIN')`) ||
             (currentUserMembership.role === "MODERATOR" &&
-              sql`${db.schema.groupMember.role} = 'USER'`)
+              sql`${groupMember.role} = 'USER'`)
           }`,
           canRemove: sql<boolean>`${
             isCurrentUserAdmin ||
             (currentUserMembership.role === "MANAGER" &&
-              sql`${db.schema.groupMember.role} NOT IN ('ADMIN')`)
+              sql`${groupMember.role} NOT IN ('ADMIN')`)
           }`,
         })
-        .from(db.schema.groupMember)
-        .innerJoin(
-          db.schema.user,
-          eq(db.schema.user.id, db.schema.groupMember.userId)
-        )
+        .from(groupMember)
+        .innerJoin(user, eq(user.id, groupMember.userId))
         .where(and(...searchConditions))
         .limit(limit)
         .offset(offset);
 
       const roleStats = await db
         .select({
-          role: db.schema.groupMember.role,
+          role: groupMember.role,
           count: count(),
         })
-        .from(db.schema.groupMember)
+        .from(groupMember)
         .where(
           and(
-            eq(db.schema.groupMember.groupId, groupId),
-            eq(db.schema.groupMember.memberStatusEnum, "ACCEPTED")
-          )
+            eq(groupMember.groupId, groupId),
+            eq(groupMember.memberStatusEnum, "ACCEPTED"),
+          ),
         )
-        .groupBy(db.schema.groupMember.role);
+        .groupBy(groupMember.role);
 
       const roleStatistics: any = {
         ADMIN: 0,
@@ -218,9 +214,7 @@ export class CommunityMemberService {
           canInviteMembers: isCurrentUserAdmin || community.allowMemberInvites,
           canManageRoles: isCurrentUserAdmin,
           canRemoveMembers:
-            isCurrentUserAdmin ||
-            currentUserMembership.role === "MANAGER" ||
-            currentUserMembership.role === "MODERATOR",
+            isCurrentUserAdmin || currentUserMembership.role === "MANAGER",
         },
       };
     } catch (error) {
@@ -264,10 +258,7 @@ export class CommunityMemberService {
       });
 
       const community = await db.query.groups.findFirst({
-        where: and(
-          eq(db.schema.groups.id, groupId),
-          eq(db.schema.groups.entity, entityId)
-        ),
+        where: and(eq(groups.id, groupId), eq(groups.entity, entityId)),
       });
 
       if (!community) {
@@ -278,9 +269,9 @@ export class CommunityMemberService {
 
       const currentUserMembership = await db.query.groupMember.findFirst({
         where: and(
-          eq(db.schema.groupMember.groupId, groupId),
-          eq(db.schema.groupMember.userId, currentUserId),
-          eq(db.schema.groupMember.memberStatusEnum, "ACCEPTED")
+          eq(groupMember.groupId, groupId),
+          eq(groupMember.userId, currentUserId),
+          eq(groupMember.memberStatusEnum, "ACCEPTED"),
         ),
       });
 
@@ -292,9 +283,9 @@ export class CommunityMemberService {
 
       const targetMember = await db.query.groupMember.findFirst({
         where: and(
-          eq(db.schema.groupMember.groupId, groupId),
-          eq(db.schema.groupMember.userId, memberId),
-          eq(db.schema.groupMember.memberStatusEnum, "ACCEPTED")
+          eq(groupMember.groupId, groupId),
+          eq(groupMember.userId, memberId),
+          eq(groupMember.memberStatusEnum, "ACCEPTED"),
         ),
         with: {
           user: {
@@ -326,7 +317,7 @@ export class CommunityMemberService {
           "Only admins can promote members to admin role",
           {
             extensions: { code: "FORBIDDEN" },
-          }
+          },
         );
       }
 
@@ -349,7 +340,7 @@ export class CommunityMemberService {
           "Managers can only modify moderator and user roles",
           {
             extensions: { code: "FORBIDDEN" },
-          }
+          },
         );
       }
 
@@ -360,13 +351,13 @@ export class CommunityMemberService {
       ) {
         const adminCount = await db
           .select({ count: count() })
-          .from(db.schema.groupMember)
+          .from(groupMember)
           .where(
             and(
-              eq(db.schema.groupMember.groupId, groupId),
-              eq(db.schema.groupMember.role, "ADMIN"),
-              eq(db.schema.groupMember.memberStatusEnum, "ACCEPTED")
-            )
+              eq(groupMember.groupId, groupId),
+              eq(groupMember.role, "ADMIN"),
+              eq(groupMember.memberStatusEnum, "ACCEPTED"),
+            ),
           );
 
         if (adminCount[0].count <= 1) {
@@ -374,21 +365,21 @@ export class CommunityMemberService {
             "Cannot demote yourself when you're the only admin",
             {
               extensions: { code: "BAD_USER_INPUT" },
-            }
+            },
           );
         }
       }
 
       const [updatedMember] = await db
-        .update(db.schema.groupMember)
+        .update(groupMember)
         .set({
           role: newRole,
           updatedAt: new Date(),
         })
-        .where(eq(db.schema.groupMember.id, targetMember.id))
+        .where(eq(groupMember.id, targetMember.id))
         .returning();
 
-      await db.insert(db.schema.communityActivityLog).values({
+      await db.insert(communityActivityLog).values({
         groupId,
         userId: currentUserId,
         type: "MEMBER_EVENT",
@@ -461,10 +452,7 @@ export class CommunityMemberService {
       });
 
       const community = await db.query.groups.findFirst({
-        where: and(
-          eq(db.schema.groups.id, groupId),
-          eq(db.schema.groups.entity, entityId)
-        ),
+        where: and(eq(groups.id, groupId), eq(groups.entity, entityId)),
       });
 
       if (!community) {
@@ -475,9 +463,9 @@ export class CommunityMemberService {
 
       const currentUserMembership = await db.query.groupMember.findFirst({
         where: and(
-          eq(db.schema.groupMember.groupId, groupId),
-          eq(db.schema.groupMember.userId, currentUserId),
-          eq(db.schema.groupMember.memberStatusEnum, "ACCEPTED")
+          eq(groupMember.groupId, groupId),
+          eq(groupMember.userId, currentUserId),
+          eq(groupMember.memberStatusEnum, "ACCEPTED"),
         ),
       });
 
@@ -489,9 +477,9 @@ export class CommunityMemberService {
 
       const targetMember = await db.query.groupMember.findFirst({
         where: and(
-          eq(db.schema.groupMember.groupId, groupId),
-          eq(db.schema.groupMember.userId, memberId),
-          eq(db.schema.groupMember.memberStatusEnum, "ACCEPTED")
+          eq(groupMember.groupId, groupId),
+          eq(groupMember.userId, memberId),
+          eq(groupMember.memberStatusEnum, "ACCEPTED"),
         ),
         with: {
           user: {
@@ -517,7 +505,7 @@ export class CommunityMemberService {
           "Only admins, managers, and moderators can remove members",
           {
             extensions: { code: "FORBIDDEN" },
-          }
+          },
         );
       }
 
@@ -536,13 +524,13 @@ export class CommunityMemberService {
       if (currentUserId === memberId && currentUserRole === "ADMIN") {
         const adminCount = await db
           .select({ count: count() })
-          .from(db.schema.groupMember)
+          .from(groupMember)
           .where(
             and(
-              eq(db.schema.groupMember.groupId, groupId),
-              eq(db.schema.groupMember.role, "ADMIN"),
-              eq(db.schema.groupMember.memberStatusEnum, "ACCEPTED")
-            )
+              eq(groupMember.groupId, groupId),
+              eq(groupMember.role, "ADMIN"),
+              eq(groupMember.memberStatusEnum, "ACCEPTED"),
+            ),
           );
 
         if (adminCount[0].count <= 1) {
@@ -550,25 +538,23 @@ export class CommunityMemberService {
             "Cannot leave community when you're the only admin",
             {
               extensions: { code: "BAD_USER_INPUT" },
-            }
+            },
           );
         }
       }
 
       await db.transaction(async (tx: any) => {
-        await tx
-          .delete(db.schema.groupMember)
-          .where(eq(db.schema.groupMember.id, targetMember.id));
+        await tx.delete(groupMember).where(eq(groupMember.id, targetMember.id));
 
         await tx
-          .update(db.schema.groups)
+          .update(groups)
           .set({
-            numberOfUser: sql`${db.schema.groups.numberOfUser} - 1`,
+            numberOfUser: sql`${groups.numberOfUser} - 1`,
             updatedAt: new Date(),
           })
-          .where(eq(db.schema.groups.id, groupId));
+          .where(eq(groups.id, groupId));
 
-        await tx.insert(tx.schema.communityActivityLog).values({
+        await tx.insert(communityActivityLog).values({
           groupId,
           userId: currentUserId,
           type: "MEMBER_EVENT",
@@ -626,7 +612,7 @@ export class CommunityMemberService {
     action: "ACCEPT" | "REJECT";
     currentUserId: string;
     entityId: string;
-    db: any;
+    db: AppDatabase;
   }) {
     try {
       if (!groupId || !requestId || !action || !currentUserId || !entityId) {
@@ -643,10 +629,7 @@ export class CommunityMemberService {
       });
 
       const community = await db.query.groups.findFirst({
-        where: and(
-          eq(db.schema.groups.id, groupId),
-          eq(db.schema.groups.entity, entityId)
-        ),
+        where: and(eq(groups.id, groupId), eq(groups.entity, entityId)),
       });
 
       if (!community) {
@@ -657,9 +640,9 @@ export class CommunityMemberService {
 
       const hasPermission = await db.query.groupMember.findFirst({
         where: and(
-          eq(db.schema.groupMember.groupId, groupId),
-          eq(db.schema.groupMember.userId, currentUserId),
-          inArray(db.schema.groupMember.role, ["ADMIN", "MANAGER"])
+          eq(groupMember.groupId, groupId),
+          eq(groupMember.userId, currentUserId),
+          inArray(groupMember.role, ["ADMIN", "MANAGER"]),
         ),
       });
 
@@ -668,21 +651,23 @@ export class CommunityMemberService {
           "Only admins, managers, and moderators can handle join requests",
           {
             extensions: { code: "FORBIDDEN" },
-          }
+          },
         );
       }
 
       const joinRequest = await db.query.groupRequest.findFirst({
         where: and(
-          eq(db.schema.groupRequest.id, requestId),
-          eq(db.schema.groupRequest.groupId, groupId),
-          eq(db.schema.groupRequest.memberStatusEnum, "PENDING")
+          eq(groupRequest.id, requestId),
+          eq(groupRequest.groupId, groupId),
+          eq(groupRequest.memberStatusEnum, "PENDING"),
         ),
         with: {
           user: {
             columns: {
               id: true,
-              fullName: true,
+              firstName: true,
+              lastName: true,
+              avatar: true,
             },
           },
         },
@@ -696,7 +681,7 @@ export class CommunityMemberService {
 
       await db.transaction(async (tx: any) => {
         if (action === "ACCEPT") {
-          await tx.insert(tx.schema.groupMember).values({
+          await tx.insert(groupMember).values({
             groupId,
             userId: joinRequest.userId,
             role: "USER",
@@ -704,24 +689,22 @@ export class CommunityMemberService {
           });
 
           await tx
-            .update(tx.schema.groups)
+            .update(groups)
             .set({
-              numberOfUser: sql`${tx.schema.groups.numberOfUser} + 1`,
+              numberOfUser: sql`${groups.numberOfUser} + 1`,
               updatedAt: new Date(),
             })
-            .where(eq(tx.schema.groups.id, groupId));
+            .where(eq(groups.id, groupId));
 
           await tx
-            .update(tx.schema.groupRequest)
+            .update(groupRequest)
             .set({
               memberStatusEnum: "ACCEPTED",
               updatedAt: new Date(),
             })
-            .where(eq(tx.schema.groupRequest.id, requestId));
+            .where(eq(groupRequest.id, requestId));
         } else {
-          await tx
-            .delete(tx.schema.groupRequest)
-            .where(eq(tx.schema.groupRequest.id, requestId));
+          await tx.delete(groupRequest).where(eq(groupRequest.id, requestId));
         }
       });
 
@@ -759,14 +742,14 @@ export class CommunityMemberService {
     currentUserId,
     entityId,
     db,
-    page = 1,
+    cursor,
     limit = 20,
   }: {
     groupId: string;
     currentUserId: string;
     entityId: string;
-    db: any;
-    page?: number;
+    db: AppDatabase;
+    cursor?: string | null;
     limit?: number;
   }) {
     try {
@@ -775,22 +758,19 @@ export class CommunityMemberService {
           "Group ID, User ID, and Entity ID are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
       log.debug("Getting pending join requests", {
         groupId,
         currentUserId,
-        page,
+        cursor,
         limit,
       });
 
       const community = await db.query.groups.findFirst({
-        where: and(
-          eq(db.schema.groups.id, groupId),
-          eq(db.schema.groups.entity, entityId)
-        ),
+        where: and(eq(groups.id, groupId), eq(groups.entity, entityId)),
       });
 
       if (!community) {
@@ -801,9 +781,9 @@ export class CommunityMemberService {
 
       const hasPermission = await db.query.groupMember.findFirst({
         where: and(
-          eq(db.schema.groupMember.groupId, groupId),
-          eq(db.schema.groupMember.userId, currentUserId),
-          inArray(db.schema.groupMember.role, ["ADMIN", "MANAGER"])
+          eq(groupMember.groupId, groupId),
+          eq(groupMember.userId, currentUserId),
+          inArray(groupMember.role, ["ADMIN", "MANAGER"]),
         ),
       });
 
@@ -812,68 +792,80 @@ export class CommunityMemberService {
           "Only admins, managers, and moderators can view join requests",
           {
             extensions: { code: "FORBIDDEN" },
-          }
+          },
         );
       }
 
-      const [totalCount] = await db
+      const whereConditions = [
+        eq(groupRequest.groupId, groupId),
+        eq(groupRequest.memberStatusEnum, "PENDING"),
+      ];
+
+      if (cursor) {
+        whereConditions.push(
+          sql`${groupRequest.createdAt} < ${new Date(cursor)}`,
+        );
+      }
+
+      const [totalCountResult] = await db
         .select({ value: count() })
-        .from(db.schema.groupRequest)
+        .from(groupRequest)
         .where(
           and(
-            eq(db.schema.groupRequest.groupId, groupId),
-            eq(db.schema.groupRequest.memberStatusEnum, "PENDING")
-          )
+            eq(groupRequest.groupId, groupId),
+            eq(groupRequest.memberStatusEnum, "PENDING"),
+          ),
         );
 
-      const offset = (page - 1) * limit;
-
       const requests = await db.query.groupRequest.findMany({
-        where: and(
-          eq(db.schema.groupRequest.groupId, groupId),
-          eq(db.schema.groupRequest.memberStatusEnum, "PENDING")
-        ),
+        where: and(...whereConditions),
         with: {
           user: {
             columns: {
               id: true,
               firstName: true,
               lastName: true,
-              fullName: true,
               avatar: true,
               email: true,
             },
           },
         },
-        orderBy: [desc(db.schema.groupRequest.createdAt)],
-        limit,
-        offset,
+        orderBy: [desc(groupRequest.createdAt)],
+        limit: limit + 1,
       });
 
-      const totalPages = Math.ceil(totalCount.value / limit);
+      const hasNextPage = requests.length > limit;
+      const nodes = hasNextPage ? requests.slice(0, limit) : requests;
+
+      const processedRequests = nodes.map((request: any) => ({
+        id: request.id,
+        userId: request.userId,
+        notes: request.notes,
+        requestedAt: request.createdAt,
+        user: {
+          ...request.user,
+          fullName: `${request.user.firstName} ${request.user.lastName}`,
+        },
+      }));
+
+      const edges = processedRequests.map((request: any) => ({
+        cursor: request.requestedAt.toISOString(),
+        node: request,
+      }));
 
       log.info("Pending join requests retrieved", {
         groupId,
-        count: requests.length,
-        total: totalCount.value,
+        count: nodes.length,
+        total: totalCountResult?.value || 0,
       });
 
       return {
-        requests: requests.map((request: any) => ({
-          id: request.id,
-          userId: request.userId,
-          notes: request.notes,
-          requestedAt: request.createdAt,
-          user: request.user,
-        })),
-        pagination: {
-          currentPage: page,
-          totalPages,
-          totalCount: totalCount.value,
-          limit,
-          hasNextPage: page < totalPages,
-          hasPreviousPage: page > 1,
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
         },
+        totalCount: totalCountResult?.value || 0,
       };
     } catch (error) {
       log.error("Error in getPendingJoinRequests", {
@@ -920,7 +912,7 @@ export class CommunityMemberService {
         // Log unauthorized access to join request count
 
         throw new GraphQLError(
-          "Only admins and managers can view join request count"
+          "Only admins and managers can view join request count",
         );
       }
 
@@ -931,8 +923,8 @@ export class CommunityMemberService {
         .where(
           and(
             eq(groupRequest.groupId, groupId),
-            eq(groupRequest.memberStatusEnum, "PENDING")
-          )
+            eq(groupRequest.memberStatusEnum, "PENDING"),
+          ),
         );
 
       // Log successful access to join request count
@@ -1010,7 +1002,7 @@ export class CommunityMemberService {
         });
 
         throw new GraphQLError(
-          "Only admins and managers can perform bulk actions"
+          "Only admins and managers can perform bulk actions",
         );
       }
 
@@ -1165,7 +1157,7 @@ export class CommunityMemberService {
       const targetMembership = await CommunityActionsService.getUserMembership(
         db,
         memberId,
-        communityId
+        communityId,
       );
       if (!targetMembership) {
         throw new GraphQLError("User is not a member of this community");
@@ -1176,14 +1168,14 @@ export class CommunityMemberService {
         ? await CommunityActionsService.getUserMembership(
             db,
             viewerId,
-            communityId
+            communityId,
           )
         : null;
 
       const canViewPrivateStats =
         viewerId === memberId ||
         (viewerMembership &&
-          ["ADMIN", "MANAGER"].includes(viewerMembership.role));
+          ["ADMIN", "MANAGER"].includes(viewerMembership?.role || ""));
 
       // Get user's community feeds with detailed metrics
       const userFeeds = await db
@@ -1232,14 +1224,14 @@ export class CommunityMemberService {
           and(
             eq(userFeed.userId, memberId),
             eq(userFeed.groupId, communityId),
-            eq(userFeed.entity, entityId)
-          )
+            eq(userFeed.entity, entityId),
+          ),
         );
 
       // Calculate basic stats
       const totalPosts = userFeeds.length;
       const approvedPosts = userFeeds.filter(
-        (f: any) => f.status === "APPROVED"
+        (f: any) => f.status === "APPROVED",
       ).length;
       const pendingPosts = canViewPrivateStats
         ? userFeeds.filter((f: any) => f.status === "PENDING").length
@@ -1255,28 +1247,31 @@ export class CommunityMemberService {
       // Calculate engagement metrics
       const totalLikes = userFeeds.reduce(
         (sum: any, f: any) => sum + f.totalLikes,
-        0
+        0,
       );
       const totalComments = userFeeds.reduce(
         (sum: any, f: any) => sum + f.totalComments,
-        0
+        0,
       );
       const totalShares = userFeeds.reduce(
         (sum: any, f: any) => sum + f.totalShares,
-        0
+        0,
       );
       const totalViews = 0;
 
       // Calculate posts by type
-      const postsByType = userFeeds.reduce((acc: any, feed: any) => {
-        acc[feed.feedType] = (acc[feed.feedType] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>);
+      const postsByType = userFeeds.reduce(
+        (acc: any, feed: any) => {
+          acc[feed.feedType] = (acc[feed.feedType] || 0) + 1;
+          return acc;
+        },
+        {} as Record<string, number>,
+      );
 
       // Calculate membership duration
-      const joinedAt = targetMembership.createdAt;
+      const joinedAt = targetMembership.createdAt || new Date();
       const membershipDuration = Math.floor(
-        (Date.now() - joinedAt.getTime()) / (1000 * 60 * 60 * 24)
+        (Date.now() - joinedAt?.getTime()) / (1000 * 60 * 60 * 24),
       );
 
       // Get last activity (last post or interaction)
@@ -1290,10 +1285,10 @@ export class CommunityMemberService {
         .from(userFeed)
         .leftJoin(
           communityFeedInteraction,
-          eq(communityFeedInteraction.userId, memberId)
+          eq(communityFeedInteraction.userId, memberId),
         )
         .where(
-          and(eq(userFeed.userId, memberId), eq(userFeed.groupId, communityId))
+          and(eq(userFeed.userId, memberId), eq(userFeed.groupId, communityId)),
         );
 
       const lastActive = lastActivityResult[0]?.lastActivity || null;
@@ -1322,7 +1317,7 @@ export class CommunityMemberService {
           pinnedPosts,
           engagementScore,
         },
-        role: targetMembership.role,
+        role: targetMembership.role || "",
       });
 
       const stats: CommunityMemberStats = {
@@ -1395,13 +1390,13 @@ export class CommunityMemberService {
         ? await CommunityActionsService.getUserMembership(
             db,
             viewerId,
-            communityId
+            communityId,
           )
         : null;
 
       if (!viewerMembership) {
         throw new GraphQLError(
-          "You must be a member to view community member stats"
+          "You must be a member to view community member stats",
         );
       }
 
@@ -1411,8 +1406,8 @@ export class CommunityMemberService {
         conditions.push(
           eq(
             groupMember.role,
-            role as "USER" | "ADMIN" | "MANAGER" | "NOT_MEMBER"
-          )
+            role as "USER" | "ADMIN" | "MANAGER" | "NOT_MEMBER",
+          ),
         );
       }
 
@@ -1472,14 +1467,14 @@ export class CommunityMemberService {
               canViewPrivateStats: false,
             };
           }
-        })
+        }),
       );
 
       // Sort members based on criteria
       const sortedMembers = this.sortMembersByStats(
         membersWithStats,
         sortBy,
-        sortOrder
+        sortOrder,
       );
 
       // Get total count
@@ -1535,13 +1530,13 @@ export class CommunityMemberService {
         ? await CommunityActionsService.getUserMembership(
             db,
             viewerId,
-            communityId
+            communityId,
           )
         : null;
 
       if (!viewerMembership) {
         throw new GraphQLError(
-          "You must be a member to view community leaderboard"
+          "You must be a member to view community leaderboard",
         );
       }
 
@@ -1678,7 +1673,7 @@ export class CommunityMemberService {
   private static sortMembersByStats(
     members: any[],
     sortBy: string,
-    sortOrder: "asc" | "desc"
+    sortOrder: "asc" | "desc",
   ) {
     return members.sort((a, b) => {
       let aValue, bValue;
@@ -1722,19 +1717,19 @@ export class CommunityMemberService {
     switch (period) {
       case "week":
         return sql`${userFeed.createdAt} >= ${new Date(
-          now.getTime() - 7 * 24 * 60 * 60 * 1000
+          now.getTime() - 7 * 24 * 60 * 60 * 1000,
         )}`;
       case "month":
         return sql`${userFeed.createdAt} >= ${new Date(
-          now.getTime() - 30 * 24 * 60 * 60 * 1000
+          now.getTime() - 30 * 24 * 60 * 60 * 1000,
         )}`;
       case "quarter":
         return sql`${userFeed.createdAt} >= ${new Date(
-          now.getTime() - 90 * 24 * 60 * 60 * 1000
+          now.getTime() - 90 * 24 * 60 * 60 * 1000,
         )}`;
       case "year":
         return sql`${userFeed.createdAt} >= ${new Date(
-          now.getTime() - 365 * 24 * 60 * 60 * 1000
+          now.getTime() - 365 * 24 * 60 * 60 * 1000,
         )}`;
       default:
         return sql`true`; // No date filter for 'all'
@@ -1802,13 +1797,13 @@ export class CommunityMemberService {
         userFeed,
         and(
           eq(userFeed.userId, groupMember.userId),
-          eq(userFeed.groupId, communityId)
-        )
+          eq(userFeed.groupId, communityId),
+        ),
       )
       .leftJoin(communityFeed, eq(communityFeed.userFeedId, userFeed.id))
       .leftJoin(
         communityFeedInteraction,
-        eq(communityFeedInteraction.feedId, communityFeed.id)
+        eq(communityFeedInteraction.feedId, communityFeed.id),
       )
       .where(and(eq(groupMember.groupId, communityId), dateFilter))
       .groupBy(
@@ -1817,7 +1812,7 @@ export class CommunityMemberService {
         user.id,
         user.firstName,
         user.lastName,
-        user.avatar
+        user.avatar,
       )
       .orderBy(desc(scoreExpression))
       .limit(limit);

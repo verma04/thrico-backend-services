@@ -1,0 +1,1 @@
+ALTER TABLE "-community" ALTER COLUMN "cover" SET DEFAULT 'default_communities.png';

@@ -41,11 +41,19 @@ const mentorShipTypes = `#graphql
     agreement: Boolean
     user: userDetails
     category: category
+    isFeatured: Boolean
+    createdAt: Date
+    updatedAt: Date
+  }
+  input PaginationInput {
+    limit: Int
+    offset: Int
   }
   type Query {
     getAllMentor(input: allStatusInput): [mentor]
-    getAllMentorCategory: [category]
-    getAllMentorSkills: [skills]
+   getMentorCategories: [category]
+   getMentorSkills: [skills]
+    getAllPendingMentorships(input: PaginationInput): [mentor]
   }
   input inputMentorShipCategory {
     title: String!
@@ -57,25 +65,51 @@ const mentorShipTypes = `#graphql
   input inputMentorShipSkillsId {
     id: ID!
   }
+  input updateMentorShipSkillsInput {
+    id: ID!
+    title: String!
+  }
   input inputMentorShipCategoryId {
     id: ID!
+  }
+  input updateMentorShipCategoryInput {
+    id: ID!
+    title: String!
   }
   enum LocationType {
     APPROVE
     REJECT
     BLOCK
   }
+  enum MentorStatus {
+    APPROVED
+    BLOCKED
+    PENDING
+    REJECTED
+  }
   input mentorShipActionsInput {
     action: LocationType!
     mentorshipID: ID!
   }
+  input updateMentorshipStatusInput {
+    mentorshipId: ID!
+    status: MentorStatus!
+  }
+  input featureMentorInput {
+    mentorshipId: ID!
+    isFeatured: Boolean!
+  }
   type Mutation {
     addMentorShipCategory(input: inputMentorShipCategory): [category]
+    updateMentorShipCategory(input: updateMentorShipCategoryInput): category
     deleteMentorShipCategory(input: inputMentorShipCategoryId): category
     duplicateMentorShipCategory(input: inputMentorShipCategoryId): [category]
     mentorShipActions(input: mentorShipActionsInput): [mentor]
+    updateMentorshipStatus(input: updateMentorshipStatusInput): mentor
+    featureMentor(input: featureMentorInput): mentor
 
     addMentorShipSkills(input: inputMentorShipSkills): [skills]
+    updateMentorShipSkills(input: updateMentorShipSkillsInput): skills
     deleteMentorShipSkills(input: inputMentorShipSkillsId): skills
     duplicateMentorShipSkills(input: inputMentorShipSkillsId): [skills]
   }

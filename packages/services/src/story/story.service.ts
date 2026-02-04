@@ -121,12 +121,12 @@ export class StoryService {
           and(
             eq(connections.entity, entityId),
             eq(connections.connectionStatusEnum, "ACCEPTED"),
-            or(eq(connections.user1, userId), eq(connections.user2, userId))
-          )
+            or(eq(connections.user1, userId), eq(connections.user2, userId)),
+          ),
         );
 
       const connectionUserIds = connectionsRows.map(
-        (row: any) => row.connectionUserId
+        (row: any) => row.connectionUserId,
       );
       log.debug("Found connections", {
         userId,
@@ -137,6 +137,8 @@ export class StoryService {
         log.info("No connections found", { userId, entityId });
         return [];
       }
+
+      console.log(connectionUserIds);
 
       const now = new Date();
       const rows = await db
@@ -169,26 +171,27 @@ export class StoryService {
           or(
             and(
               eq(connections.user1, userId),
-              eq(connections.user2, userToEntity.id)
+              eq(connections.user2, userToEntity.userId),
             ),
             and(
               eq(connections.user2, userId),
-              eq(connections.user1, userToEntity.id)
-            )
-          )
+              eq(connections.user1, userToEntity.userId),
+            ),
+          ),
         )
         .leftJoin(
           stories,
           and(
             eq(stories.userId, userToEntity.userId),
-            gt(stories.expiresAt, now)
-          )
+            gt(stories.expiresAt, now),
+            eq(stories.isActive, true),
+          ),
         )
         .where(
           and(
             eq(userToEntity.entityId, entityId),
-            inArray(userToEntity.id, connectionUserIds)
-          )
+            inArray(userToEntity.userId, connectionUserIds),
+          ),
         )
         .orderBy(userToEntity.id, stories.createdAt);
 
@@ -224,7 +227,7 @@ export class StoryService {
       }
 
       const result = Object.values(grouped).filter(
-        (item) => item.stories.length > 0
+        (item) => item.stories.length > 0,
       );
       log.info("Stories grouped by connections retrieved", {
         userId,
@@ -275,8 +278,8 @@ export class StoryService {
           and(
             eq(stories.userId, userId),
             eq(stories.entity, entityId),
-            gt(stories.expiresAt, now)
-          )
+            gt(stories.expiresAt, now),
+          ),
         )
         .orderBy(stories.createdAt);
 
@@ -316,7 +319,7 @@ export class StoryService {
           "Story not found or you don't have permission to delete it.",
           {
             extensions: { code: "FORBIDDEN" },
-          }
+          },
         );
       }
 

@@ -10,6 +10,11 @@ export const notificationType = pgEnum("notificationType", [
   "COMMUNITIES",
   "LISTING_LIKE",
   "JOB_LIKE",
+  "CONNECTION_REQUEST",
+  "CONNECTION_ACCEPTED",
+  "POINTS_EARNED",
+  "BADGE_UNLOCKED",
+  "RANK_UP",
 ]);
 
 export const notifications = pgTable("userNotifications", {
@@ -22,6 +27,7 @@ export const notifications = pgTable("userNotifications", {
   feed: uuid("feed_id"),
   connection: uuid("connection_id"),
   communities: uuid("communities_id"),
+  isRead: text("is_read").default("false"), // Changed to text for simpler handling or keep as boolean if prefer. User requested isRead.
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });
@@ -61,7 +67,7 @@ export const notificationsRelations = relations(
       fields: [notifications.feed],
       references: [userFeed.id],
     }),
-  })
+  }),
 );
 
 export const listingNotificationRelations = relations(
@@ -78,7 +84,7 @@ export const listingNotificationRelations = relations(
       references: [notifications.id],
     }),
     // Add listing relation if you have a listing table
-  })
+  }),
 );
 
 export const jobNotificationRelations = relations(
@@ -95,5 +101,5 @@ export const jobNotificationRelations = relations(
       references: [notifications.id],
     }),
     // Add job relation if you have a job table
-  })
+  }),
 );

@@ -1,4 +1,5 @@
-export const communitiesTypes = `#graphql
+// const { Parking } = require('../models/Parking');
+const communitiesTypes = `#graphql
   type CommunityAnalyticsResponse {
     totalMembers: Int
     activeUsers: Int
@@ -11,6 +12,11 @@ export const communitiesTypes = `#graphql
   scalar JSON
   type success {
     success: Boolean
+  }
+
+  type successMessage {
+    success: Boolean
+    message: String
   }
 
   enum IS_MEMBER_ENUM {
@@ -47,6 +53,7 @@ export const communitiesTypes = `#graphql
     isGroupManager: Boolean
     members: [groupMember]
     creator: groupCreator
+    ratingSummary: ratingSummary
   }
 
   type groupCreator {
@@ -74,6 +81,7 @@ export const communitiesTypes = `#graphql
     isGroupManager: Boolean
     groupMember: [groupMember]
     creator: groupCreator
+    ratingSummary: ratingSummary
   }
   type groupMember {
     id: ID
@@ -121,7 +129,7 @@ export const communitiesTypes = `#graphql
     allowMemberPosts: Boolean
     enableEvents: Boolean
     enableRatingsAndReviews: Boolean
-    rules: String
+    rules: JSON
     overallRating: String
     totalRatings: Int
     verifiedRating: String
@@ -169,6 +177,24 @@ export const communitiesTypes = `#graphql
     page: Int
     limit: Int
     filters: communityFilters
+  }
+
+  input CommunityCursorInput {
+    cursor: String
+    limit: Int
+    searchTerm: String
+    filters: communityFilters
+  }
+
+  type CommunityEdge {
+    cursor: String!
+    node: groupDetails!
+  }
+
+  type CommunityConnection {
+    edges: [CommunityEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
   }
 
   input inputGetCommunitiesById {
@@ -309,6 +335,18 @@ export const communitiesTypes = `#graphql
     summary: ratingSummary
   }
 
+  type CommunityRatingEdge {
+    cursor: String!
+    node: communityRating!
+  }
+
+  type CommunityRatingConnection {
+    edges: [CommunityRatingEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
+    metadata: ratingMetadata
+  }
+
   type ratingsWithPagination {
     ratings: [communityRating]
     pagination: paginationInfo
@@ -323,15 +361,22 @@ export const communitiesTypes = `#graphql
     createdAt: Date
   }
 
+  input updateRatingInput {
+    id: ID!
+    communityId: ID!
+    rating: Int!
+    review: String
+  }
+
   input addRatingInput {
-    groupId: ID!
+    communityId: ID!
     rating: Int!
     review: String
   }
 
   input getRatingsInput {
-    groupId: ID!
-    page: Int
+    communityId: ID!
+    cursor: String
     limit: Int
     sortBy: String
     verifiedOnly: Boolean
@@ -383,7 +428,7 @@ export const communitiesTypes = `#graphql
   type CommunityAboutResponse {
     communityDetails: group
     adminInfo: groupSettings
-    rules: String
+    rules: JSON
     postRatingSummary: ratingSummary
   }
 
@@ -576,6 +621,17 @@ export const communitiesTypes = `#graphql
     user: userBasicInfo!
   }
 
+  type JoinRequestEdge {
+    cursor: String!
+    node: pendingJoinRequest!
+  }
+
+  type JoinRequestConnection {
+    edges: [JoinRequestEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
+  }
+
   type pendingJoinRequestsResponse {
     requests: [pendingJoinRequest!]!
     pagination: paginationInfo!
@@ -612,7 +668,7 @@ export const communitiesTypes = `#graphql
 
   input getPendingJoinRequestsInput {
     id: ID!
-    page: Int
+    cursor: String
     limit: Int
   }
   input respondToJoinRequestInput {
@@ -620,6 +676,17 @@ export const communitiesTypes = `#graphql
     requestId: ID!
     action: JoinRequestAction!
     reason: String
+  }
+
+  input CommunityFeedCursorInput {
+    cursor: String
+    limit: Int
+    id: ID!
+  }
+
+  input getMyJoinedCommunitiesFeedInput {
+    cursor: String
+    limit: Int
   }
 
   input inputGroupFeedPagination {
@@ -633,6 +700,17 @@ export const communitiesTypes = `#graphql
     limit: Int
     offset: Int
     hasMore: Boolean
+  }
+
+  type CommunityFeedEdge {
+    cursor: String!
+    node: feed!
+  }
+
+  type CommunityFeedConnection {
+    edges: [CommunityFeedEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
   }
 
   type communitiesFeed {
@@ -798,26 +876,21 @@ export const communitiesTypes = `#graphql
   # =============== UPDATED QUERY AND MUTATION TYPES ===============
 
   type Query {
+     getCommunityReportReasons: [CommunityReportReason!]!
     getCommunityAnalytics(input: inputId): CommunityAnalyticsResponse
     getCommunitiesModeType: [String]
     getCommunitiesPrivacyEnum: [String]
-    getAllCommunities(input: inputGetCommunities): communitiesWithPagination
+    getAllCommunities(input: CommunityCursorInput): CommunityConnection!
     getCommunitiesCreatedByMe: [groupDetails]
 
     # Community Query Types
-    getFeaturedCommunities(
-      input: inputGetCommunities
-    ): communitiesWithPagination
-    getTrendingCommunities(
-      input: inputGetCommunities
-    ): communitiesWithPagination
+    getFeaturedCommunities(input: CommunityCursorInput): CommunityConnection!
+    getTrendingCommunities(input: CommunityCursorInput): CommunityConnection!
 
-    getCommunitiesByUserId(
-      input: inputGetCommunitiesById
-    ): communitiesWithPagination
-    getMyOwnedCommunities(input: inputGetCommunities): communitiesWithPagination
-    getMyCommunities(input: inputGetCommunities): communitiesWithPagination
-    getSavedCommunities(input: inputGetCommunities): communitiesWithPagination
+    getCommunitiesByUserId(input: CommunityCursorInput): CommunityConnection!
+    getMyOwnedCommunities(input: CommunityCursorInput): CommunityConnection!
+    getMyCommunities(input: CommunityCursorInput): CommunityConnection!
+    getSavedCommunities(input: CommunityCursorInput): CommunityConnection!
 
     getAllCommunitiesDetails(input: inputId): group
     getCommunitiesMember(input: inputId): totalMember
@@ -827,14 +900,10 @@ export const communitiesTypes = `#graphql
 
     # New community API methods
     getCommunityStats(input: inputId): communityStats
-    searchCommunities(input: searchCommunitiesInput): communitiesWithPagination
+    searchCommunities(input: CommunityCursorInput): CommunityConnection!
     getCommunityFilters: communityFiltersResponse
-    getRecommendedCommunities(
-      input: inputGetCommunities
-    ): communitiesWithPagination
-    getRecentlyViewedCommunities(
-      input: inputGetCommunities
-    ): communitiesWithPagination
+    getRecommendedCommunities(input: CommunityCursorInput): CommunityConnection!
+    getRecentlyViewedCommunities(input: CommunityCursorInput): CommunityConnection!
     getHighlyRatedCommunities(
       input: getHighlyRatedCommunitiesInput
     ): communitiesWithPagination
@@ -844,7 +913,7 @@ export const communitiesTypes = `#graphql
     getCommunityAboutById(input: inputId): CommunityAboutResponse
 
     # Rating system queries
-    getCommunityRatings(input: getRatingsInput): ratingsWithPagination
+    getCommunityRatings(input: getRatingsInput): CommunityRatingConnection!
     getCommunityRatingSummary(input: inputId): ratingSummary
 
     # Media system queries
@@ -860,15 +929,16 @@ export const communitiesTypes = `#graphql
     getPendingInvitations: [communityInvitation]
     getPendingJoinRequests(
       input: getPendingJoinRequestsInput!
-    ): pendingJoinRequestsResponse
+    ): JoinRequestConnection!
     getPendingJoinRequestsCount(
       input: getPendingJoinRequestsCountInput!
     ): pendingJoinRequestsCountResponse
 
-    getCommunitiesFeedList(input: inputGroupFeedPagination): communitiesFeed
-    getPendingFeedCommunities(input: inputGroupFeedPagination): communitiesFeed
-    getAllPinnedFeeds(input: inputGroupFeedPagination): communitiesFeed
-    getAllFlaggedFeeds(input: inputGroupFeedPagination): communitiesFeed
+    getCommunitiesFeedList(input: CommunityFeedCursorInput): CommunityFeedConnection!
+    getPendingFeedCommunities(input: CommunityFeedCursorInput): CommunityFeedConnection!
+    getAllPinnedFeeds(input: CommunityFeedCursorInput): CommunityFeedConnection!
+    getAllFlaggedFeeds(input: CommunityFeedCursorInput): CommunityFeedConnection!
+    getMyJoinedCommunitiesFeed(input: getMyJoinedCommunitiesFeedInput): CommunityFeedConnection!
 
     getCommunityFeedStats(input: inputId): communityFeedStats!
     # Community reporting queries
@@ -997,6 +1067,16 @@ export const communitiesTypes = `#graphql
   input withdrawJoinRequestInput {
     groupId: ID!
   }
+
+  input pinCommunityFeedInput {
+    communityId: ID!
+    feedId: ID!
+  }
+
+  input approveCommunityFeedInput {
+    communityId: ID!
+    feedId: ID!
+  }
   type WithdrawJoinRequestResponse {
     success: Boolean!
     message: String!
@@ -1015,19 +1095,29 @@ export const communitiesTypes = `#graphql
     communityArchived: Boolean!
   }
 
+input inputDeleteCommunityRating {
+  id: ID!
+  communityId: ID!
+
+}
   type Mutation {
     joinCommunity(input: inputJoinCommunity): groupDetails
     createCommunities(input: addGroup): groupDetails
     editCommunity(input: editGroup): groupDetails
     wishListCommunity(input: inputId): status
     deleteCommunityFeed(input: inputId): feed
+    deleteFeedCommunities(input: inputId): successMessage
+    pinCommunityFeed(input: pinCommunityFeedInput): successMessage
+    unpinCommunityFeed(input: pinCommunityFeedInput): successMessage
+    approveCommunityFeed(input: approveCommunityFeedInput): successMessage
 
     # New community mutations
     toggleCommunityWishlist(input: inputId): groupDetails
 
     # Rating system mutations
     addCommunityRating(input: addRatingInput): communityRating
-    deleteCommunityRating(input: inputId): status
+    updateCommunityRating(input: updateRatingInput): communityRating
+    deleteCommunityRating(input: inputDeleteCommunityRating!): status
     voteRatingHelpfulness(input: voteRatingInput): status
     verifyRating(input: verifyRatingInput): status
     reportRating(input: reportRatingInput): ratingReport
@@ -1082,13 +1172,4 @@ export const communitiesTypes = `#graphql
   }
 `;
 
-export interface GroupJoinRequest {
-  id: string;
-  userId: string;
-  groupId: string;
-  createdAt: Date;
-  updatedAt: Date;
-  isAccepted: boolean;
-  memberStatusEnum: string;
-  notes?: string;
-}
+export { communitiesTypes };

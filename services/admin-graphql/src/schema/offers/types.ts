@@ -84,7 +84,7 @@ export const offersTypes = gql`
   input CreateOfferInput {
     title: String!
     description: String
-    image: String
+    image: Upload
     discount: String
     categoryId: ID
     validityStart: String
@@ -102,7 +102,7 @@ export const offersTypes = gql`
   input UpdateOfferInput {
     title: String
     description: String
-    image: String
+    image: Upload
     discount: String
     categoryId: ID
     validityStart: String

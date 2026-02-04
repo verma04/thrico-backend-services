@@ -43,3 +43,4 @@ export {
   deleteSession,
   closeRedis,
 } from "./redis/client";
+export * from "./redis/notification";

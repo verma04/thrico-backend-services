@@ -1,6 +1,6 @@
 import { log } from "@thrico/logging";
 import { GraphQLError } from "graphql";
-import { eq, and, sql, desc, count, inArray } from "drizzle-orm";
+import { eq, and, sql, desc, count, inArray, asc } from "drizzle-orm";
 import {
   groups,
   groupMember,
@@ -8,9 +8,112 @@ import {
   groupRatingSummary,
   communityActivityLog,
   user,
+  AppDatabase,
 } from "@thrico/database";
 
 export class CommunityRatingService {
+  static async updateCommunityRating({
+    ratingId,
+    userId,
+    groupId,
+    entityId,
+    rating,
+    review,
+    db,
+  }: {
+    ratingId: string;
+    userId: string;
+    groupId: string;
+    entityId: string;
+    rating: "1" | "2" | "3" | "4" | "5";
+    review?: string;
+    db: AppDatabase;
+  }) {
+    try {
+      if (!ratingId || !userId || !groupId || !entityId || !rating) {
+        throw new GraphQLError("Missing required fields", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+
+      const existingRating = await db.query.groupRating.findFirst({
+        where: and(
+          eq(groupRating.id, ratingId),
+          eq(groupRating.groupId, groupId),
+          eq(groupRating.userId, userId),
+          eq(groupRating.entityId, entityId),
+        ),
+      });
+
+      if (!existingRating) {
+        throw new GraphQLError(
+          "Rating not found or you don't have permission to update it",
+          {
+            extensions: { code: "NOT_FOUND" },
+          },
+        );
+      }
+
+      let ratingRecord;
+      await db.transaction(async (tx: any) => {
+        [ratingRecord] = await tx
+          .update(groupRating)
+          .set({
+            rating,
+            review,
+            updatedAt: new Date(),
+          })
+          .where(eq(groupRating.id, ratingId))
+          .returning();
+
+        await tx.insert(communityActivityLog).values({
+          groupId,
+          userId,
+          type: "RATING_EVENT",
+          status: "UPDATED",
+          details: {
+            ratingId: ratingRecord.id,
+            rating,
+            hasReview: !!review,
+          },
+        });
+
+        await this.updateRatingSummary({ groupId, db: tx });
+      });
+
+      return ratingRecord;
+    } catch (error) {
+      log.error("Error in updateCommunityRating", error);
+      throw error;
+    }
+  }
+
+  static async getCommunityRatingSummary({
+    groupId,
+    db,
+  }: {
+    groupId: string;
+    db: any;
+  }) {
+    try {
+      const summary = await db.query.groupRatingSummary.findFirst({
+        where: eq(groupRatingSummary.groupId, groupId),
+      });
+
+      if (!summary) {
+        // Create summary if it doesn't exist
+        await this.updateRatingSummary({ groupId, db });
+        return await db.query.groupRatingSummary.findFirst({
+          where: eq(groupRatingSummary.groupId, groupId),
+        });
+      }
+
+      return summary;
+    } catch (error) {
+      log.error("Error in getCommunityRatingSummary", error);
+      throw error;
+    }
+  }
   static async addCommunityRating({
     userId,
     groupId,
@@ -32,7 +135,7 @@ export class CommunityRatingService {
           "User ID, Group ID, Entity ID, and Rating are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -58,7 +161,7 @@ export class CommunityRatingService {
         where: and(
           eq(groupMember.groupId, groupId),
           eq(groupMember.userId, userId),
-          eq(groupMember.memberStatusEnum, "ACCEPTED")
+          eq(groupMember.memberStatusEnum, "ACCEPTED"),
         ),
       });
 
@@ -76,7 +179,7 @@ export class CommunityRatingService {
           where: and(
             eq(groupRating.groupId, groupId),
             eq(groupRating.userId, userId),
-            eq(groupRating.entityId, entityId)
+            eq(groupRating.entityId, entityId),
           ),
         });
 
@@ -143,7 +246,7 @@ export class CommunityRatingService {
     groupId,
     entityId,
     currentUserId,
-    page = 1,
+    cursor,
     limit = 10,
     sortBy = "newest",
     verifiedOnly = false,
@@ -152,11 +255,11 @@ export class CommunityRatingService {
     groupId: string;
     entityId: string;
     currentUserId?: string;
-    page?: number;
+    cursor?: string | null;
     limit?: number;
     sortBy?: "newest" | "oldest" | "highest" | "lowest" | "helpful";
     verifiedOnly?: boolean;
-    db: any;
+    db: AppDatabase;
   }) {
     try {
       if (!groupId || !entityId) {
@@ -167,7 +270,7 @@ export class CommunityRatingService {
 
       log.debug("Getting community ratings", {
         groupId,
-        page,
+        cursor,
         limit,
         sortBy,
         verifiedOnly,
@@ -180,7 +283,7 @@ export class CommunityRatingService {
             eq(groupMember.groupId, groupId),
             eq(groupMember.userId, currentUserId),
             eq(groupMember.memberStatusEnum, "ACCEPTED"),
-            inArray(groupMember.role, ["ADMIN", "MANAGER"])
+            inArray(groupMember.role, ["ADMIN", "MANAGER"]),
           ),
         });
         isCurrentUserAdmin = !!currentUserMembership;
@@ -195,29 +298,68 @@ export class CommunityRatingService {
         whereConditions.push(eq(groupRating.isVerified, true));
       }
 
-      const [totalCount] = await db
+      // Cursor-based filtering
+      if (cursor) {
+        const cursorDate = new Date(cursor);
+        if (sortBy === "oldest") {
+          whereConditions.push(sql`${groupRating.createdAt} > ${cursorDate}`);
+        } else {
+          // Default to newest
+          whereConditions.push(sql`${groupRating.createdAt} < ${cursorDate}`);
+        }
+      }
+
+      const [totalCountResult] = await db
         .select({ value: count() })
         .from(groupRating)
-        .where(and(...whereConditions));
+        .where(
+          and(
+            ...whereConditions.filter(
+              (c) => !c.toString().includes("createdAt"),
+            ),
+          ),
+        ); // count should be total, not remains
 
-      const offset = (page - 1) * limit;
+      // Wait, totalCount should be total available without cursor
+      const [actualTotalCount] = await db
+        .select({ value: count() })
+        .from(groupRating)
+        .where(
+          and(
+            eq(groupRating.groupId, groupId),
+            eq(groupRating.entityId, entityId),
+            ...(verifiedOnly ? [eq(groupRating.isVerified, true)] : []),
+          ),
+        );
 
       let orderByClause;
       switch (sortBy) {
         case "oldest":
-          orderByClause = groupRating.createdAt;
+          orderByClause = [asc(groupRating.createdAt), asc(groupRating.id)];
           break;
         case "highest":
-          orderByClause = desc(groupRating.rating);
+          orderByClause = [
+            desc(groupRating.rating),
+            desc(groupRating.createdAt),
+            desc(groupRating.id),
+          ];
           break;
         case "lowest":
-          orderByClause = groupRating.rating;
+          orderByClause = [
+            asc(groupRating.rating),
+            desc(groupRating.createdAt),
+            desc(groupRating.id),
+          ];
           break;
         case "helpful":
-          orderByClause = desc(groupRating.helpfulCount);
+          orderByClause = [
+            desc(groupRating.helpfulCount),
+            desc(groupRating.createdAt),
+            desc(groupRating.id),
+          ];
           break;
         default:
-          orderByClause = desc(groupRating.createdAt);
+          orderByClause = [desc(groupRating.createdAt), desc(groupRating.id)];
       }
 
       const ratings = await db
@@ -233,7 +375,7 @@ export class CommunityRatingService {
           createdAt: groupRating.createdAt,
           updatedAt: groupRating.updatedAt,
           user: {
-            id: groupMember.userId,
+            id: groupRating.userId,
             firstName: user.firstName,
             lastName: user.lastName,
             avatar: user.avatar,
@@ -244,33 +386,71 @@ export class CommunityRatingService {
           canModerate: sql<boolean>`${isCurrentUserAdmin}`,
         })
         .from(groupRating)
-        .leftJoin(groupMember, eq(groupMember.userId, groupRating.userId))
-        .leftJoin(user, eq(user.id, groupMember.userId))
+        .leftJoin(user, eq(user.id, groupRating.userId))
         .where(and(...whereConditions))
-        .orderBy(orderByClause)
-        .limit(limit)
-        .offset(offset);
+        .orderBy(...orderByClause)
+        .limit(limit + 1);
 
-      const totalPages = Math.ceil(totalCount.value / limit);
+      const hasNextPage = ratings.length > limit;
+      const nodes = hasNextPage ? ratings.slice(0, limit) : ratings;
+
+      const edges = nodes.map((rating: any) => ({
+        cursor:
+          rating.createdAt instanceof Date
+            ? rating.createdAt.toISOString()
+            : new Date(rating.createdAt).toISOString(),
+        node: {
+          ...rating,
+          rating: parseInt(rating.rating), // Ensure rating is integer
+        },
+      }));
 
       log.info("Community ratings retrieved", {
         groupId,
-        count: ratings.length,
-        total: totalCount.value,
+        count: nodes.length,
+        total: actualTotalCount?.value || 0,
       });
 
+      let canAddRating = false;
+      let currentUserRating = null;
+
+      if (currentUserId) {
+        const membership = await db.query.groupMember.findFirst({
+          where: and(
+            eq(groupMember.groupId, groupId),
+            eq(groupMember.userId, currentUserId),
+            eq(groupMember.memberStatusEnum, "ACCEPTED"),
+          ),
+        });
+        canAddRating = !!membership;
+
+        currentUserRating = await db.query.groupRating.findFirst({
+          where: and(
+            eq(groupRating.groupId, groupId),
+            eq(groupRating.userId, currentUserId),
+            eq(groupRating.entityId, entityId),
+          ),
+        });
+
+        if (currentUserRating) {
+          (currentUserRating as any).rating = parseInt(
+            currentUserRating.rating,
+          );
+        }
+      }
+
       return {
-        ratings,
-        pagination: {
-          currentPage: page,
-          totalPages,
-          totalCount: totalCount.value,
-          limit,
-          hasNextPage: page < totalPages,
-          hasPreviousPage: page > 1,
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
         },
+        totalCount: actualTotalCount?.value || 0,
         metadata: {
           isCurrentUserAdmin,
+          canAddRating,
+          currentUserRating,
+          summary: await this.getCommunityRatingSummary({ groupId, db }),
         },
       };
     } catch (error) {
@@ -302,11 +482,11 @@ export class CommunityRatingService {
 
       const ratingSum = allRatings.reduce(
         (sum: number, r: any) => sum + parseInt(r.rating),
-        0
+        0,
       );
       const verifiedRatingSum = verifiedRatings.reduce(
         (sum: number, r: any) => sum + parseInt(r.rating),
-        0
+        0,
       );
 
       const averageRating =
@@ -401,7 +581,7 @@ export class CommunityRatingService {
           "Rating ID, User ID, Group ID, and Entity ID are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -411,7 +591,7 @@ export class CommunityRatingService {
         where: and(
           eq(groupRating.id, ratingId),
           eq(groupRating.groupId, groupId),
-          eq(groupRating.entityId, entityId)
+          eq(groupRating.entityId, entityId),
         ),
       });
 
@@ -428,7 +608,7 @@ export class CommunityRatingService {
           where: and(
             eq(groupMember.groupId, groupId),
             eq(groupMember.userId, userId),
-            inArray(groupMember.role, ["ADMIN", "MANAGER"])
+            inArray(groupMember.role, ["ADMIN", "MANAGER"]),
           ),
         });
 
@@ -437,7 +617,7 @@ export class CommunityRatingService {
             "You can only delete your own ratings or must be an admin/manager",
             {
               extensions: { code: "FORBIDDEN" },
-            }
+            },
           );
         }
       }

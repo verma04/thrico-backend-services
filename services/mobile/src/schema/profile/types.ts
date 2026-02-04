@@ -122,6 +122,7 @@ export const profileTypes = `#graphql
     getUserCategories: [String]
     updateUserLocation(input: inputUpdateLocation): user
     getProfileExperience: [experience]
+    getOnlineConnections(limit: Int, offset: Int): userConnections
   }
 
   input inputProfileDetails {
@@ -150,6 +151,7 @@ export const profileTypes = `#graphql
     editEducation(input: inputEditEducation): [education]
     editExperience(input: inputEditExperience): [experience]
     editSkills(input: inputEditSkills): [String]
+    updateOnlineStatus: Boolean
   }
 
   input inputEditEducation {

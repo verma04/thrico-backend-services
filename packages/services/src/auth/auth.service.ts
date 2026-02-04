@@ -105,7 +105,7 @@ export class AuthService {
       const findOrg = await db.query.userToEntity.findFirst({
         where: and(
           eq(userToEntity?.id, id),
-          eq(userToEntity?.entityId, entityId)
+          eq(userToEntity?.entityId, entityId),
         ),
       });
 
@@ -184,7 +184,7 @@ export class AuthService {
         where: (u: any, { eq }: any) =>
           and(
             eq(u.entityId, input.entityId),
-            eq(u.thricoId, userRecord.thricoId)
+            eq(u.thricoId, userRecord.thricoId),
           ),
         with: {
           entity: true,
@@ -217,6 +217,7 @@ export class AuthService {
           device_id: input.device_id,
           deviceToken: input.deviceToken,
           deviceName: input.deviceName,
+          activeEntityId: input.entityId,
           token: uuidv4(),
         });
       } else {
@@ -226,6 +227,7 @@ export class AuthService {
           device_id: input.device_id,
           deviceToken: input.deviceToken,
           deviceName: input.deviceName,
+          activeEntityId: input.entityId,
           token: uuidv4(),
         });
       }
@@ -448,6 +450,7 @@ export class AuthService {
           role: "manager",
           password: uuidv4(),
           id: uuidv4(),
+          loginType: "email",
         };
         const createdUser = await USER.create(newUser);
         const output = await sendOtpFn(createdUser);
@@ -520,7 +523,7 @@ export class AuthService {
       const thricoUser = await db.query.user.findFirst({
         where: and(
           eq(user.thricoId, input.userId),
-          eq(user.entityId, input.entityId)
+          eq(user.entityId, input.entityId),
         ),
         with: {
           entity: true,
@@ -536,7 +539,7 @@ export class AuthService {
       const entity = await db.query.userToEntity.findFirst({
         where: and(
           eq(userToEntity?.userId, thricoUser.id),
-          eq(userToEntity?.entityId, input.entityId)
+          eq(userToEntity?.entityId, input.entityId),
         ),
         with: {
           entity: true,
@@ -555,13 +558,15 @@ export class AuthService {
       const themeResult = await ENTITY_THEME.query("entity")
         .eq(input?.entityId)
         .exec();
+      const sessionID = `session-${Date.now()}`;
 
       const createLoginSession = await USER_LOGIN_SESSION.create({
-        id: `session-${Date.now()}`,
-        userId: entity.id,
+        id: sessionID,
+        userId: entity.userId,
         device_id: input.device_id,
         deviceToken: input.deviceToken,
         deviceName: input.deviceName,
+        activeEntityId: input.entityId,
         token: uuidv4(),
       });
 
@@ -571,6 +576,17 @@ export class AuthService {
         userId: entity.userId,
         id: entity.id,
         country: input.country,
+      });
+
+      console.log("generate", generate, input);
+      this.updateSession({
+        sessionId: sessionID,
+        input: {
+          deviceToken: input.deviceToken,
+          deviceId: input.device_id,
+          deviceOs: input.deviceOs,
+          activeEntityId: input.entityId,
+        },
       });
 
       return {
@@ -610,6 +626,7 @@ export class AuthService {
             email: userDetails.email,
             firstName: userDetails.firstName,
             lastName: userDetails.lastName,
+            avatar: "default_image_male.png",
             thricoId: userDetails.id,
             entityId: input.entityId,
           })
@@ -634,7 +651,7 @@ export class AuthService {
       const thricoUser = await db.query.user.findFirst({
         where: and(
           eq(user.thricoId, input.userId),
-          eq(user.entityId, input.entityId)
+          eq(user.entityId, input.entityId),
         ),
         with: {
           entity: true,
@@ -644,7 +661,7 @@ export class AuthService {
       const entity = await db.query.userToEntity.findFirst({
         where: and(
           eq(userToEntity.userId, thricoUser.id),
-          eq(userToEntity.entityId, input.entityId)
+          eq(userToEntity.entityId, input.entityId),
         ),
         with: {
           entity: true,
@@ -669,6 +686,7 @@ export class AuthService {
         device_id: input.device_id,
         deviceToken: input.deviceToken,
         deviceName: input.deviceName,
+        activeEntityId: input.entityId,
         token: uuidv4(),
       });
 
@@ -709,8 +727,8 @@ export class AuthService {
           self.findIndex(
             (t: any) =>
               t.entity?.id === value.entity?.id &&
-              t.userEntity?.lastActive === value.userEntity?.lastActive
-          )
+              t.userEntity?.lastActive === value.userEntity?.lastActive,
+          ),
       );
 
       console.log(arr);
@@ -797,7 +815,7 @@ export class AuthService {
       // Ensure all modules have enabled: true
       if (subscription?.modules && Array.isArray(subscription.modules)) {
         subscription.modules = subscription.modules.filter(
-          (mod: any) => mod.enabled === true
+          (mod: any) => mod.enabled === true,
         );
       }
       return subscription;
@@ -831,6 +849,53 @@ export class AuthService {
       return entityTheme;
     } catch (error) {
       log.error("Error in getEntityTheme", { error, entityId });
+      throw error;
+    }
+  }
+
+  static async updateSession({
+    sessionId,
+    input,
+  }: {
+    sessionId: string;
+    input: {
+      deviceToken?: string;
+      deviceId?: string;
+      deviceOs?: string;
+      activeEntityId?: string;
+    };
+  }) {
+    console.log("Updating session", { sessionId, input });
+    try {
+      if (!sessionId) {
+        throw new GraphQLError("Session ID is required.", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+
+      log.debug("Updating session", { sessionId, input });
+
+      const session = await USER_LOGIN_SESSION.get(sessionId);
+      if (!session) {
+        throw new GraphQLError("Session not found.", {
+          extensions: { code: "NOT_FOUND" },
+        });
+      }
+
+      const updateData: any = {};
+      if (input.deviceToken !== undefined)
+        updateData.deviceToken = input.deviceToken;
+      if (input.deviceId !== undefined) updateData.deviceId = input.deviceId;
+      if (input.deviceOs !== undefined) updateData.deviceOs = input.deviceOs;
+      if (input.activeEntityId !== undefined)
+        updateData.activeEntityId = input.activeEntityId;
+
+      await USER_LOGIN_SESSION.update({ id: sessionId }, updateData);
+
+      log.info("Session updated successfully", { sessionId });
+      return { success: true };
+    } catch (error) {
+      log.error("Error in updateSession", { error, sessionId });
       throw error;
     }
   }

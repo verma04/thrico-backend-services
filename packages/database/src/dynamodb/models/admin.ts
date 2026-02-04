@@ -58,7 +58,7 @@ const domainSchema = new dynamoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // Define the model with the schema
@@ -88,7 +88,7 @@ const OTPSchema = new dynamoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 export const Domain = dynamoose.model("customDomain", domainSchema);
@@ -107,8 +107,15 @@ const LoginSessionSchema = new dynamoose.Schema(
     ip: String,
     deviceOs: String,
     deviceId: String,
-    userId: String,
+    userId: {
+      type: String,
+      index: {
+        name: "userIdIndex",
+        type: "global",
+      },
+    },
     ipAddress: String,
+    activeEntityId: String,
 
     logout: {
       type: Boolean,
@@ -117,7 +124,7 @@ const LoginSessionSchema = new dynamoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 const MentorshipCategorySchema = new dynamoose.Schema({
@@ -139,13 +146,13 @@ const mentorshipSkillsSchema = new dynamoose.Schema({
 
 const MENTORSHIP_SKILLS = dynamoose.model(
   "mentorshipSkills",
-  mentorshipSkillsSchema
+  mentorshipSkillsSchema,
 );
 const ENTITY_TYPE = dynamoose.model("EntityType", EntityTypeSchema);
 
 const MENTORSHIP_CATEGORY = dynamoose.model(
   "MentorshipCategory",
-  MentorshipCategorySchema
+  MentorshipCategorySchema,
 );
 const ENTITY_INDUSTRY = dynamoose.model("EntityIndustry", EntityIndustrySchema);
 
@@ -253,7 +260,7 @@ const customDomain = new dynamoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 const CUSTOM_DOMAIN = dynamoose.model("customDomain", customDomain);
@@ -297,7 +304,7 @@ const entityFont = new dynamoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 const ENTITY_FONT = dynamoose.model("entityFont", entityFont);
 
@@ -346,7 +353,7 @@ const UserSchema = new dynamoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 const ADMIN = dynamoose.model("adminEntity", UserSchema);
@@ -397,7 +404,7 @@ const entityThemeSchema = new dynamoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 const ENTITY_THEME = dynamoose.model("EntityTheme", entityThemeSchema);

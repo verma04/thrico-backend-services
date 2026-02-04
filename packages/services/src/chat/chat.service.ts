@@ -2,6 +2,7 @@ import { chat, connections, messages } from "@thrico/database";
 import { and, eq, or } from "drizzle-orm";
 import { GraphQLError } from "graphql";
 import { log } from "@thrico/logging";
+import { ModerationPublisher } from "../utils/moderation-publisher";
 
 export class ChatService {
   constructor(private db: any) {}
@@ -17,7 +18,6 @@ export class ChatService {
                 user: true,
               },
             },
-            marketPlace: true,
           },
         },
       },
@@ -96,13 +96,13 @@ export class ChatService {
         and(
           eq(connections.user1, input.userID),
           eq(connections.user2, id),
-          eq(connections.entity, entityId)
+          eq(connections.entity, entityId),
         ),
         and(
           eq(connections.user1, id),
           eq(connections.user2, input.userID),
-          eq(connections.entity, entityId)
-        )
+          eq(connections.entity, entityId),
+        ),
       ),
     });
 
@@ -111,13 +111,13 @@ export class ChatService {
         and(
           eq(chat.user1, input.userID),
           eq(chat.user2, id),
-          eq(chat.entity, entityId)
+          eq(chat.entity, entityId),
         ),
         and(
           eq(chat.user1, id),
           eq(chat.user2, input.userID),
-          eq(chat.entity, entityId)
-        )
+          eq(chat.entity, entityId),
+        ),
       ),
     });
 
@@ -142,18 +142,21 @@ export class ChatService {
     id,
     chatId,
     content,
+    entityId,
   }: {
     id: string;
     chatId: string;
     content: string;
+    entityId: string;
   }) {
     try {
       const newChat = await this.db
         .insert(messages)
         .values({
-          chatId: chatId,
+          conversationId: chatId,
           content: content,
           senderId: id,
+          entityId: entityId,
         })
         .returning();
 
@@ -165,6 +168,17 @@ export class ChatService {
       });
 
       console.log(details);
+
+      if (details) {
+        ModerationPublisher.publish({
+          userId: id,
+          entityId: entityId,
+          contentId: details.id,
+          contentType: "MESSAGE",
+          text: content,
+        });
+      }
+
       return details;
     } catch (error) {
       log.error("sendMessageInChat failed", { error });

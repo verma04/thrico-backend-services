@@ -1,19 +1,19 @@
 export const customFormTypes = `#graphql
   enum CustomFormStatus {
-    APPROVED
-    DISABLED
+    DRAFT
+    PUBLISHED
+    ARCHIVED
   }
-
-  # enum CustomFormResultVisibilityType {
-  #   ALWAYS
-  #   AFTER_SUBMIT
-  #   AFTER_END
-  #   ADMIN
-  # }
 
   enum CustomFormPreviewType {
     MULTI_STEP
     SCROLL_LONG
+  }
+
+  enum RatingType {
+    star
+    heart
+    thumb
   }
 
   enum CustomFormFieldType {
@@ -26,8 +26,8 @@ export const customFormTypes = `#graphql
     OPINION_SCALE
     RATING
     MULTIPLE_CHOICE
-    IS_OPTION
     DROPDOWN
+    ISOPTION
     DATE
     TIME
     YES_NO
@@ -36,96 +36,121 @@ export const customFormTypes = `#graphql
 
   type CustomForm {
     id: ID!
-
     createdAt: Date
     updatedAt: Date
     status: CustomFormStatus!
-
     title: String!
     endDate: Date
-    description: String!
+    description: String
     addedBy: String
     userId: ID
     previewType: CustomFormPreviewType!
-    appearance: JSON
-    fields: [CustomFormField!]!
+    appearance: JSON!
+    questions: [CustomFormQuestion!]!
+    surveys: [Survey!]!
   }
 
-  type CustomFormField {
+  type CustomFormQuestion {
     id: ID!
     formId: ID!
-    question: String!
     type: CustomFormFieldType!
-    order: Int
-    options: JSON
-    required: Boolean!
+    question: String!
+    description: String
+    order: Int!
+    required: Boolean
     maxLength: Int
-    scale: Int
-    ratingType: String
     min: Int
     max: Int
+    scale: Int
+    ratingType: RatingType
+    options: JSON
     labels: JSON
     allowMultiple: Boolean
-    fieldName: String
-    defaultValue: String
-    allowedTypes: JSON
-    maxSize: Int
+    legalText: String
   }
 
-  type CustomFormSubmission {
-    id: ID!
-    formId: ID
-    userId: ID
-    responses: JSON!
-    createdAt: Date
-  }
-
-  type CustomFormAuditLog {
+  type CustomFormResponse {
     id: ID!
     formId: ID!
-    status: String
-    performedBy: ID!
-    reason: String
-    previousState: JSON
-    newState: JSON
-    createdAt: Date
-    entity: ID!
-    updatedAt: Date
+    surveyId: ID
+    answers: JSON!
+    respondentId: ID
+    respondent: User
+    submittedAt: Date
   }
 
   input InputCustomForm {
     title: String!
-    description: String!
-
+    description: String
     endDate: Date
     previewType: CustomFormPreviewType
-    appearance: JSON
-    fields: [InputCustomFormField!]!
+    status: CustomFormStatus
+    appearance: JSON!
+    questions: [InputCustomFormQuestion!]!
   }
 
-  input InputCustomFormField {
-    question: String!
+  input InputCustomFormQuestion {
+    id: ID
     type: CustomFormFieldType!
-
-    options: JSON
+    question: String!
+    description: String
+    order: Int
     required: Boolean
     maxLength: Int
-    scale: Int
-    ratingType: String
     min: Int
     max: Int
-    id: ID
+    scale: Int
+    ratingType: RatingType
+    options: JSON
     labels: JSON
     allowMultiple: Boolean
-    fieldName: String
-    defaultValue: String
-    allowedTypes: JSON
-    maxSize: Int
+    legalText: String
+  }
+
+  input AddQuestionInput {
+    formId: ID!
+    type: CustomFormFieldType!
+    question: String!
+    description: String
+    order: Int
+    required: Boolean
+    maxLength: Int
+    min: Int
+    max: Int
+    scale: Int
+    ratingType: RatingType
+    options: JSON
+    labels: JSON
+    allowMultiple: Boolean
+    legalText: String
+  }
+
+  input EditQuestionInput {
+    type: CustomFormFieldType
+    question: String
+    description: String
+    order: Int
+    required: Boolean
+    maxLength: Int
+    min: Int
+    max: Int
+    scale: Int
+    ratingType: RatingType
+    options: JSON
+    labels: JSON
+    allowMultiple: Boolean
+    legalText: String
+  }
+
+  input ReorderQuestionInput {
+    id: ID!
+    order: Int!
   }
 
   input inputGetCustomForm {
     by: String
   }
+
   extend type Query {
     getCustomForms(input: inputGetCustomForm): [CustomForm!]!
     getCustomForm(id: ID!): CustomForm
@@ -135,8 +160,21 @@ export const customFormTypes = `#graphql
     addCustomForm(input: InputCustomForm!): CustomForm
     editCustomForm(id: ID!, input: InputCustomForm!): CustomForm
     deleteCustomForm(id: ID!): idResponse
+
+    # Question Management (Auto-save support)
+    addQuestion(input: AddQuestionInput!): CustomFormQuestion
+    editQuestion(id: ID!, input: EditQuestionInput!): CustomFormQuestion
+    deleteQuestion(id: ID!): idResponse
+    editQuestion(id: ID!, input: EditQuestionInput!): CustomFormQuestion
+    deleteQuestion(id: ID!): idResponse
+    reorderQuestions(input: [ReorderQuestionInput!]!): [CustomFormQuestion!]!
+    updateFormSettings(id: ID!, input: UpdateFormSettingsInput!): CustomForm
   }
-  
+
+  input UpdateFormSettingsInput {
+    previewType: CustomFormPreviewType
+    appearance: JSON
+  }
   type idResponse {
     id: ID
     deleted: Boolean

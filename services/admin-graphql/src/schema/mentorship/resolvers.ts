@@ -8,18 +8,18 @@ import {
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import { GraphQLError } from "graphql";
 import { userOrg } from "../../utils/common/userOrg";
+import { MentorshipService } from "@thrico/services";
+import { sendMentorshipNotification } from "../../queue/mentorship.queue";
 
 const mentorShipResolvers = {
   Query: {
-    async getAllMentorSkills(_: any, { input }: any, context: any) {
+    async getMentorSkills(_: any, { input }: any, context: any) {
       try {
-        const data = await checkAuth(context);
-        const { db } = data;
+        const { db, entity } = await checkAuth(context);
 
-        const userOrgId = await userOrg(data.id, db);
         const set = await db.query.mentorshipSkills.findMany({
           where: (mentorshipCategory: any, { eq }: any) =>
-            eq(mentorshipCategory.entity, userOrgId),
+            eq(mentorshipCategory.entity, entity),
           orderBy: (mentorshipCategory: any, { desc }: any) => [
             desc(mentorshipCategory.createdAt),
           ],
@@ -35,12 +35,15 @@ const mentorShipResolvers = {
     async getAllMentor(_: any, { input }: any, context: any) {
       try {
         const { db, entity } = await checkAuth(context);
+        const { limit, offset } = input || {};
 
         console.log(input);
         if (input.status === "ALL") {
           const set = await db.query.mentorShip.findMany({
             where: (mentorShip: any, { eq }: any) =>
               eq(mentorShip.entity, entity),
+            limit: limit || 20,
+            offset: offset || 0,
             orderBy: (mentorShip: any, { desc }: any) => [
               desc(mentorShip.createdAt),
             ],
@@ -62,8 +65,10 @@ const mentorShipResolvers = {
             where: (mentorShip: any, { eq }: any) =>
               and(
                 eq(mentorShip.entity, entity),
-                eq(mentorShip.mentorStatus, input.status)
+                eq(mentorShip.mentorStatus, input.status),
               ),
+            limit: limit || 20,
+            offset: offset || 0,
             orderBy: (mentorShip: any, { desc }: any) => [
               desc(mentorShip.createdAt),
             ],
@@ -86,21 +91,35 @@ const mentorShipResolvers = {
         throw error;
       }
     },
-    async getAllMentorCategory(_: any, { input }: any, context: any) {
+    async getMentorCategories(_: any, { input }: any, context: any) {
       try {
-        const data = await checkAuth(context);
-        const { db } = data;
+        const { db, entity } = await checkAuth(context);
 
-        const userOrgId = await userOrg(data.id, db);
         const set = await db.query.mentorshipCategory.findMany({
           where: (mentorshipCategory: any, { eq }: any) =>
-            eq(mentorshipCategory.entity, userOrgId),
+            eq(mentorshipCategory.entity, entity),
           orderBy: (mentorshipCategory: any, { desc }: any) => [
             desc(mentorshipCategory.createdAt),
           ],
         });
 
         return set;
+      } catch (error) {
+        console.log(error);
+        throw error;
+      }
+    },
+    async getAllPendingMentorships(_: any, { input }: any, context: any) {
+      try {
+        const { db, entity } = await checkAuth(context);
+        const { limit, offset } = input || {};
+
+        return await MentorshipService.getAllPendingMentorships({
+          db,
+          entityId: entity,
+          limit: limit || 20,
+          offset: offset || 0,
+        });
       } catch (error) {
         console.log(error);
         throw error;
@@ -132,21 +151,15 @@ const mentorShipResolvers = {
     },
     async addMentorShipCategory(_: any, { input }: any, context: any) {
       try {
-        console.log(input);
-        const data = await checkAuth(context);
-        const { db } = data;
-
-        const userOrgId = await userOrg(data.id, db);
+        const { db, entity } = await checkAuth(context);
 
         const set = await db.query.mentorshipCategory.findFirst({
           where: (mentorshipCategory: any, { eq }: any) =>
             and(
-              eq(mentorshipCategory.entity, userOrgId),
-              eq(mentorshipCategory.title, input.title)
+              eq(mentorshipCategory.entity, entity),
+              eq(mentorshipCategory.title, input.title),
             ),
         });
-
-        console.log(set);
 
         if (set) {
           return new GraphQLError("Category AllReady exist", {
@@ -160,7 +173,7 @@ const mentorShipResolvers = {
           .insert(mentorshipCategory)
           .values({
             title: input.title,
-            entity: userOrgId,
+            entity,
           })
           .returning();
         return createentity;
@@ -170,12 +183,28 @@ const mentorShipResolvers = {
       }
     },
 
+    async updateMentorShipCategory(_: any, { input }: any, context: any) {
+      try {
+        const { db, entity } = await checkAuth(context);
+        const [updated] = await db
+          .update(mentorshipCategory)
+          .set({
+            title: input.title,
+            updatedAt: new Date(),
+          })
+          .where(eq(mentorshipCategory.id, input.id))
+          .returning();
+
+        return updated;
+      } catch (error) {
+        console.log(error);
+        throw error;
+      }
+    },
+
     async deleteMentorShipCategory(_: any, { input }: any, context: any) {
       try {
-        console.log(input);
-        const data = await checkAuth(context);
-        const { db } = data;
-        await userOrg(data.id, db);
+        const { db, entity } = await checkAuth(context);
         const category = await db
           .delete(mentorshipCategory)
           .where(eq(mentorshipCategory.id, input.id))
@@ -218,16 +247,13 @@ const mentorShipResolvers = {
     async addMentorShipSkills(_: any, { input }: any, context: any) {
       try {
         console.log(input);
-        const data = await checkAuth(context);
-        const { db } = data;
-
-        const userOrgId = await userOrg(data.id, db);
+        const { db, entity } = await checkAuth(context);
 
         const set = await db.query.mentorshipSkills.findFirst({
           where: (mentorShipSkills: any, { eq }: any) =>
             and(
-              eq(mentorShipSkills.entity, userOrgId),
-              eq(mentorShipSkills.title, input.title)
+              eq(mentorShipSkills.entity, entity),
+              eq(mentorShipSkills.title, input.title),
             ),
         });
 
@@ -245,7 +271,7 @@ const mentorShipResolvers = {
           .insert(mentorshipSkills)
           .values({
             title: input.title,
-            entity: userOrgId,
+            entity,
           })
           .returning();
         return createentity;
@@ -255,12 +281,28 @@ const mentorShipResolvers = {
       }
     },
 
+    async updateMentorShipSkills(_: any, { input }: any, context: any) {
+      try {
+        const { db, entity } = await checkAuth(context);
+        const [updated] = await db
+          .update(mentorshipSkills)
+          .set({
+            title: input.title,
+            updatedAt: new Date(),
+          })
+          .where(eq(mentorshipSkills.id, input.id))
+          .returning();
+
+        return updated;
+      } catch (error) {
+        console.log(error);
+        throw error;
+      }
+    },
+
     async deleteMentorShipSkills(_: any, { input }: any, context: any) {
       try {
-        console.log(input);
-        const data = await checkAuth(context);
-        const { db } = data;
-        await userOrg(data.id, db);
+        const { db, entity } = await checkAuth(context);
         const category = await db
           .delete(mentorshipSkills)
           .where(eq(mentorshipSkills.id, input.id))
@@ -274,7 +316,7 @@ const mentorShipResolvers = {
 
     async duplicateMentorShipSkills(_: any, { input }: any, context: any) {
       try {
-        const { id, db } = await checkAuth(context);
+        const { db, entity } = await checkAuth(context);
 
         const category = await db.query.mentorshipSkills.findFirst({
           where: and(eq(mentorshipSkills.id, input.id)),
@@ -294,6 +336,41 @@ const mentorShipResolvers = {
           })
           .returning();
         return createFeedBack;
+      } catch (error) {
+        console.log(error);
+        throw error;
+      }
+    },
+
+    async updateMentorshipStatus(_: any, { input }: any, context: any) {
+      try {
+        const { db, entity } = await checkAuth(context);
+
+        return await MentorshipService.updateMentorshipStatus({
+          db,
+          mentorshipId: input.mentorshipId,
+          status: input.status,
+          queueFn: async (data: any) => {
+            await sendMentorshipNotification({
+              ...data,
+            });
+          },
+        });
+      } catch (error) {
+        console.log(error);
+        throw error;
+      }
+    },
+
+    async featureMentor(_: any, { input }: any, context: any) {
+      try {
+        const { db, entity } = await checkAuth(context);
+
+        return await MentorshipService.featureMentor({
+          db,
+          mentorshipId: input.mentorshipId,
+          isFeatured: input.isFeatured,
+        });
       } catch (error) {
         console.log(error);
         throw error;

@@ -20,6 +20,7 @@ import { listingResolvers } from "./listing/resolvers";
 import { discussionResolvers } from "./discussion/resolvers";
 import { websiteResolvers } from "./website/resolvers";
 import { customFormsResolvers } from "./custom-form/resolvers";
+import { surveyResolvers } from "./survey/resolvers";
 import { announcementsResolvers } from "./announcements/resolvers";
 import { alumniStoriesResolvers } from "./alumni-stories/resolvers";
 import { gamificationResolvers } from "./gamification/resolvers";
@@ -33,6 +34,7 @@ import { pageResolvers } from "./page/resolvers";
 import { dashboardResolvers } from "./dashboard/resolvers";
 import groupsResolvers from "./groups/resolvers";
 import { offersResolvers } from "./offers/resolvers";
+import { moderationResolvers } from "./moderation/resolvers";
 
 const mainResolvers = {
   Query: {
@@ -81,7 +83,7 @@ const mainResolvers = {
       try {
         const packages = await packageClient.getCountryPackages(
           country,
-          entityId
+          entityId,
         );
         return packages || [];
       } catch (error: any) {
@@ -94,9 +96,8 @@ const mainResolvers = {
 
     entitySubscription: async (_: any, { entityId }: any) => {
       try {
-        const subscription = await subscriptionClient.checkEntitySubscription(
-          entityId
-        );
+        const subscription =
+          await subscriptionClient.checkEntitySubscription(entityId);
         return subscription;
       } catch (error: any) {
         log.error("Error fetching entity subscription via gRPC", {
@@ -135,6 +136,7 @@ const mainResolvers = {
 // Entity Resolvers
 import GraphQLJSON from "graphql-type-json";
 import { entityResolvers } from "./entity/resolvers";
+import { shopResolvers } from "./shop/resolvers";
 
 export const resolvers: any = {
   Upload: GraphQLUpload,
@@ -151,6 +153,7 @@ export const resolvers: any = {
     ...discussionResolvers.Query,
     ...websiteResolvers.Query,
     ...customFormsResolvers.Query,
+    ...surveyResolvers.Query,
     ...announcementsResolvers.Query,
     ...alumniStoriesResolvers.Query,
     ...gamificationResolvers.Query,
@@ -164,6 +167,8 @@ export const resolvers: any = {
     ...dashboardResolvers.Query,
     ...groupsResolvers.Query,
     ...offersResolvers.Query,
+    ...moderationResolvers.Query,
+    ...shopResolvers.Query,
   },
   Mutation: {
     ...mainResolvers.Mutation,
@@ -177,6 +182,7 @@ export const resolvers: any = {
     ...discussionResolvers.Mutation,
     ...websiteResolvers.Mutation,
     ...customFormsResolvers.Mutation,
+    ...surveyResolvers.Mutation,
     ...announcementsResolvers.Mutation,
     ...alumniStoriesResolvers.Mutation,
     ...gamificationResolvers.Mutation,
@@ -190,5 +196,7 @@ export const resolvers: any = {
     ...dashboardResolvers.Mutation,
     ...groupsResolvers.Mutation,
     ...offersResolvers.Mutation,
+    ...moderationResolvers.Mutation,
+    ...shopResolvers.Mutation,
   },
 };

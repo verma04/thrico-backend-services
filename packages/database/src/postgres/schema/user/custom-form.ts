@@ -1,68 +1,26 @@
 import { relations, sql } from "drizzle-orm";
 import {
   boolean,
-  check,
   integer,
   jsonb,
   pgEnum,
   pgTable,
   text,
   timestamp,
-  unique,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
 
-import { user, userToEntity } from "./member";
-import { addedBy, logStatus } from "./enum";
+import { addedBy } from "./enum";
+import { user } from "./member";
+import { surveys } from "./survey";
 
-export const customFormStatus = pgEnum("customFormStatus", [
-  "APPROVED",
-  "DISABLED",
-]);
+/**
+ * ENUMS
+ */
 
-export const customFormResultVisibilityType = pgEnum(
-  "customFormResultVisibilityType",
-  ["ALWAYS", "AFTER_SUBMIT", "AFTER_END", "ADMIN"]
-);
-
-export const customFormPreviewTypeEnum = pgEnum("customFormPreviewTypes", [
-  "MULTI_STEP",
-  "SCROLL_LONG",
-]);
-
-export const customForms = pgTable("customForms", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  entityId: uuid("entity_id").notNull(),
-  isApproved: boolean("isApproved").notNull().default(true),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
-  status: customFormStatus("status").notNull().default("APPROVED"),
-  title: varchar("title", { length: 255 }).notNull(),
-  endDate: timestamp("endDate"),
-  description: varchar("description", { length: 255 }).notNull(),
-  addedBy: addedBy("addedBy").default("USER"),
-  userId: uuid("user_id"),
-  previewType: customFormPreviewTypeEnum("previewType")
-    .notNull()
-    .default("MULTI_STEP"),
-  appearance: jsonb("apperenace"), // JSON for custom styles, colors, etc.
-  resultVisibility: customFormResultVisibilityType("resultVisibility")
-    .notNull()
-    .default("ADMIN"),
-});
-
-// New table for custom form fields
-
-export const customFormsRelations = relations(customForms, ({ one, many }) => ({
-  user: one(user, {
-    fields: [customForms.userId],
-    references: [user.id],
-  }),
-  fields: many(customFormFields),
-}));
-
-export const customFormFieldTypeEnum = pgEnum("customFormFieldType", [
+// Matching the Question["type"] union in ts-types.ts
+export const questionTypeEnum = pgEnum("question_type", [
   "SHORT_TEXT",
   "LONG_TEXT",
   "EMAIL",
@@ -72,108 +30,115 @@ export const customFormFieldTypeEnum = pgEnum("customFormFieldType", [
   "OPINION_SCALE",
   "RATING",
   "MULTIPLE_CHOICE",
-  "ISOPTION",
   "DROPDOWN",
+  "ISOPTION",
   "DATE",
   "TIME",
-  "YES-NO",
+  "YES_NO",
   "LEGAL",
 ]);
 
-export const customFormFields = pgTable("customFormFields", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  formId: uuid("form_id").notNull(),
-  question: varchar("questions", { length: 255 }).notNull(),
-  type: customFormFieldTypeEnum("type").notNull(), // enum type
-  order: integer("order").notNull(),
-  options: jsonb("options"), // For select/checkbox fields, etc.
-  required: boolean("required").notNull().default(false),
-  maxLength: integer("maxLength"),
-  scale: integer("scale"),
-  ratingType: varchar("ratingType", { length: 50 }),
-  min: integer("min"),
-  max: integer("max"),
-  labels: jsonb("labels"), // { start: string; end: string }
-  allowMultiple: boolean("allowMultiple").default(false),
-  fieldName: varchar("fieldName", { length: 255 }),
-  defaultValue: varchar("defaultValue", { length: 255 }),
-  allowedTypes: jsonb("allowedTypes"), // string[]
-  maxSize: integer("maxSize"),
-});
+export const formStatusEnum = pgEnum("form_status", [
+  "DRAFT",
+  "PUBLISHED",
+  "ARCHIVED",
+]);
 
-export const customFormFieldsRelations = relations(
-  customFormFields,
-  ({ one }) => ({
-    form: one(customForms, {
-      fields: [customFormFields.formId],
-      references: [customForms.id],
-    }),
-  })
-);
+export const previewTypeEnum = pgEnum("preview_type", [
+  "SCROLL_LONG",
+  "MULTI_STEP",
+]);
 
-export const customFormSubmissions = pgTable("customFormSubmissions", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  formId: uuid("form_id"),
+export const ratingTypeEnum = pgEnum("rating_type", ["star", "heart", "thumb"]);
+
+/**
+ * TABLES
+ */
+
+// Main Form / Survey Table
+export const customForms = pgTable("custom_forms", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  entityId: uuid("entity_id").notNull(),
   userId: uuid("user_id"),
-  responses: jsonb("responses").notNull(), // Array/object of field responses
+  addedBy: addedBy("added_by").default("USER"),
+
+  title: varchar("title", { length: 255 }).notNull().default("Untitled Form"),
+  description: text("description"),
+
+  // Storage for FormSettings: primaryColor, secondaryColor, borderRadius, fontSize, etc.
+  appearance: jsonb("appearance")
+    .$type<{
+      primaryColor: string;
+      secondaryColor: string;
+      backgroundColor: string;
+      textColor: string;
+      buttonColor: string;
+      borderRadius: number;
+      borderWidth: number;
+      borderStyle: string;
+      borderColor: string;
+      inputBackground: string;
+      inputBorderColor: string;
+      fontSize: number;
+      fontWeight: string;
+      boxShadow: string;
+      hoverEffect: string;
+    }>()
+    .notNull(),
+
+  previewType: previewTypeEnum("preview_type").default("MULTI_STEP"),
+  status: formStatusEnum("status").default("DRAFT"),
+  endDate: timestamp("end_date"),
+
   createdAt: timestamp("created_at").defaultNow(),
-});
-
-export const customFormSubmissionsRelations = relations(
-  customFormSubmissions,
-  ({ many }) => ({
-    answers: many(customFormAnswers),
-  })
-);
-
-export const customFormAnswers = pgTable("customFormAnswers", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  submissionId: uuid("submission_id")
-    .notNull()
-    .references(() => customFormSubmissions.id, { onDelete: "cascade" }),
-  fieldId: uuid("field_id")
-    .notNull()
-    .references(() => customFormFields.id, { onDelete: "cascade" }),
-  answer: jsonb("answer"), // Stores the specific answer for this field
-});
-
-export const customFormAnswersRelations = relations(
-  customFormAnswers,
-  ({ one }) => ({
-    submission: one(customFormSubmissions, {
-      fields: [customFormAnswers.submissionId],
-      references: [customFormSubmissions.id],
-    }),
-    field: one(customFormFields, {
-      fields: [customFormAnswers.fieldId],
-      references: [customFormFields.id],
-    }),
-  })
-);
-
-export const customFormsAuditLogs = pgTable("customFormsAuditLogs", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  formId: uuid("formId").notNull(),
-  status: logStatus("logStatus"),
-  performedBy: uuid("performedBy").notNull(),
-  reason: text("reason"),
-  previousState: jsonb("previousState"),
-  newState: jsonb("newState"),
-  createdAt: timestamp("created_at").defaultNow(),
-  entity: uuid("entity").notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
-export const customFormsLogRelation = relations(
-  customFormsAuditLogs,
-  ({ one }) => ({
-    userToEntity: one(userToEntity, {
-      fields: [customFormsAuditLogs.entity],
-      references: [userToEntity.id],
-    }),
-    form: one(customForms, {
-      fields: [customFormsAuditLogs.formId],
-      references: [customForms.id],
-    }),
-  })
-);
+export const customFormsRelations = relations(customForms, ({ one, many }) => ({
+  user: one(user, {
+    fields: [customForms.userId],
+    references: [user.id],
+  }),
+  questions: many(questions),
+  surveys: many(surveys),
+}));
+
+// Individual Questions Table
+export const questions = pgTable("questions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  formId: uuid("form_id")
+    .references(() => customForms.id, { onDelete: "cascade" })
+    .notNull(),
+
+  type: questionTypeEnum("type").notNull(),
+  question: text("question").notNull(),
+  description: text("description"),
+  order: integer("order").notNull(), // Used for drag-and-drop sequencing
+  required: boolean("required").default(false),
+
+  // Configuration fields
+  maxLength: integer("max_length"), // For SHORT_TEXT, LONG_TEXT
+  min: integer("min"), // For OPINION_SCALE
+  max: integer("max"), // For OPINION_SCALE
+  scale: integer("scale"), // For RATING (usually 5 or 10)
+  ratingType: ratingTypeEnum("rating_type").default("star"),
+
+  // JSONB fields for dynamic data
+  options: jsonb("options").$type<string[]>(), // For MULTIPLE_CHOICE, DROPDOWN
+  labels: jsonb("labels").$type<{ start: string; end: string }>(), // For OPINION_SCALE
+
+  allowMultiple: boolean("allow_multiple").default(false), // For MULTIPLE_CHOICE
+
+  // Text for LEGAL question type (Terms & Conditions)
+  legalText: text("legal_text"),
+
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const questionsRelations = relations(questions, ({ one }) => ({
+  form: one(customForms, {
+    fields: [questions.formId],
+    references: [customForms.id],
+  }),
+}));

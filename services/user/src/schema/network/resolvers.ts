@@ -7,7 +7,7 @@ export const networkResolvers = {
   Query: {
     async getNetwork(_: any, { input }: any, context: any) {
       try {
-        const { id, db, entityId } = await checkAuth(context);
+        const { id, db, entityId, userId } = await checkAuth(context);
 
         return await NetworkService.getNetwork({
           db,
@@ -45,12 +45,14 @@ export const networkResolvers = {
       try {
         const { db, id, entityId } = await checkAuth(context);
 
-        return await NetworkService.getUserProfile({
-          db,
-          currentUserId: id,
-          entityId,
-          id: input.id,
-        });
+        console.log(id);
+
+        // return await NetworkService.getUserProfile({
+        //   db,
+        //   currentUserId: id,
+        //   entityId,
+        //   id: input.id,
+        // });
       } catch (error: any) {
         log.error("Error in getUserProfile", { error, input });
         throw error;
@@ -131,7 +133,7 @@ export const networkResolvers = {
               code: 400,
               http: { status: 400 },
             },
-          }
+          },
         );
       }
     },
@@ -200,7 +202,7 @@ export const networkResolvers = {
               code: 400,
               http: { status: 400 },
             },
-          }
+          },
         );
       }
     },

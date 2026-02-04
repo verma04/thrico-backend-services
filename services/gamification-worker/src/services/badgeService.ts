@@ -1,14 +1,24 @@
 import { userBadges } from "@thrico/database";
 import { and, eq } from "drizzle-orm";
 import { log } from "@thrico/logging";
+import { NotificationService } from "./notificationService";
+import { AppDatabase } from "@thrico/database";
 
 export class BadgeService {
-  static async processActionBadges(tx: any, gUser: any, actionBadges: any[]) {
+  static async processActionBadges(
+    tx: any,
+    db: AppDatabase,
+    gUser: any,
+    actionBadges: any[],
+  ) {
     for (const badge of actionBadges) {
+      if (!badge.isActive) {
+        continue;
+      }
       let userBadge = await tx.query.userBadges.findFirst({
         where: and(
           eq(userBadges.userId, gUser.id),
-          eq(userBadges.badgeId, badge.id)
+          eq(userBadges.badgeId, badge.id),
         ),
       });
 
@@ -35,6 +45,18 @@ export class BadgeService {
             userId: gUser.user,
             badgeName: badge.name,
           });
+          await NotificationService.sendGamificationNotification(
+            db, // Pass the DB connection (could be tx if compatible, but let's pass db for read mostly)
+            gUser.user, // The auth user ID
+            gUser.entityId,
+            {
+              type: "BADGE_EARNED",
+              title: "Badge Earned!",
+              message: `You earned the ${badge.name} badge!`,
+              badge: badge,
+            },
+            gUser.id,
+          );
         }
       } else if (!userBadge.isCompleted) {
         const newProgress = userBadge.progress + 1;
@@ -60,6 +82,18 @@ export class BadgeService {
             userId: gUser.user,
             badgeName: badge.name,
           });
+          await NotificationService.sendGamificationNotification(
+            db,
+            gUser.user,
+            gUser.entityId,
+            {
+              type: "BADGE_EARNED",
+              title: "Badge Earned!",
+              message: `You earned the ${badge.name} badge!`,
+              badge: badge,
+            },
+            gUser.id,
+          );
         }
       }
     }

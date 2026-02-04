@@ -20,15 +20,18 @@ export const gamificationResolvers = {
       }
     },
 
-    async getUserEarnedBadges(_: any, __: any, context: any) {
+    async getUserEarnedBadges(_: any, { input }: any, context: any) {
       try {
         const { db, userId, entityId } =
           context.user || (await checkAuth(context));
+        const { limit, cursor } = input || {};
         const gamificationQueryService = new GamificationQueryService(db);
         return await gamificationQueryService.getUserEarnedBadges({
           userId,
           entityId,
           db,
+          limit,
+          cursor,
         });
       } catch (error) {
         log.error("Error in getUserEarnedBadges", { error });
@@ -36,15 +39,18 @@ export const gamificationResolvers = {
       }
     },
 
-    async getUserPointsHistory(_: any, __: any, context: any) {
+    async getUserPointsHistory(_: any, { input }: any, context: any) {
       try {
         const { db, userId, entityId } =
           context.user || (await checkAuth(context));
+        const { limit, cursor } = input || {};
         const gamificationQueryService = new GamificationQueryService(db);
         return await gamificationQueryService.getUserPointsHistory({
           userId,
           entityId,
           db,
+          limit,
+          cursor,
         });
       } catch (error) {
         log.error("Error in getUserPointsHistory", { error });
@@ -87,15 +93,33 @@ export const gamificationResolvers = {
           context.user || (await checkAuth(context));
         const { limit, offset } = input || {};
         const gamificationQueryService = new GamificationQueryService(db);
-        return await gamificationQueryService.getLeaderboard({
+        const data = await gamificationQueryService.getLeaderboard({
           entityId,
           userId,
           limit: limit || 20,
           offset: offset || 0,
           db,
         });
+
+        console.log(data);
+        return data;
       } catch (error) {
         log.error("Error in getUserLeaderboard", { error });
+        throw error;
+      }
+    },
+    async getUserNextLevelProgress(_: any, __: any, context: any) {
+      try {
+        const { db, userId, entityId } =
+          context.user || (await checkAuth(context));
+        const gamificationQueryService = new GamificationQueryService(db);
+        return await gamificationQueryService.getUserNextLevelProgress({
+          userId,
+          entityId,
+          db,
+        });
+      } catch (error) {
+        log.error("Error in getUserNextLevelProgress", { error });
         throw error;
       }
     },

@@ -1,6 +1,6 @@
 import { PAGE } from "@thrico/database";
 import { JobService, upload } from "@thrico/services";
-import checkAuth from "src/utils/auth/checkAuth.utils";
+import checkAuth from "../../utils/auth/checkAuth.utils";
 
 const jobsResolvers: any = {
   Query: {
@@ -24,7 +24,7 @@ const jobsResolvers: any = {
       try {
         const allPages = await PAGE.scan().exec();
         const pages = allPages.filter((page) =>
-          page.name.toLowerCase().includes((input.value || "").toLowerCase())
+          page.name.toLowerCase().includes((input.value || "").toLowerCase()),
         );
 
         return pages.map((page) => page.toJSON());
@@ -244,7 +244,7 @@ const jobsResolvers: any = {
       try {
         const { id, db } = await checkAuth(context);
         const { jobId, name, email, resume } = input;
-        const job = JobService.applyToJob({
+        const job = await JobService.applyToJob({
           jobId,
           name,
           email,

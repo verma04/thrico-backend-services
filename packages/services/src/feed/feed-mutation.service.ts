@@ -1,5 +1,5 @@
 import { GraphQLError } from "graphql";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import {
   feedComment,
   feedReactions,
@@ -20,10 +20,12 @@ import { ForumService } from "../forum/forum.service";
 import { CelebrationService } from "../celebration/celebration.service";
 import { upload } from "../upload";
 import uploadVideo from "./uploadVideo";
+import { NotificationService } from "../notification/notification.service";
+import { ModerationPublisher } from "../utils/moderation-publisher";
 
 const uploadVideoPlaceholder = async (video: any) => {
   log.warn(
-    "uploadVideo is a placeholder. Please implement actual video upload logic."
+    "uploadVideo is a placeholder. Please implement actual video upload logic.",
   );
   return null as {
     filename: string;
@@ -79,8 +81,8 @@ export class FeedMutationService {
                   order: idx,
                 })
                 .returning()
-                .then((rows: any[]) => rows[0])
-            )
+                .then((rows: any[]) => rows[0]),
+            ),
           );
         }
 
@@ -145,6 +147,13 @@ export class FeedMutationService {
     }
     if (input?.video) {
       videoUrl = await uploadVideo(input?.video);
+
+      await GamificationEventService.triggerEvent({
+        triggerId: "tr-feed-video",
+        moduleId: "feed",
+        userId,
+        entityId,
+      });
     }
 
     try {
@@ -182,6 +191,7 @@ export class FeedMutationService {
             description: input?.description,
             source: input?.source || "dashboard",
             privacy: input.privacy,
+            status: input.status || "PENDING",
             groupId: input.groupId || null,
             postedOn: postedOn || null,
             pollId: poll?.id || null,
@@ -215,12 +225,29 @@ export class FeedMutationService {
         });
       });
 
-      await GamificationEventService.triggerEvent({
-        triggerId: "tr-feed-create",
-        moduleId: "feed",
-        userId,
-        entityId,
-      });
+      if (
+        !input?.poll &&
+        !input?.celebration &&
+        !input?.forum &&
+        !input?.video
+      ) {
+        await GamificationEventService.triggerEvent({
+          triggerId: "tr-feed-create",
+          moduleId: "feed",
+          userId,
+          entityId,
+        });
+      }
+
+      if (feed) {
+        ModerationPublisher.publish({
+          userId,
+          entityId,
+          contentId: feed.id,
+          contentType: "POST",
+          text: input?.description || "",
+        });
+      }
 
       return feed;
     } catch (error) {
@@ -254,7 +281,7 @@ export class FeedMutationService {
     const existingReaction = await db.query.feedReactions.findFirst({
       where: and(
         eq(feedReactions.feedId, input.id),
-        eq(feedReactions.userId, currentUserId)
+        eq(feedReactions.userId, currentUserId),
       ),
     });
 
@@ -288,8 +315,8 @@ export class FeedMutationService {
           .where(
             and(
               eq(feedReactions.feedId, input.id),
-              eq(feedReactions.userId, currentUserId)
-            )
+              eq(feedReactions.userId, currentUserId),
+            ),
           );
 
         await tx
@@ -324,6 +351,25 @@ export class FeedMutationService {
       });
     }
 
+    const oneDayAgo = new Date();
+    oneDayAgo.setHours(oneDayAgo.getHours() - 24);
+
+    const commentCount = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(feedComment)
+      .where(
+        and(
+          eq(feedComment.user, currentUserId),
+          sql`${feedComment.createdAt} > ${oneDayAgo}`,
+        ),
+      );
+
+    if (Number(commentCount[0]?.count) > 100) {
+      throw new GraphQLError("You account may be block of spamming", {
+        extensions: { code: "TOO_MANY_REQUESTS", http: { status: 429 } },
+      });
+    }
+
     const newComment = await db.transaction(async (tx: any) => {
       const comment = await tx
         .insert(feedComment)
@@ -348,9 +394,33 @@ export class FeedMutationService {
       moduleId: "feed",
       userId: currentUserId,
       entityId: entity,
+      cooldownSeconds: 120,
     });
 
-    return await db.query.feedComment.findFirst({
+    // Notify feed owner
+    if (feed.userId !== currentUserId) {
+      try {
+        await NotificationService.createNotification({
+          db,
+          userId: feed.userId,
+          senderId: currentUserId,
+          entityId: entity,
+          content: "commented on your post",
+          notificationType: "FEED_COMMENT",
+          feedId: input.feedID,
+          shouldSendPush: true,
+          pushTitle: "New Comment",
+          pushBody: `Someone commented on your post: "${input.comment.substring(0, 50)}${input.comment.length > 50 ? "..." : ""}"`,
+        });
+      } catch (err) {
+        log.error("Failed to send comment notification", {
+          err,
+          feedId: input.feedID,
+        });
+      }
+    }
+
+    const result = await db.query.feedComment.findFirst({
       where: eq(feedComment.id, newComment[0].id),
       with: {
         user: {
@@ -360,6 +430,18 @@ export class FeedMutationService {
         },
       },
     });
+
+    if (result) {
+      ModerationPublisher.publish({
+        userId: currentUserId,
+        entityId: entity,
+        contentId: result.id,
+        contentType: "COMMENT",
+        text: input.comment,
+      });
+    }
+
+    return result;
   }
 
   // Delete feed
@@ -430,7 +512,7 @@ export class FeedMutationService {
     const comment = await db.query.feedComment.findFirst({
       where: and(
         eq(feedComment.id, commentId),
-        eq(feedComment.user, currentUserId)
+        eq(feedComment.user, currentUserId),
       ),
     });
 
@@ -533,7 +615,7 @@ export class FeedMutationService {
     const existingWishList = await db.query.feedWishList.findFirst({
       where: and(
         eq(feedWishList.feedId, input.id),
-        eq(feedWishList.userId, currentUserId)
+        eq(feedWishList.userId, currentUserId),
       ),
     });
 
@@ -550,11 +632,114 @@ export class FeedMutationService {
         .where(
           and(
             eq(feedWishList.feedId, input.id),
-            eq(feedWishList.userId, currentUserId)
-          )
+            eq(feedWishList.userId, currentUserId),
+          ),
         );
 
       return { status: false, message: "Removed from wishlist" };
     }
+  }
+
+  // Pin feed
+  static async pinFeed({
+    feedId,
+    currentUserId,
+    isPinned,
+    db,
+  }: {
+    feedId: string;
+    currentUserId: string;
+    isPinned: boolean;
+    db: any;
+  }) {
+    const feed = await db.query.userFeed.findFirst({
+      where: eq(userFeed.id, feedId),
+    });
+
+    if (!feed) {
+      throw new GraphQLError("Feed not found", {
+        extensions: { code: "NOT_FOUND", http: { status: 404 } },
+      });
+    }
+
+    // Allow owner or potentially higher level logic would handle admin pinning
+    // For now, mirroring existing permission patterns
+    if (feed.userId !== currentUserId) {
+      throw new GraphQLError("Permission denied", {
+        extensions: { code: "FORBIDDEN", http: { status: 403 } },
+      });
+    }
+
+    const [updated] = await db
+      .update(userFeed)
+      .set({
+        isPinned,
+        pinnedAt: isPinned ? new Date() : null,
+      })
+      .where(eq(userFeed.id, feedId))
+      .returning();
+
+    return updated;
+  }
+  // Edit feed comment
+  static async editFeedComment({
+    currentUserId,
+    commentId,
+    content,
+    db,
+    entity,
+  }: {
+    currentUserId: string;
+    commentId: string;
+    content: string;
+    db: any;
+    entity: string;
+  }) {
+    const comment = await db.query.feedComment.findFirst({
+      where: and(eq(feedComment.id, commentId)),
+    });
+
+    if (!comment) {
+      throw new GraphQLError("Comment not found", {
+        extensions: { code: "NOT_FOUND", http: { status: 404 } },
+      });
+    }
+
+    if (comment.user !== currentUserId) {
+      throw new GraphQLError("Permission denied", {
+        extensions: { code: "FORBIDDEN", http: { status: 403 } },
+      });
+    }
+
+    await db
+      .update(feedComment)
+      .set({
+        content,
+        updatedAt: new Date(),
+      })
+      .where(eq(feedComment.id, commentId));
+
+    const updatedComment = await db.query.feedComment.findFirst({
+      where: eq(feedComment.id, commentId),
+      with: {
+        user: {
+          with: {
+            about: true,
+          },
+        },
+      },
+    });
+
+    if (updatedComment) {
+      ModerationPublisher.publish({
+        userId: currentUserId,
+        entityId: entity,
+        contentId: updatedComment.id,
+        contentType: "COMMENT",
+        text: content,
+      });
+    }
+
+    return updatedComment;
   }
 }

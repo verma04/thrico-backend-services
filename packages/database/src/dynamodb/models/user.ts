@@ -30,7 +30,8 @@ const UserSchema = new dynamoose.Schema(
     loginType: {
       type: String,
       enum: ["google", "facebook", "email"], // Enum validation
-      required: true,
+      required: false,
+      default: "email",
     },
 
     profile: {
@@ -45,7 +46,7 @@ const UserSchema = new dynamoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 const OTPSchema = new dynamoose.Schema(
@@ -72,7 +73,7 @@ const OTPSchema = new dynamoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 const LoginSessionSchema = new dynamoose.Schema(
@@ -82,8 +83,15 @@ const LoginSessionSchema = new dynamoose.Schema(
     ip: String,
     deviceOs: String,
     deviceId: String,
-    userId: String,
+    userId: {
+      type: String,
+      index: {
+        name: "userIdIndex",
+        type: "global",
+      },
+    },
     ipAddress: String,
+    activeEntityId: String, // Added this line as per instruction
     deviceToken: String,
     deviceName: String,
     logout: {
@@ -93,7 +101,7 @@ const LoginSessionSchema = new dynamoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 const USER = dynamoose.model("users", UserSchema);
 

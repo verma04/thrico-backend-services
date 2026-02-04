@@ -1,6 +1,6 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import checkAuth from "../../utils/auth/checkAuth.utils";
-import { ProfileService, upload } from "@thrico/services";
+import { ProfileService, UserService, upload } from "@thrico/services";
 import {
   aboutUser,
   user,
@@ -9,7 +9,9 @@ import {
   userToEntity,
   PAGE,
   type AppDatabase,
+  connections,
 } from "@thrico/database";
+import { logger } from "@thrico/logging";
 
 const profileResolvers: any = {
   Query: {
@@ -24,10 +26,12 @@ const profileResolvers: any = {
           id,
         });
 
-        console.log("getProfileInfo", details);
+        logger.info(`Fetching profile info for user ${userId}`);
+
         return details;
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in getProfileInfo: ${error}`);
+
         throw error;
       }
     },
@@ -37,10 +41,12 @@ const profileResolvers: any = {
 
         // PAGE is a DynamoDB model, so we use .query(...)
         const page = await PAGE.query("id").eq(input.id).exec();
-        console.log("getPageInfo", page.toJSON()[0]);
+        logger.info(`Fetching page info for ID ${input.id}`);
+
         return page.toJSON()[0];
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in getPageInfo: ${error}`);
+
         throw error;
       }
     },
@@ -58,7 +64,8 @@ const profileResolvers: any = {
 
         return details;
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in getProfileExperience: ${error}`);
+
         throw error;
       }
     },
@@ -67,17 +74,18 @@ const profileResolvers: any = {
       try {
         const { db } = await checkAuth(context);
 
-        console.log("getUserProfileInfo input:", input?.id);
+        logger.info(`Fetching user profile info for ID ${input?.id}`);
 
         const details = await ProfileService.getProfileDetailsInfo({
           db,
           userId: input.id,
         });
 
-        console.log("getUserProfileInfo result:", details);
+        logger.info(`getUserProfileInfo result: ${JSON.stringify(details)}`);
         return details;
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in getUserProfileInfo: ${error}`);
+
         throw error;
       }
     },
@@ -91,7 +99,8 @@ const profileResolvers: any = {
 
         return profile?.interests;
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in getUserInterests: ${error}`);
+
         throw error;
       }
     },
@@ -105,7 +114,8 @@ const profileResolvers: any = {
 
         return profile?.categories;
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in getUserCategories: ${error}`);
+
         throw error;
       }
     },
@@ -137,14 +147,100 @@ const profileResolvers: any = {
           });
         }
 
-        console.log("updateUserLocation", profile);
+        logger.info(`Updated user location for user ${id}`);
+
         // Note: The specific return type isn't strictly defined in the original snippet's logic block,
         // but the schema says ': user'. We might need to fetch and return the user.
         // However, sticking to the migration logic first.
         // Returning the profile for now as a placeholder or null if void.
         return null;
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in updateUserLocation: ${error}`);
+
+        throw error;
+      }
+    },
+    async getOnlineConnections(_: any, { limit, offset }: any, context: any) {
+      try {
+        const { entityId, db, id: currentUserId } = await checkAuth(context);
+
+        const data = await db
+          .selectDistinct({
+            id: userToEntity.id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            avatar: user.avatar,
+            cover: user.cover,
+            designation: aboutUser.headline,
+            isOnline: sql<boolean>`true`.as("is_online"),
+            connectedAt: connections.createdAt,
+            status: sql<string>`'CONNECTED'`.as("status"),
+          })
+          .from(connections)
+          .innerJoin(
+            userToEntity,
+            or(
+              and(
+                eq(connections.user1, currentUserId),
+                eq(connections.user2, userToEntity.id),
+              ),
+              and(
+                eq(connections.user2, currentUserId),
+                eq(connections.user1, userToEntity.id),
+              ),
+            ),
+          )
+          .innerJoin(user, eq(userToEntity.userId, user.id))
+          .leftJoin(aboutUser, eq(userToEntity.userId, aboutUser.userId))
+          .where(
+            and(
+              eq(connections.entity, entityId),
+              eq(connections.connectionStatusEnum, "ACCEPTED"),
+              eq(userToEntity.isOnline, true),
+              sql`${userToEntity.lastActive} + interval '10 minutes' > now()`,
+            ),
+          )
+          .limit(limit)
+          .offset(offset);
+
+        const [totalCountResult] = await db
+          .select({
+            count: sql`count(*)`,
+          })
+          .from(connections)
+          .innerJoin(
+            userToEntity,
+            or(
+              and(
+                eq(connections.user1, currentUserId),
+                eq(connections.user2, userToEntity.id),
+              ),
+              and(
+                eq(connections.user2, currentUserId),
+                eq(connections.user1, userToEntity.id),
+              ),
+            ),
+          )
+          .where(
+            and(
+              eq(connections.entity, entityId),
+              eq(connections.connectionStatusEnum, "ACCEPTED"),
+              eq(userToEntity.isOnline, true),
+              sql`${userToEntity.lastActive} + interval '10 minutes' > now()`,
+            ),
+          );
+
+        logger.info(
+          `Fetched ${data.length} online connections for user ${currentUserId}`,
+        );
+
+        return {
+          friends: data || [],
+          count: Number(totalCountResult?.count || 0),
+        };
+      } catch (error) {
+        logger.error(`Error in getOnlineConnections: ${error}`);
+
         throw error;
       }
     },
@@ -163,7 +259,8 @@ const profileResolvers: any = {
 
         return input;
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in updateUserCategories: ${error}`);
+
         throw error;
       }
     },
@@ -180,7 +277,8 @@ const profileResolvers: any = {
 
         return input;
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in updateUserInterests: ${error}`);
+
         throw error;
       }
     },
@@ -189,7 +287,8 @@ const profileResolvers: any = {
       try {
         const { userId, db } = await checkAuth(context);
 
-        console.log("updateProfileDetails input", input.profileImage);
+        logger.info(`Updating profile details for user ${userId}`);
+
         let avatar;
         if (input.profileImage) {
           avatar = await upload(input.profileImage);
@@ -233,7 +332,7 @@ const profileResolvers: any = {
             },
           },
         });
-        console.log("updateProfileDetails result", profile);
+        logger.info(`updateProfileDetails result: ${JSON.stringify(profile)}`);
 
         // The schema expects 'user', but here we are fetching 'userToEntity'.
         // This might need adjustment based on strict schema types,
@@ -241,7 +340,8 @@ const profileResolvers: any = {
         // Returning 'profile' here as per original logic.
         return profile;
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in updateProfileDetails: ${error}`);
+
         throw error;
       }
     },
@@ -250,7 +350,8 @@ const profileResolvers: any = {
       try {
         const { userId, db } = await checkAuth(context);
 
-        console.log("updateProfileCover", input);
+        logger.info(`Updating profile cover for user ${userId}`);
+
         let cover;
         if (input.cover) {
           cover = await upload(input.cover);
@@ -270,7 +371,8 @@ const profileResolvers: any = {
 
         return profile;
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in updateProfileCover: ${error}`);
+
         throw error;
       }
     },
@@ -287,7 +389,8 @@ const profileResolvers: any = {
 
         return updated.education;
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in editEducation: ${error}`);
+
         throw new Error("Failed to update education");
       }
     },
@@ -304,7 +407,8 @@ const profileResolvers: any = {
 
         return updated.experience;
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in editExperience: ${error}`);
+
         throw new Error("Failed to update experience");
       }
     },
@@ -321,8 +425,24 @@ const profileResolvers: any = {
 
         return updated.skills;
       } catch (error) {
-        console.log(error);
+        logger.error(`Error in editSkills: ${error}`);
+
         throw new Error("Failed to update skills");
+      }
+    },
+    async updateOnlineStatus(_: any, __: any, context: any) {
+      try {
+        const { userId, entityId, db, id } = await checkAuth(context);
+
+        return await UserService.updateOnlineStatus({
+          userId: id,
+          entityId,
+          db,
+        });
+      } catch (error) {
+        logger.error(`Error in updateOnlineStatus: ${error}`);
+
+        throw error;
       }
     },
   },

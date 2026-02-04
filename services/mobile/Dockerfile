@@ -28,9 +28,9 @@ COPY --from=builder /app/services/mobile ./services/mobile
 
 RUN mkdir -p /app/logs
 
-EXPOSE 3333
+EXPOSE 4444
 
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3333/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+# HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+#   CMD node -e "require('http').get('http://localhost:3333/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
 CMD ["node", "services/mobile/dist/server.js"]

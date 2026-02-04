@@ -6,6 +6,12 @@ dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 
 import { ApolloServer } from "@apollo/server";
 import { expressMiddleware } from "@apollo/server/express4";
+import { ApolloServerPluginDrainHttpServer } from "@apollo/server/plugin/drainHttpServer";
+import { createServer } from "http";
+import { makeExecutableSchema } from "@graphql-tools/schema";
+import { WebSocketServer } from "ws";
+import { useServer } from "graphql-ws/use/ws";
+
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -42,6 +48,18 @@ import { gamificationTypes } from "./schema/gamification/types";
 import { gamificationResolvers } from "./schema/gamification/resolvers";
 import { offersTypes } from "./schema/offers/types";
 import { offersResolvers } from "./schema/offers/resolvers";
+import { eventsTypes } from "./schema/events/types";
+import { eventsResolvers } from "./schema/events/resolvers";
+import { mentorshipTypes } from "./schema/mentorship/types";
+import { mentorshipResolvers } from "./schema/mentorship/resolvers";
+import { notificationTypes } from "./schema/notification/types";
+import { notificationResolvers } from "./schema/notification/resolvers";
+import { surveyTypes } from "./schema/survey/types";
+import { surveyResolvers } from "./schema/survey/resolvers";
+import { chatTypes } from "./schema/chat/types";
+import { chatResolvers } from "./schema/chat/resolvers";
+import { shopTypes } from "./schema/shop/types";
+import { shopResolvers } from "./schema/shop/resolvers";
 
 const PORT = process.env.MOBILE_GRAPHQL_PORT || 3333;
 
@@ -55,13 +73,13 @@ async function startServer() {
     helmet({
       contentSecurityPolicy: process.env.NODE_ENV === "production",
       crossOriginEmbedderPolicy: false,
-    })
+    }),
   );
 
   app.use(
     cors({
       credentials: true,
-    })
+    }),
   );
 
   const limiter = rateLimit({
@@ -93,7 +111,14 @@ async function startServer() {
     res.json({ status: "ok", service: "mobile" });
   });
 
-  const server = new ApolloServer<GraphQLContext>({
+  // SSE for real-time notifications
+  // const { handleNotificationStream } =
+  //   await import("./routes/notification.routes");
+  // app.get("/notifications/stream", handleNotificationStream);
+
+  const httpServer = createServer(app);
+
+  const schema = makeExecutableSchema({
     typeDefs: [
       typeDefs,
       networkTypes,
@@ -107,6 +132,12 @@ async function startServer() {
       storiesTypes,
       gamificationTypes,
       offersTypes,
+      eventsTypes,
+      mentorshipTypes,
+      notificationTypes,
+      surveyTypes,
+      chatTypes,
+      shopTypes,
     ],
     resolvers: [
       resolvers,
@@ -121,6 +152,35 @@ async function startServer() {
       storiesResolvers,
       gamificationResolvers,
       offersResolvers,
+      eventsResolvers,
+      mentorshipResolvers,
+      notificationResolvers,
+      surveyResolvers,
+      chatResolvers,
+      shopResolvers,
+    ],
+  });
+
+  const wsServer = new WebSocketServer({
+    server: httpServer,
+    path: "/graphql",
+  });
+
+  const serverCleanup = useServer({ schema }, wsServer);
+
+  const server = new ApolloServer<GraphQLContext>({
+    schema,
+    plugins: [
+      ApolloServerPluginDrainHttpServer({ httpServer }),
+      {
+        async serverWillStart() {
+          return {
+            async drainServer() {
+              await serverCleanup.dispose();
+            },
+          };
+        },
+      },
     ],
     formatError: (error) => {
       log.error("GraphQL error (mobile)", {
@@ -139,12 +199,9 @@ async function startServer() {
     "/graphql",
     expressMiddleware(server, {
       context: async ({ req }): Promise<any> => {
-        // The Express middleware at line 60-70 already tries to authenticate
-        // and populates req.user if successful.
-        // Return the request object for public operations (like login, register, health)
         return req;
       },
-    })
+    }),
   );
 
   app.use(errorLogger);
@@ -163,7 +220,7 @@ async function startServer() {
     });
   });
 
-  app.listen(PORT, () => {
+  httpServer.listen(PORT, () => {
     log.info(`Mobile GraphQL server running`, {
       port: PORT,
       graphqlPath: "/graphql",

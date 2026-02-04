@@ -21,7 +21,11 @@ export const triggerTypeEnum = pgEnum("trigger_type", [
 ]);
 export const badgeTypeEnum = pgEnum("badge_type", ["ACTION", "POINTS"]);
 export const rankTypeEnum = pgEnum("rank_type", ["POINTS", "BADGES", "HYBRID"]);
-export const moduleEnum = pgEnum("points_ddssdmodule", ["FEED", "LISTING"]);
+export const moduleEnum = pgEnum("points_ddssdmodule", [
+  "FEED",
+  "LISTING",
+  "SURVEY",
+]);
 
 export const userActionEnum = pgEnum("user_action_gamification", [
   "LIKE_FEED",
@@ -30,6 +34,7 @@ export const userActionEnum = pgEnum("user_action_gamification", [
   "SHARE_FEED",
   "POST_LISTING",
   "SHARE_LISTING",
+  "SUBMIT_SURVEY",
 ]);
 // Point Rules Table
 export const pointRules = pgTable(
@@ -54,9 +59,9 @@ export const pointRules = pgTable(
       table.module,
       table.action,
       table.trigger,
-      table.entityId
+      table.entityId,
     ),
-  })
+  }),
 );
 
 // Badges Table
@@ -84,15 +89,15 @@ export const badges = pgTable(
       table.type,
       table.module,
       table.action,
-      table.targetValue
+      table.targetValue,
     ),
     // Unique constraint for POINTS badges
     uniquePointsBadge: unique().on(
       table.entityId,
       table.type,
-      table.targetValue
+      table.targetValue,
     ),
-  })
+  }),
 );
 
 // Ranks Table
@@ -125,7 +130,7 @@ export const gamificationUser = pgTable(
     return {
       unq: unique().on(table.entityId, table.user),
     };
-  }
+  },
 );
 
 export const gamificationUserRelations = relations(
@@ -147,7 +152,7 @@ export const gamificationUserRelations = relations(
       fields: [gamificationUser.entityId],
       references: [entity.id],
     }),
-  })
+  }),
 );
 
 // User Points History Table
@@ -241,7 +246,7 @@ export const userPointsHistoryRelations = relations(
       fields: [userPointsHistory.pointRuleId],
       references: [pointRules.id],
     }),
-  })
+  }),
 );
 
 export const userBadgesRelations = relations(userBadges, ({ one }) => ({
@@ -279,7 +284,7 @@ export const userRankHistoryRelations = relations(
       references: [ranks.id],
       relationName: "toRank",
     }),
-  })
+  }),
 );
 
 // Types for TypeScript

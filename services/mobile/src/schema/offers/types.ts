@@ -12,6 +12,7 @@ export const offersTypes = gql`
     status: String
     claimsCount: Int!
     viewsCount: Int!
+    sharesCount: Int!
     category: OfferCategory
     location: JSON
     company: JSON
@@ -20,6 +21,7 @@ export const offersTypes = gql`
     website: String
     isApprovedAt: Date
     addedBy: String
+    user: entityUser
     userId: ID
     isActive: Boolean!
     createdAt: Date!
@@ -37,7 +39,7 @@ export const offersTypes = gql`
   input CreateOfferInput {
     title: String!
     description: String
-    image: String
+    image: Upload
     discount: String
     categoryId: ID
     validityStart: String
@@ -51,8 +53,9 @@ export const offersTypes = gql`
 
   input GetOffersInput {
     categoryId: ID
-    page: Int
-    limit: Int
+    offset: Int!
+    limit: Int!
+    search: String
   }
 
   type OffersResponse {
@@ -62,6 +65,8 @@ export const offersTypes = gql`
 
   extend type Query {
     getOffers(input: GetOffersInput): OffersResponse!
+    getOffersByUserId(input: GetOffersInput): OffersResponse!
+    getOfferById(offerId: ID!): Offer!
     getOfferCategories: [OfferCategory!]!
   }
 
@@ -69,5 +74,6 @@ export const offersTypes = gql`
     createOffer(input: CreateOfferInput!): Offer!
     claimOffer(offerId: ID!): Offer!
     trackOfferVisual(offerId: ID!): Boolean!
+    shareOffer(offerId: ID!): Offer!
   }
 `;

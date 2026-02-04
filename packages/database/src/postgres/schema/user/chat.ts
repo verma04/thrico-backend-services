@@ -44,13 +44,13 @@ export const chat = pgTable(
       userPairIndex: uniqueIndex("chats_user_pair_idx").on(
         table.user1,
         table.user2,
-        table.entity
+        table.entity,
       ),
     };
-  }
+  },
 );
 
-export const chatRelations = relations(chat, ({ one }) => ({
+export const chatRelations = relations(chat, ({ one, many }) => ({
   user1: one(userToEntity, {
     relationName: "user_id",
     fields: [chat.user1],
@@ -61,6 +61,7 @@ export const chatRelations = relations(chat, ({ one }) => ({
     fields: [chat.user2],
     references: [userToEntity.id],
   }),
+  messages: many(messages),
 }));
 
 export const conversation = pgTable("conversation", {
@@ -89,7 +90,7 @@ export const conversationRelations = relations(
       references: [entity.id],
     }),
     messages: many(messages),
-  })
+  }),
 );
 
 export const messages = pgTable("messages", {
@@ -105,9 +106,9 @@ export const messages = pgTable("messages", {
 });
 
 export const messagesRelations = relations(messages, ({ one }) => ({
-  conversation: one(conversation, {
+  conversation: one(chat, {
     fields: [messages.conversationId],
-    references: [conversation.id],
+    references: [chat.id],
   }),
   sender: one(user, {
     fields: [messages.senderId],

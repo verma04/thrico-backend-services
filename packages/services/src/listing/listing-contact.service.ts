@@ -17,7 +17,7 @@ export class ListingContactService {
         where: (contact: any, { eq, and }: any) =>
           and(
             eq(contact.listingId, listingId),
-            eq(contact.contactedBy, userId)
+            eq(contact.contactedBy, userId),
           ),
       });
 
@@ -32,7 +32,7 @@ export class ListingContactService {
     db: any,
     userId: string,
     page: number = 1,
-    limit: number = 10
+    limit: number = 10,
   ) {
     try {
       const offset = (page - 1) * limit;
@@ -69,11 +69,11 @@ export class ListingContactService {
         .leftJoin(user, eq(listingContact.contactedBy, user.id))
         .leftJoin(
           listingMessage,
-          eq(listingContact.messageId, listingMessage.id)
+          eq(listingContact.messageId, listingMessage.id),
         )
         .leftJoin(
           listingConversation,
-          eq(listingContact.conversationId, listingConversation.id)
+          eq(listingContact.conversationId, listingConversation.id),
         )
         .where(eq(listingContact.sellerId, userId))
         .orderBy(desc(listingContact.createdAt))
@@ -110,7 +110,7 @@ export class ListingContactService {
     conversationId: string,
     userId: string,
     page: number = 1,
-    limit: number = 50
+    limit: number = 50,
   ) {
     try {
       const offset = (page - 1) * limit;
@@ -120,7 +120,7 @@ export class ListingContactService {
         where: (conv: any, { eq, or, and }: any) =>
           and(
             eq(conv.id, conversationId),
-            or(eq(conv.buyerId, userId), eq(conv.sellerId, userId))
+            or(eq(conv.buyerId, userId), eq(conv.sellerId, userId)),
           ),
       });
 
@@ -270,7 +270,7 @@ export class ListingContactService {
           "Entity ID, Listing ID, Message, and Buyer ID are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -287,7 +287,7 @@ export class ListingContactService {
           canContactCheck.reason || "Cannot contact seller.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -295,7 +295,7 @@ export class ListingContactService {
         where: (marketPlace: any, { eq, and }: any) =>
           and(
             eq(marketPlace.id, listingId),
-            eq(marketPlace.entityId, entityId)
+            eq(marketPlace.entityId, entityId),
           ),
         columns: {
           id: true,
@@ -315,7 +315,7 @@ export class ListingContactService {
         where: (contact: any, { eq, and }: any) =>
           and(
             eq(contact.listingId, listingId),
-            eq(contact.contactedBy, buyerId)
+            eq(contact.contactedBy, buyerId),
           ),
       });
 
@@ -344,13 +344,13 @@ export class ListingContactService {
             and(
               eq(conv.listingId, listingId),
               eq(conv.buyerId, buyerId),
-              eq(conv.sellerId, listing.postedBy!)
+              eq(conv.sellerId, listing.postedBy!),
             ),
         });
 
         if (!conversation) {
           const [newConversation] = await tx
-            .insert(tx.schema.listingConversation)
+            .insert(listingConversation)
             .values({
               listingId: listingId,
               buyerId: buyerId,
@@ -362,15 +362,15 @@ export class ListingContactService {
           conversation = newConversation;
         } else {
           await tx
-            .update(tx.schema.listingConversation)
+            .update(listingConversation)
             .set({ lastMessageAt: new Date() })
-            .where(eq(tx.schema.listingConversation.id, conversation.id));
+            .where(eq(listingConversation.id, conversation.id));
         }
 
         conversationId = conversation.id;
 
         const [newMessage] = await tx
-          .insert(tx.schema.listingMessage)
+          .insert(listingMessage)
           .values({
             conversationId: conversationId,
             senderId: buyerId,
@@ -382,7 +382,7 @@ export class ListingContactService {
         messageId = newMessage.id;
 
         const [newContact] = await tx
-          .insert(tx.schema.listingContact)
+          .insert(listingContact)
           .values({
             listingId: listingId,
             contactedBy: buyerId,
@@ -395,11 +395,11 @@ export class ListingContactService {
         contactId = newContact.id;
 
         await tx
-          .update(tx.schema.marketPlace)
+          .update(marketPlace)
           .set({
-            numberOfContactClick: sql`${tx.schema.marketPlace.numberOfContactClick} + 1`,
+            numberOfContactClick: sql`${marketPlace.numberOfContactClick} + 1`,
           })
-          .where(eq(tx.schema.marketPlace.id, listingId));
+          .where(eq(marketPlace.id, listingId));
       });
 
       log.info("Seller contacted successfully", {
@@ -449,7 +449,7 @@ export class ListingContactService {
           "Conversation ID, Sender ID, and Content are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -461,8 +461,8 @@ export class ListingContactService {
             eq(conversation.id, conversationId),
             or(
               eq(conversation.buyerId, senderId),
-              eq(conversation.sellerId, senderId)
-            )
+              eq(conversation.sellerId, senderId),
+            ),
           ),
       });
 
@@ -524,8 +524,8 @@ export class ListingContactService {
             eq(conversation.id, conversationId),
             or(
               eq(conversation.buyerId, userId),
-              eq(conversation.sellerId, userId)
-            )
+              eq(conversation.sellerId, userId),
+            ),
           ),
       });
 
@@ -545,8 +545,8 @@ export class ListingContactService {
           and(
             eq(listingMessage.conversationId, conversationId),
             eq(listingMessage.isRead, false),
-            sql`${listingMessage.senderId} != ${userId}`
-          )
+            sql`${listingMessage.senderId} != ${userId}`,
+          ),
         );
 
       log.info("Messages marked as read", { conversationId, userId });
@@ -607,11 +607,11 @@ export class ListingContactService {
         .leftJoin(marketPlace, eq(listingContact.listingId, marketPlace.id))
         .leftJoin(
           listingMessage,
-          eq(listingContact.messageId, listingMessage.id)
+          eq(listingContact.messageId, listingMessage.id),
         )
         .leftJoin(
           listingConversation,
-          eq(listingContact.conversationId, listingConversation.id)
+          eq(listingContact.conversationId, listingConversation.id),
         )
         .where(eq(listingContact.contactedBy, userId))
         .orderBy(desc(listingContact.createdAt))

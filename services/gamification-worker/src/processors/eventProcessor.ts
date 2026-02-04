@@ -23,7 +23,7 @@ export type GamificationEvent = {
 export async function processEvent(
   event: GamificationEvent,
   db: AppDatabase,
-  redis: Redis
+  redis: Redis,
 ) {
   const { triggerId, moduleId, userId, entityId } = event;
   log.info("Processing event", { triggerId, userId });
@@ -45,7 +45,7 @@ export async function processEvent(
         eq(pointRules.entityId, entityId),
         eq(pointRules.module, moduleId),
         eq(pointRules.action, triggerId),
-        eq(pointRules.isActive, true)
+        eq(pointRules.isActive, true),
       ),
     }),
     db.query.badges.findMany({
@@ -54,7 +54,7 @@ export async function processEvent(
         eq(badges.type, "ACTION"),
         eq(badges.module, moduleId),
         eq(badges.action, triggerId),
-        eq(badges.isActive, true)
+        eq(badges.isActive, true),
       ),
     }),
   ]);
@@ -75,13 +75,13 @@ export async function processEvent(
       const gUser = await UserService.getOrCreateGamificationUser(
         tx,
         userId,
-        entityId
+        entityId,
       );
 
       // Validate gUser was created successfully
       if (!gUser || !gUser.id) {
         throw new Error(
-          `Failed to get or create gamification user for userId: ${userId}, entityId: ${entityId}`
+          `Failed to get or create gamification user for userId: ${userId}, entityId: ${entityId}`,
         );
       }
 
@@ -99,7 +99,7 @@ export async function processEvent(
       totalAwardedPoints = awarded;
 
       // 5. Action Badge Processing
-      await BadgeService.processActionBadges(tx, gUser, actionBadges);
+      await BadgeService.processActionBadges(tx, db, gUser, actionBadges);
 
       // 6. Points-based Progression (Ranks & Point Badges)
       if (totalAwardedPoints > 0) {
@@ -113,15 +113,17 @@ export async function processEvent(
 
         await PointService.checkRankProgression(
           tx,
+          db,
           gUser,
           finalTotalPoints,
-          entityId
+          entityId,
         );
         await PointService.checkPointsBadges(
           tx,
+          db,
           gUser,
           finalTotalPoints,
-          entityId
+          entityId,
         );
       }
     });
@@ -132,7 +134,7 @@ export async function processEvent(
         redis,
         userId,
         entityId,
-        totalAwardedPoints
+        totalAwardedPoints,
       );
 
       log.info("User rewarded successfully", {

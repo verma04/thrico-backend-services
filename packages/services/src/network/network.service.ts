@@ -10,8 +10,10 @@ import {
   userReports,
   blockedUsers,
   userFollows,
+  AppDatabase,
 } from "@thrico/database";
 import { GamificationEventService } from "../gamification/gamification-event.service";
+import { NotificationService } from "../notification/notification.service";
 
 export class NetworkService {
   // Helper function to get mutual friends
@@ -68,8 +70,8 @@ export class NetworkService {
               OR
               (c2.user2_id = ${targetUserId} AND c2.user_id = ${userToEntity.id})
             )
-          )`
-        )
+          )`,
+        ),
       )
       .limit(limit);
 
@@ -113,7 +115,7 @@ export class NetworkService {
             friends: mutualFriends,
           },
         };
-      })
+      }),
     );
   }
 
@@ -138,12 +140,12 @@ export class NetworkService {
     return or(
       and(
         eq(blockedUsers.blockerId, currentUserId),
-        eq(blockedUsers.blockedUserId, userToEntity.id)
+        eq(blockedUsers.blockedUserId, userToEntity.id),
       ),
       and(
         eq(blockedUsers.blockedUserId, currentUserId),
-        eq(blockedUsers.blockerId, userToEntity.id)
-      )
+        eq(blockedUsers.blockerId, userToEntity.id),
+      ),
     );
   }
 
@@ -191,7 +193,7 @@ export class NetworkService {
 
       const userStatus = db.$with("user_status").as(
         db
-          .select({
+          .selectDistinct({
             id: userToEntity.id,
             entityId: userToEntity.entityId,
             isApproved: true,
@@ -200,7 +202,7 @@ export class NetworkService {
             lastName: user.lastName,
             isOnline:
               sql`CASE WHEN ${userToEntity.lastActive} + interval '10 minutes' > now() THEN true ELSE false END`.as(
-                "is_online"
+                "is_online",
               ),
             avatar: user.avatar,
             cover: user.cover,
@@ -241,18 +243,18 @@ export class NetworkService {
             or(
               and(
                 eq(userToEntity.id, connectionsRequest.receiver),
-                eq(connectionsRequest.sender, currentUserId)
+                eq(connectionsRequest.sender, currentUserId),
               ),
               and(
                 eq(userToEntity.id, connectionsRequest.sender),
-                eq(connectionsRequest.receiver, currentUserId)
-              )
-            )
+                eq(connectionsRequest.receiver, currentUserId),
+              ),
+            ),
           )
           .leftJoin(blockedUsers, this.getBlockedUsersCondition(currentUserId))
           .innerJoin(user, eq(userToEntity.userId, user.id))
           .innerJoin(aboutUser, eq(userToEntity.userId, aboutUser.userId))
-          .where(sql`${blockedUsers.id} IS NULL`)
+          .where(sql`${blockedUsers.id} IS NULL`),
       );
 
       const searchCondition = search
@@ -260,8 +262,8 @@ export class NetworkService {
             LOWER(${userStatus.firstName}) LIKE LOWER(${`%${search}%`}) OR
             LOWER(${userStatus.lastName}) LIKE LOWER(${`%${search}%`}) OR
             LOWER(CONCAT(${userStatus.firstName}, ' ', ${
-            userStatus.lastName
-          })) LIKE LOWER(${`%${search}%`})
+              userStatus.lastName
+            })) LIKE LOWER(${`%${search}%`})
           )`
         : sql`true`;
 
@@ -273,8 +275,8 @@ export class NetworkService {
           and(
             ne(userStatus.id, currentUserId),
             eq(userStatus.entityId, entityId),
-            searchCondition
-          )
+            searchCondition,
+          ),
         )
         .orderBy(sql`${userStatus.mutualFriendsCount} DESC`)
         .limit(limit + 1)
@@ -296,9 +298,9 @@ export class NetworkService {
                 eq(connections.connectionStatusEnum, "ACCEPTED"),
                 or(
                   eq(connections.user1, item.id),
-                  eq(connections.user2, item.id)
-                )
-              )
+                  eq(connections.user2, item.id),
+                ),
+              ),
             );
           const mutualFriends = await this.getMutualFriends({
             db,
@@ -314,7 +316,7 @@ export class NetworkService {
             },
             numberOfConnections: Number(connectionsCount?.count || 0),
           };
-        })
+        }),
       );
 
       log.info("Network retrieved", {
@@ -337,7 +339,7 @@ export class NetworkService {
     }
   }
 
-  static async getUserProfile({
+  static async getNetworkUserProfile({
     db,
     currentUserId,
     entityId,
@@ -354,7 +356,7 @@ export class NetworkService {
           "User ID, Entity ID, and Profile ID are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -375,14 +377,14 @@ export class NetworkService {
             or(
               and(
                 eq(connectionsRequest.sender, currentUserId),
-                eq(connectionsRequest.receiver, id)
+                eq(connectionsRequest.receiver, id),
               ),
               and(
                 eq(connectionsRequest.sender, id),
-                eq(connectionsRequest.receiver, currentUserId)
-              )
-            )
-          )
+                eq(connectionsRequest.receiver, currentUserId),
+              ),
+            ),
+          ),
         )
         .limit(1);
 
@@ -419,8 +421,131 @@ export class NetworkService {
           and(
             eq(userFollows.followerId, currentUserId),
             eq(userFollows.followingId, id),
-            eq(userFollows.entityId, entityId)
-          )
+            eq(userFollows.entityId, entityId),
+          ),
+        )
+        .limit(1);
+
+      log.info("User profile retrieved", { currentUserId, profileId: id });
+
+      return {
+        ...condition,
+        status: query[0] ? query[0].status : "NO_CONNECTION",
+        isFollowing: !!followStatus,
+        mutualFriends: {
+          count: mutualFriends.length,
+          friends: mutualFriends,
+        },
+      };
+    } catch (error) {
+      log.error("Error in getNetworkUserProfile", {
+        error,
+        currentUserId,
+        entityId,
+        profileId: id,
+      });
+      throw error;
+    }
+  }
+
+  static async getUserProfile({
+    db,
+    currentUserId,
+    entityId,
+    userId,
+  }: {
+    db: AppDatabase;
+    currentUserId: string;
+    entityId: string;
+    userId: string;
+  }) {
+    try {
+      const user = await db.query.user.findFirst({
+        where: (user: any, { eq }: any) => eq(user.id, userId),
+        with: {
+          userEntity: true,
+        },
+      });
+
+      const id = user?.userEntity?.id;
+
+      if (!user) {
+        throw new GraphQLError("User not found.", {
+          extensions: { code: "NOT_FOUND" },
+        });
+      }
+      if (!currentUserId || !entityId || !id) {
+        throw new GraphQLError(
+          "User ID, Entity ID, and Profile ID are required.",
+          {
+            extensions: { code: "BAD_USER_INPUT" },
+          },
+        );
+      }
+
+      log.debug("Getting user profile", {
+        currentUserId,
+        entityId,
+        profileId: id,
+      });
+
+      const statusQuery = this.getConnectionStatusQuery(currentUserId);
+
+      const query = await db
+        .select({ status: statusQuery })
+        .from(connectionsRequest)
+        .where(
+          and(
+            eq(connectionsRequest.entity, entityId),
+            or(
+              and(
+                eq(connectionsRequest.sender, currentUserId),
+                eq(connectionsRequest.receiver, id),
+              ),
+              and(
+                eq(connectionsRequest.sender, id),
+                eq(connectionsRequest.receiver, currentUserId),
+              ),
+            ),
+          ),
+        )
+        .limit(1);
+
+      const condition = await db.query.userToEntity.findFirst({
+        where: (userToEntity: any, { eq }: any) =>
+          and(eq(userToEntity.id, id), eq(userToEntity.entityId, entityId)),
+        with: {
+          user: {
+            with: {
+              profile: true,
+              about: true,
+            },
+          },
+        },
+      });
+
+      if (!condition) {
+        throw new GraphQLError("User profile not found.", {
+          extensions: { code: "NOT_FOUND" },
+        });
+      }
+
+      const mutualFriends = await this.getMutualFriends({
+        db,
+        currentUserId,
+        targetUserId: id,
+        entityId,
+      });
+
+      const [followStatus] = await db
+        .select()
+        .from(userFollows)
+        .where(
+          and(
+            eq(userFollows.followerId, currentUserId),
+            eq(userFollows.followingId, id),
+            eq(userFollows.entityId, entityId),
+          ),
         )
         .limit(1);
 
@@ -440,7 +565,7 @@ export class NetworkService {
         error,
         currentUserId,
         entityId,
-        profileId: id,
+        profileId: userId,
       });
       throw error;
     }
@@ -472,34 +597,102 @@ export class NetworkService {
         });
       }
 
-      log.debug("Creating connection request", { sender, receiver, entity });
+      log.debug("Starting connectAsConnection", { sender, receiver, entity });
 
-      const trans = await db.transaction(async (tx: any) => {
-        const existingRequest = await tx
-          .select()
-          .from(connectionsRequest)
-          .where(
+      // 1. Fetch sender and receiver user info safely
+      const [senderRecord, receiverRecord] = await Promise.all([
+        db.query.userToEntity.findFirst({
+          where: and(
+            eq(userToEntity.id, sender),
+            eq(userToEntity.entityId, entity),
+          ),
+          with: { user: true },
+        }),
+        db.query.userToEntity.findFirst({
+          where: and(
+            eq(userToEntity.id, receiver),
+            eq(userToEntity.entityId, entity),
+          ),
+          with: { user: true },
+        }),
+      ]);
+
+      if (!senderRecord || !receiverRecord) {
+        throw new GraphQLError("Sender or Receiver not found in this entity.", {
+          extensions: { code: "NOT_FOUND" },
+        });
+      }
+
+      // 2. Comprehensive Validations
+      const validationError = await db.transaction(async (tx: any) => {
+        // A. Check for blocks
+        const block = await tx.query.blockedUsers.findFirst({
+          where: or(
+            and(
+              eq(blockedUsers.blockerId, sender),
+              eq(blockedUsers.blockedUserId, receiver),
+            ),
+            and(
+              eq(blockedUsers.blockerId, receiver),
+              eq(blockedUsers.blockedUserId, sender),
+            ),
+          ),
+        });
+        if (block) return "Connection blocked by privacy settings.";
+
+        // B. Check for existing connection
+        const existingConnection = await tx.query.connections.findFirst({
+          where: and(
+            eq(connections.entity, entity),
+            eq(connections.connectionStatusEnum, "ACCEPTED"),
             or(
               and(
-                eq(connectionsRequest.sender, sender),
-                eq(connectionsRequest.receiver, receiver),
-                eq(connectionsRequest.entity, entity)
+                eq(connections.user1, senderRecord.userId),
+                eq(connections.user2, receiverRecord.userId),
               ),
               and(
-                eq(connectionsRequest.sender, receiver),
-                eq(connectionsRequest.receiver, sender),
-                eq(connectionsRequest.entity, entity)
-              )
-            )
-          )
-          .limit(1);
+                eq(connections.user1, receiverRecord.userId),
+                eq(connections.user2, senderRecord.userId),
+              ),
+            ),
+          ),
+        });
+        if (existingConnection)
+          return "You are already connected with this user.";
 
-        if (existingRequest.length > 0) {
-          throw new GraphQLError("Connection request already exists.", {
-            extensions: { code: "BAD_USER_INPUT" },
-          });
+        // C. Check for existing request
+        const existingRequest = await tx.query.connectionsRequest.findFirst({
+          where: or(
+            and(
+              eq(connectionsRequest.sender, sender),
+              eq(connectionsRequest.receiver, receiver),
+            ),
+            and(
+              eq(connectionsRequest.sender, receiver),
+              eq(connectionsRequest.receiver, sender),
+            ),
+          ),
+        });
+
+        if (existingRequest) {
+          if (existingRequest.sender === sender) {
+            return "Connection request already sent.";
+          } else {
+            return "This user has already sent you a connection request. Please accept it instead.";
+          }
         }
 
+        return null;
+      });
+
+      if (validationError) {
+        throw new GraphQLError(validationError, {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+
+      // 3. Create the request and follow
+      await db.transaction(async (tx: any) => {
         await tx.insert(connectionsRequest).values({
           sender: sender,
           receiver: receiver,
@@ -507,47 +700,62 @@ export class NetworkService {
           entity: entity,
         });
 
-        const existingFollow = await tx
-          .select()
-          .from(userFollows)
-          .where(
-            and(
-              eq(userFollows.followerId, sender),
-              eq(userFollows.followingId, receiver),
-              eq(userFollows.entityId, entity)
-            )
-          )
-          .limit(1);
+        const existingFollow = await tx.query.userFollows.findFirst({
+          where: and(
+            eq(userFollows.followerId, sender),
+            eq(userFollows.followingId, receiver),
+            eq(userFollows.entityId, entity),
+          ),
+        });
 
-        if (existingFollow.length === 0) {
+        if (!existingFollow) {
           await tx.insert(userFollows).values({
             followerId: sender,
             followingId: receiver,
             entityId: entity,
           });
         }
-
-        return true;
       });
 
-      if (trans) {
-        log.info("Connection request created", { sender, receiver });
+      // 4. Async Tasks: Gamification, DB Notification, Push Notification
+      log.info("Connection request successfully created", { sender, receiver });
 
-        await GamificationEventService.triggerEvent({
-          triggerId: "tr-net-send",
-          moduleId: "network",
-          userId: sender,
-          entityId: entity,
-        });
-        return {
-          id: id,
-          status: "REQUEST_SEND",
-        };
-      } else {
-        throw new GraphQLError("Failed to create connection request.", {
-          extensions: { code: "INTERNAL_SERVER_ERROR" },
-        });
-      }
+      // A. Gamification
+      await GamificationEventService.triggerEvent({
+        triggerId: "tr-net-send",
+        moduleId: "network",
+        userId: senderRecord.userId, // Global ID
+        entityId: entity,
+      });
+
+      const senderName = `${senderRecord.user.firstName} ${senderRecord.user.lastName}`;
+
+      // B. Database Notification (linked to userToEntity.id)
+      await NotificationService.createNotification({
+        db,
+        userId: receiver, // userToEntity.id
+        senderId: sender, // userToEntity.id
+        entityId: entity,
+        content: `${senderName} wants to connect with you.`,
+        notificationType: "CONNECTION_REQUEST",
+      });
+
+      // C. Push Notification (uses global userId)
+      await NotificationService.sendPushNotification({
+        userId: receiverRecord.userId, // Global ID
+        entityId: entity,
+        title: "Connection Request",
+        body: `${senderName} wants to connect with you.`,
+        payload: {
+          type: "CONNECTION_REQUEST",
+          senderId: sender,
+        },
+      });
+
+      return {
+        id: id,
+        status: "REQUEST_SEND",
+      };
     } catch (error) {
       log.error("Error in connectAsConnection", {
         error,
@@ -579,27 +787,48 @@ export class NetworkService {
         });
       }
 
-      log.debug("Accepting connection", { sender, receiver, entity });
+      log.debug("Starting acceptConnection", { sender, receiver, entity });
 
+      // 1. Fetch sender and receiver info safely
+      const [senderRecord, receiverRecord] = await Promise.all([
+        db.query.userToEntity.findFirst({
+          where: and(
+            eq(userToEntity.id, sender),
+            eq(userToEntity.entityId, entity),
+          ),
+          with: { user: true },
+        }),
+        db.query.userToEntity.findFirst({
+          where: and(
+            eq(userToEntity.id, receiver),
+            eq(userToEntity.entityId, entity),
+          ),
+          with: { user: true },
+        }),
+      ]);
+
+      if (!senderRecord || !receiverRecord) {
+        throw new GraphQLError("Sender or Receiver not found.", {
+          extensions: { code: "NOT_FOUND" },
+        });
+      }
+
+      // 2. Perform accepting logic in transaction
       const transition = await db.transaction(async (tx: any) => {
-        const [friendRequest] = await tx
-          .select()
-          .from(connectionsRequest)
-          .where(
-            and(
-              eq(connectionsRequest.sender, sender),
-              eq(connectionsRequest.receiver, receiver),
-              eq(connectionsRequest.connectionStatusEnum, "PENDING")
-            )
-          )
-          .limit(1);
+        const friendRequest = await tx.query.connectionsRequest.findFirst({
+          where: and(
+            eq(connectionsRequest.sender, sender),
+            eq(connectionsRequest.receiver, receiver),
+            eq(connectionsRequest.connectionStatusEnum, "PENDING"),
+          ),
+        });
 
         if (!friendRequest) {
           throw new GraphQLError(
             "Connection request not found or already processed.",
             {
               extensions: { code: "NOT_FOUND" },
-            }
+            },
           );
         }
 
@@ -609,25 +838,21 @@ export class NetworkService {
           .where(eq(connectionsRequest.id, friendRequest.id));
 
         await tx.insert(connections).values({
-          user1: friendRequest.sender,
+          user1: friendRequest.sender, // This is still the userToEntity ID or global?
           user2: friendRequest.receiver,
           entity,
           connectionStatusEnum: "ACCEPTED",
         });
 
-        const existingFollow = await tx
-          .select()
-          .from(userFollows)
-          .where(
-            and(
-              eq(userFollows.followerId, receiver),
-              eq(userFollows.followingId, sender),
-              eq(userFollows.entityId, entity)
-            )
-          )
-          .limit(1);
+        const existingFollow = await tx.query.userFollows.findFirst({
+          where: and(
+            eq(userFollows.followerId, receiver),
+            eq(userFollows.followingId, sender),
+            eq(userFollows.entityId, entity),
+          ),
+        });
 
-        if (existingFollow.length === 0) {
+        if (!existingFollow) {
           await tx.insert(userFollows).values({
             followerId: receiver,
             followingId: sender,
@@ -638,14 +863,42 @@ export class NetworkService {
         return true;
       });
 
+      // 3. Async Tasks: Gamification, DB Notification, Push Notification
       if (transition) {
-        log.info("Connection accepted", { sender, receiver });
+        log.info("Connection accepted successfully", { sender, receiver });
+
+        // A. Gamification
         await GamificationEventService.triggerEvent({
           triggerId: "tr-net-accept",
           moduleId: "network",
-          userId: sender,
+          userId: senderRecord.userId, // Global ID of original requester
           entityId: entity,
         });
+
+        const receiverName = `${receiverRecord.user.firstName} ${receiverRecord.user.lastName}`;
+
+        // B. Database Notification (linked to userToEntity.id)
+        await NotificationService.createNotification({
+          db,
+          userId: sender, // Original requester (userToEntity.id)
+          senderId: receiver, // Acceptor (userToEntity.id)
+          entityId: entity,
+          content: `${receiverName} accepted your connection request.`,
+          notificationType: "CONNECTION_ACCEPTED",
+        });
+
+        // C. Push Notification (uses global userId)
+        await NotificationService.sendPushNotification({
+          userId: senderRecord.userId, // Global ID of original requester
+          entityId: entity,
+          title: "Connection Accepted",
+          body: `${receiverName} accepted your connection request.`,
+          payload: {
+            type: "CONNECTION_ACCEPTED",
+            senderId: receiver,
+          },
+        });
+
         return { id: id, status: "CONNECTED" };
       } else {
         throw new GraphQLError("Failed to accept connection.", {
@@ -694,8 +947,8 @@ export class NetworkService {
               eq(connectionsRequest.sender, sender),
               eq(connectionsRequest.receiver, receiver),
               eq(connectionsRequest.entity, entity),
-              eq(connectionsRequest.connectionStatusEnum, "PENDING")
-            )
+              eq(connectionsRequest.connectionStatusEnum, "PENDING"),
+            ),
           )
           .limit(1);
 
@@ -750,7 +1003,7 @@ export class NetworkService {
           "Current User ID, Target User ID, and Entity are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -767,14 +1020,14 @@ export class NetworkService {
               or(
                 and(
                   eq(connections.user1, currentUserId),
-                  eq(connections.user2, targetUserId)
+                  eq(connections.user2, targetUserId),
                 ),
                 and(
                   eq(connections.user1, targetUserId),
-                  eq(connections.user2, currentUserId)
-                )
-              )
-            )
+                  eq(connections.user2, currentUserId),
+                ),
+              ),
+            ),
           )
           .limit(1);
 
@@ -793,14 +1046,14 @@ export class NetworkService {
               and(
                 eq(connectionsRequest.sender, currentUserId),
                 eq(connectionsRequest.receiver, targetUserId),
-                eq(connectionsRequest.entity, entity)
+                eq(connectionsRequest.entity, entity),
               ),
               and(
                 eq(connectionsRequest.sender, targetUserId),
                 eq(connectionsRequest.receiver, currentUserId),
-                eq(connectionsRequest.entity, entity)
-              )
-            )
+                eq(connectionsRequest.entity, entity),
+              ),
+            ),
           );
 
         await tx
@@ -810,14 +1063,14 @@ export class NetworkService {
               and(
                 eq(userFollows.followerId, currentUserId),
                 eq(userFollows.followingId, targetUserId),
-                eq(userFollows.entityId, entity)
+                eq(userFollows.entityId, entity),
               ),
               and(
                 eq(userFollows.followerId, targetUserId),
                 eq(userFollows.followingId, currentUserId),
-                eq(userFollows.entityId, entity)
-              )
-            )
+                eq(userFollows.entityId, entity),
+              ),
+            ),
           );
 
         return true;
@@ -873,8 +1126,8 @@ export class NetworkService {
               eq(connectionsRequest.sender, sender),
               eq(connectionsRequest.receiver, receiver),
               eq(connectionsRequest.entity, entity),
-              eq(connectionsRequest.connectionStatusEnum, "PENDING")
-            )
+              eq(connectionsRequest.connectionStatusEnum, "PENDING"),
+            ),
           )
           .limit(1);
 
@@ -939,9 +1192,9 @@ export class NetworkService {
             eq(connections.connectionStatusEnum, "ACCEPTED"),
             or(
               eq(connections.user1, currentUserId),
-              eq(connections.user2, currentUserId)
-            )
-          )
+              eq(connections.user2, currentUserId),
+            ),
+          ),
         );
 
       const [requestsCount] = await db
@@ -953,8 +1206,8 @@ export class NetworkService {
           and(
             eq(connectionsRequest.receiver, currentUserId),
             eq(connectionsRequest.connectionStatusEnum, "PENDING"),
-            eq(connectionsRequest.entity, entityId)
-          )
+            eq(connectionsRequest.entity, entityId),
+          ),
         );
 
       const stats = {
@@ -995,7 +1248,7 @@ export class NetworkService {
           "Reporter ID, Reported User ID, Entity ID, and Reason are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -1016,7 +1269,7 @@ export class NetworkService {
         const reportedUser = await tx.query.userToEntity.findFirst({
           where: and(
             eq(userToEntity.id, reportedUserId),
-            eq(userToEntity.entityId, entityId)
+            eq(userToEntity.entityId, entityId),
           ),
         });
 
@@ -1033,8 +1286,8 @@ export class NetworkService {
             and(
               eq(userReports.reporterId, reporterId),
               eq(userReports.reportedUserId, reportedUserId),
-              eq(userReports.entityId, entityId)
-            )
+              eq(userReports.entityId, entityId),
+            ),
           )
           .limit(1);
 
@@ -1098,7 +1351,7 @@ export class NetworkService {
           "Blocker ID, Blocked User ID, and Entity ID are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -1118,8 +1371,8 @@ export class NetworkService {
             and(
               eq(blockedUsers.blockerId, blockerId),
               eq(blockedUsers.blockedUserId, blockedUserId),
-              eq(blockedUsers.entityId, entityId)
-            )
+              eq(blockedUsers.entityId, entityId),
+            ),
           )
           .limit(1);
 
@@ -1143,14 +1396,14 @@ export class NetworkService {
               or(
                 and(
                   eq(connections.user1, blockerId),
-                  eq(connections.user2, blockedUserId)
+                  eq(connections.user2, blockedUserId),
                 ),
                 and(
                   eq(connections.user1, blockedUserId),
-                  eq(connections.user2, blockerId)
-                )
-              )
-            )
+                  eq(connections.user2, blockerId),
+                ),
+              ),
+            ),
           );
 
         await tx
@@ -1161,14 +1414,14 @@ export class NetworkService {
               or(
                 and(
                   eq(connectionsRequest.sender, blockerId),
-                  eq(connectionsRequest.receiver, blockedUserId)
+                  eq(connectionsRequest.receiver, blockedUserId),
                 ),
                 and(
                   eq(connectionsRequest.sender, blockedUserId),
-                  eq(connectionsRequest.receiver, blockerId)
-                )
-              )
-            )
+                  eq(connectionsRequest.receiver, blockerId),
+                ),
+              ),
+            ),
           );
 
         await tx
@@ -1179,14 +1432,14 @@ export class NetworkService {
               or(
                 and(
                   eq(userFollows.followerId, blockerId),
-                  eq(userFollows.followingId, blockedUserId)
+                  eq(userFollows.followingId, blockedUserId),
                 ),
                 and(
                   eq(userFollows.followerId, blockedUserId),
-                  eq(userFollows.followingId, blockerId)
-                )
-              )
-            )
+                  eq(userFollows.followingId, blockerId),
+                ),
+              ),
+            ),
           );
 
         return true;
@@ -1231,7 +1484,7 @@ export class NetworkService {
           "Blocker ID, Blocked User ID, and Entity ID are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -1245,8 +1498,8 @@ export class NetworkService {
             and(
               eq(blockedUsers.blockerId, blockerId),
               eq(blockedUsers.blockedUserId, blockedUserId),
-              eq(blockedUsers.entityId, entityId)
-            )
+              eq(blockedUsers.entityId, entityId),
+            ),
           )
           .limit(1);
 
@@ -1322,14 +1575,14 @@ export class NetworkService {
         .from(blockedUsers)
         .innerJoin(
           userToEntity,
-          eq(blockedUsers.blockedUserId, userToEntity.id)
+          eq(blockedUsers.blockedUserId, userToEntity.id),
         )
         .innerJoin(user, eq(userToEntity.userId, user.id))
         .where(
           and(
             eq(blockedUsers.blockerId, currentUserId),
-            eq(blockedUsers.entityId, entityId)
-          )
+            eq(blockedUsers.entityId, entityId),
+          ),
         )
         .limit(limit + 1)
         .offset(offset);
@@ -1381,13 +1634,13 @@ export class NetworkService {
             LOWER(${user.firstName}) LIKE LOWER(${`%${search}%`}) OR
             LOWER(${user.lastName}) LIKE LOWER(${`%${search}%`}) OR
             LOWER(CONCAT(${user.firstName}, ' ', ${
-            user.lastName
-          })) LIKE LOWER(${`%${search}%`})
+              user.lastName
+            })) LIKE LOWER(${`%${search}%`})
           )`
         : sql`true`;
 
       const data = await db
-        .select({
+        .selectDistinct({
           id: userToEntity.id,
           firstName: user.firstName,
           lastName: user.lastName,
@@ -1396,7 +1649,7 @@ export class NetworkService {
           designation: aboutUser.headline,
           isOnline:
             sql`CASE WHEN ${userToEntity.lastActive} + interval '10 minutes' > now() THEN true ELSE false END`.as(
-              "is_online"
+              "is_online",
             ),
           connectedAt: connections.createdAt,
           status: sql<string>`'CONNECTED'`.as("status"),
@@ -1407,13 +1660,13 @@ export class NetworkService {
           or(
             and(
               eq(connections.user1, currentUserId),
-              eq(connections.user2, userToEntity.id)
+              eq(connections.user2, userToEntity.id),
             ),
             and(
               eq(connections.user2, currentUserId),
-              eq(connections.user1, userToEntity.id)
-            )
-          )
+              eq(connections.user1, userToEntity.id),
+            ),
+          ),
         )
         .innerJoin(user, eq(userToEntity.userId, user.id))
         .leftJoin(aboutUser, eq(userToEntity.userId, aboutUser.userId))
@@ -1423,8 +1676,8 @@ export class NetworkService {
             eq(connections.entity, entityId),
             eq(connections.connectionStatusEnum, "ACCEPTED"),
             sql`${blockedUsers.id} IS NULL`,
-            searchCondition
-          )
+            searchCondition,
+          ),
         )
         .limit(limit + 1)
         .offset(offset);
@@ -1444,9 +1697,9 @@ export class NetworkService {
                 eq(connections.connectionStatusEnum, "ACCEPTED"),
                 or(
                   eq(connections.user1, item.id),
-                  eq(connections.user2, item.id)
-                )
-              )
+                  eq(connections.user2, item.id),
+                ),
+              ),
             );
           const mutualFriends = await this.getMutualFriends({
             db,
@@ -1462,7 +1715,7 @@ export class NetworkService {
             },
             numberOfConnections: Number(connectionsCount?.count || 0),
           };
-        })
+        }),
       );
 
       log.info("My connections retrieved", {
@@ -1524,8 +1777,8 @@ export class NetworkService {
             LOWER(${user.firstName}) LIKE LOWER(${`%${search}%`}) OR
             LOWER(${user.lastName}) LIKE LOWER(${`%${search}%`}) OR
             LOWER(CONCAT(${user.firstName}, ' ', ${
-            user.lastName
-          })) LIKE LOWER(${`%${search}%`})
+              user.lastName
+            })) LIKE LOWER(${`%${search}%`})
           )`
         : sql`true`;
 
@@ -1552,8 +1805,8 @@ export class NetworkService {
             eq(connectionsRequest.connectionStatusEnum, "PENDING"),
             eq(connectionsRequest.entity, entityId),
             sql`${blockedUsers.id} IS NULL`,
-            searchCondition
-          )
+            searchCondition,
+          ),
         )
         .limit(limit + 1)
         .offset(offset);
@@ -1573,9 +1826,9 @@ export class NetworkService {
                 eq(connections.connectionStatusEnum, "ACCEPTED"),
                 or(
                   eq(connections.user1, item.senderId),
-                  eq(connections.user2, item.senderId)
-                )
-              )
+                  eq(connections.user2, item.senderId),
+                ),
+              ),
             );
           const mutualFriends = await this.getMutualFriends({
             db,
@@ -1591,7 +1844,7 @@ export class NetworkService {
             },
             numberOfConnections: Number(connectionsCount?.count || 0),
           };
-        })
+        }),
       );
 
       log.info("Connection requests retrieved", {
@@ -1635,7 +1888,7 @@ export class NetworkService {
           "Follower ID, Following ID, and Entity ID are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -1655,8 +1908,8 @@ export class NetworkService {
             and(
               eq(userFollows.followerId, followerId),
               eq(userFollows.followingId, followingId),
-              eq(userFollows.entityId, entityId)
-            )
+              eq(userFollows.entityId, entityId),
+            ),
           )
           .limit(1);
 
@@ -1675,14 +1928,14 @@ export class NetworkService {
               or(
                 and(
                   eq(blockedUsers.blockerId, followerId),
-                  eq(blockedUsers.blockedUserId, followingId)
+                  eq(blockedUsers.blockedUserId, followingId),
                 ),
                 and(
                   eq(blockedUsers.blockerId, followingId),
-                  eq(blockedUsers.blockedUserId, followerId)
-                )
-              )
-            )
+                  eq(blockedUsers.blockedUserId, followerId),
+                ),
+              ),
+            ),
           )
           .limit(1);
 
@@ -1741,7 +1994,7 @@ export class NetworkService {
           "Follower ID, Following ID, and Entity ID are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -1755,8 +2008,8 @@ export class NetworkService {
             and(
               eq(userFollows.followerId, followerId),
               eq(userFollows.followingId, followingId),
-              eq(userFollows.entityId, entityId)
-            )
+              eq(userFollows.entityId, entityId),
+            ),
           )
           .limit(1);
 
@@ -1829,8 +2082,8 @@ export class NetworkService {
             LOWER(${user.firstName}) LIKE LOWER(${`%${search}%`}) OR
             LOWER(${user.lastName}) LIKE LOWER(${`%${search}%`}) OR
             LOWER(CONCAT(${user.firstName}, ' ', ${
-            user.lastName
-          })) LIKE LOWER(${`%${search}%`})
+              user.lastName
+            })) LIKE LOWER(${`%${search}%`})
           )`
         : sql`true`;
 
@@ -1845,7 +2098,7 @@ export class NetworkService {
           followedAt: userFollows.createdAt,
           isOnline:
             sql`CASE WHEN ${userToEntity.lastActive} + interval '10 minutes' > now() THEN true ELSE false END`.as(
-              "is_online"
+              "is_online",
             ),
         })
         .from(userFollows)
@@ -1858,8 +2111,8 @@ export class NetworkService {
             eq(userFollows.followingId, userId),
             eq(userFollows.entityId, entityId),
             sql`${blockedUsers.id} IS NULL`,
-            searchCondition
-          )
+            searchCondition,
+          ),
         )
         .limit(limit + 1)
         .offset(offset);
@@ -1927,8 +2180,8 @@ export class NetworkService {
             LOWER(${user.firstName}) LIKE LOWER(${`%${search}%`}) OR
             LOWER(${user.lastName}) LIKE LOWER(${`%${search}%`}) OR
             LOWER(CONCAT(${user.firstName}, ' ', ${
-            user.lastName
-          })) LIKE LOWER(${`%${search}%`})
+              user.lastName
+            })) LIKE LOWER(${`%${search}%`})
           )`
         : sql`true`;
 
@@ -1943,7 +2196,7 @@ export class NetworkService {
           followedAt: userFollows.createdAt,
           isOnline:
             sql`CASE WHEN ${userToEntity.lastActive} + interval '10 minutes' > now() THEN true ELSE false END`.as(
-              "is_online"
+              "is_online",
             ),
         })
         .from(userFollows)
@@ -1956,8 +2209,8 @@ export class NetworkService {
             eq(userFollows.followerId, userId),
             eq(userFollows.entityId, entityId),
             sql`${blockedUsers.id} IS NULL`,
-            searchCondition
-          )
+            searchCondition,
+          ),
         )
         .limit(limit + 1)
         .offset(offset);
@@ -2016,8 +2269,8 @@ export class NetworkService {
         .where(
           and(
             eq(userFollows.followingId, userId),
-            eq(userFollows.entityId, entityId)
-          )
+            eq(userFollows.entityId, entityId),
+          ),
         );
 
       const [followingCount] = await db
@@ -2028,8 +2281,8 @@ export class NetworkService {
         .where(
           and(
             eq(userFollows.followerId, userId),
-            eq(userFollows.entityId, entityId)
-          )
+            eq(userFollows.entityId, entityId),
+          ),
         );
 
       const stats = {
@@ -2062,7 +2315,7 @@ export class NetworkService {
           "Follower ID, Following ID, and Entity ID are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
-          }
+          },
         );
       }
 
@@ -2079,8 +2332,8 @@ export class NetworkService {
           and(
             eq(userFollows.followerId, followerId),
             eq(userFollows.followingId, followingId),
-            eq(userFollows.entityId, entityId)
-          )
+            eq(userFollows.entityId, entityId),
+          ),
         )
         .limit(1);
 

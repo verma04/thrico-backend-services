@@ -55,13 +55,41 @@ export const gamificationTypes = `#graphql
     weeklyGrowth: Float!
   }
 
+  type EarnedBadgeEdge {
+    cursor: String!
+    node: EarnedBadge!
+  }
+
+  type EarnedBadgeConnection {
+    edges: [EarnedBadgeEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
+  }
+
+  type PointsHistoryEdge {
+    cursor: String!
+    node: PointsHistory!
+  }
+
+  type PointsHistoryConnection {
+    edges: [PointsHistoryEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
+  }
+
+  input GamificationPaginationInput {
+    cursor: String
+    limit: Int
+  }
+
   extend type Query {
     getUserGamificationProfile: GamificationProfile
-    getUserEarnedBadges: [EarnedBadge!]!
-    getUserPointsHistory: [PointsHistory!]!
+    getUserEarnedBadges(input: GamificationPaginationInput): EarnedBadgeConnection!
+    getUserPointsHistory(input: GamificationPaginationInput): PointsHistoryConnection!
     getEntityBadges: [Badge!]!
     getUserGamificationSummary: GamificationSummary!
     getUserLeaderboard(input: GamificationLeaderboardInput): GamificationLeaderboard!
+    getUserNextLevelProgress: NextLevelProgress!
   }
 
   input GamificationLeaderboardInput {
@@ -81,5 +109,14 @@ export const gamificationTypes = `#graphql
     entries: [GamificationLeaderboardEntry!]!
     totalUsers: Int!
     userEntry: GamificationLeaderboardEntry
+  }
+
+  type NextLevelProgress {
+    currentPoints: Int!
+    nextLevelPoints: Int!
+    pointsToNextLevel: Int!
+    percentage: Float!
+    currentRank: GamificationRank
+    nextRank: GamificationRank
   }
 `;

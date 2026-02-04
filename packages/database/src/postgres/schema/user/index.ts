@@ -31,3 +31,5 @@ export * from "./gamification";
 export * from "./celebration";
 export * from "./offers";
 export * from "./stories";
+export * from "./survey";
+export * from "./shop";

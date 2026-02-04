@@ -17,7 +17,6 @@ import { userToEntity } from "./member/user";
 
 export const mentorServicesType = pgEnum("mentorServicesType", [
   "1:1 call",
-  "subscription",
   "webinar",
 ]);
 
@@ -54,6 +53,7 @@ export const mentorShip = pgTable("mentorships", {
   greatestAchievement: text("greatestAchievement"),
   availability: json("availability").notNull(),
   agreement: boolean("agreement").notNull(),
+  isFeatured: boolean("isFeatured").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
   category: text("category"),
@@ -90,7 +90,7 @@ export const mentorShipTestimonialRelations = relations(
       fields: [mentorShipTestimonials.mentorShip],
       references: [mentorShip.id],
     }),
-  })
+  }),
 );
 
 export const mentorShipBooking = pgTable("mentorBooking", {
@@ -132,7 +132,7 @@ export const mentorShipBookingRelations = relations(
       fields: [mentorShipBooking.mentor],
       references: [mentorShip.id],
     }),
-  })
+  }),
 );
 
 export const mentorShipService = pgTable("mentorShipService", {
@@ -158,7 +158,7 @@ export const servicesRelations = relations(
       fields: [mentorShipService.mentorShip],
       references: [mentorShip.id],
     }),
-  })
+  }),
 );
 
 export const mentorshipCategory = pgTable("mentorshipCategory", {
@@ -177,7 +177,7 @@ export const mentorshipCategoryRelations = relations(
       fields: [mentorshipCategory.entity],
       references: [entity.id],
     }),
-  })
+  }),
 );
 
 export const mentorshipSkills = pgTable("mentorshipSkills", {

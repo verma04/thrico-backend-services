@@ -199,7 +199,7 @@ export const adminResolvers: any = {
                 code: ErrorCode.DUPLICATE_ENTRY,
                 http: { status: 400 },
               },
-            }
+            },
           );
         }
 
@@ -361,6 +361,7 @@ export const adminResolvers: any = {
 
         const url = await uploadImageToFolder(`${org_id}`, [file]);
         log.info("Image uploaded successfully", { org_id });
+        console.log(url[0].url);
         return url[0].url;
       } catch (error: any) {
         log.error("Upload error", { error: error.message });
@@ -382,7 +383,7 @@ export const adminResolvers: any = {
 
         const subscription = await subscriptionClient.updateEntityModules(
           entity,
-          input
+          input,
         );
         // const subscription = await checkEntitySubscription(entityId);
 

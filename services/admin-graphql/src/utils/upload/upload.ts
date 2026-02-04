@@ -33,7 +33,7 @@ const upload = async (file: Promise<any>) => {
     const data1 = await s3.upload(params).promise();
     const { Location } = data1;
 
-    return Location;
+    return `https://cdn.thrico.network/${newFilename}`;
   } catch (error) {
     console.log(error);
   }

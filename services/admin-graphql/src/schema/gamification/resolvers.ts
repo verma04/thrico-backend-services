@@ -39,6 +39,27 @@ export const gamificationResolvers = {
         throw error;
       }
     },
+    async getUserGamificationActivityLog(_: any, { input }: any, context: any) {
+      try {
+        const { db, entity } = await checkAuth(context);
+        const { userId, limit, offset } = input || {};
+        const queryService = new GamificationQueryService(db);
+        return await queryService.getUserGamificationActivityLog({
+          userId,
+          entityId: entity,
+          limit: limit || 20,
+          offset: offset || 0,
+        });
+      } catch (error: any) {
+        logger.error(
+          `Error in getUserGamificationActivityLog: ${error.message}`,
+          {
+            error,
+          },
+        );
+        throw error;
+      }
+    },
     // Core Gamification
     async getEntityGamificationModules(_: any, {}: any, context: any) {
       try {
@@ -46,9 +67,8 @@ export const gamificationResolvers = {
         if (!entityId) {
           throw new GraphQLError("Entity ID is required");
         }
-        const result = await gamificationClient.getEntityGamificationModules(
-          entityId
-        );
+        const result =
+          await gamificationClient.getEntityGamificationModules(entityId);
         return {
           modules: result.modules || [],
           triggers: result.triggers || [],
@@ -56,7 +76,7 @@ export const gamificationResolvers = {
       } catch (error: any) {
         logger.error(
           `Error in getEntityGamificationModules: ${error.message}`,
-          { error }
+          { error },
         );
         throw error;
       }
@@ -245,7 +265,7 @@ export const gamificationResolvers = {
           .select({ count: count() })
           .from(pointRules)
           .where(
-            and(eq(pointRules.entityId, entity), eq(pointRules.isActive, true))
+            and(eq(pointRules.entityId, entity), eq(pointRules.isActive, true)),
           );
 
         const [activeBadgesCount] = await db
@@ -263,7 +283,7 @@ export const gamificationResolvers = {
           .from(userBadges)
           .innerJoin(badges, eq(userBadges.badgeId, badges.id))
           .where(
-            and(eq(badges.entityId, entity), eq(userBadges.isCompleted, true))
+            and(eq(badges.entityId, entity), eq(userBadges.isCompleted, true)),
           );
 
         // 2. Top Rank
@@ -278,7 +298,7 @@ export const gamificationResolvers = {
           .from(userBadges)
           .innerJoin(badges, eq(userBadges.badgeId, badges.id))
           .where(
-            and(eq(badges.entityId, entity), eq(userBadges.isCompleted, true))
+            and(eq(badges.entityId, entity), eq(userBadges.isCompleted, true)),
           )
           .groupBy(userBadges.badgeId)
           .orderBy(desc(count()))
@@ -319,65 +339,65 @@ export const gamificationResolvers = {
 
         const targetValue = input.count || input.points;
 
-        // if (input.type === "ACTION") {
-        //   if (!input.module || !input.action || !input.count) {
-        //     throw new GraphQLError(
-        //       "For ACTION badges, module, action, and count are required."
-        //     );
-        //   }
+        if (input.type === "ACTION") {
+          if (!input.module || !input.action || !input.count) {
+            throw new GraphQLError(
+              "For ACTION badges, module, action, and count are required.",
+            );
+          }
 
-        //   const existingBadge = await db.query.badges.findFirst({
-        //     where: and(
-        //       eq(badges.entityId, entity),
-        //       eq(badges.type, "ACTION"),
-        //       eq(badges.module, input.module),
-        //       eq(badges.action, input.action),
-        //       eq(badges.targetValue, targetValue)
-        //     ),
-        //   });
+          const existingBadge = await db.query.badges.findFirst({
+            where: and(
+              eq(badges.entityId, entity),
+              eq(badges.type, "ACTION"),
+              eq(badges.module, input.module),
+              eq(badges.action, input.action),
+              eq(badges.targetValue, targetValue),
+            ),
+          });
 
-        //   if (existingBadge && existingBadge.isActive) {
-        //     throw new GraphQLError(
-        //       "A badge with this action and count already exists."
-        //     );
-        //   }
-        // } else if (input.type === "POINTS") {
-        //   if (!input.points) {
-        //     throw new GraphQLError("For POINTS badges, points are required.");
-        //   }
+          if (existingBadge && existingBadge.isActive) {
+            throw new GraphQLError(
+              "A badge with this action and count already exists.",
+            );
+          }
+        } else if (input.type === "POINTS") {
+          if (!input.points) {
+            throw new GraphQLError("For POINTS badges, points are required.");
+          }
 
-        //   const existingBadge = await db.query.badges.findFirst({
-        //     where: and(
-        //       eq(badges.entityId, entity),
-        //       eq(badges.type, "POINTS"),
-        //       eq(badges.targetValue, targetValue)
-        //     ),
-        //   });
+          const existingBadge = await db.query.badges.findFirst({
+            where: and(
+              eq(badges.entityId, entity),
+              eq(badges.type, "POINTS"),
+              eq(badges.targetValue, targetValue),
+            ),
+          });
 
-        //   if (existingBadge && existingBadge.isActive) {
-        //     throw new GraphQLError(
-        //       "A badge with this point requirement already exists."
-        //     );
-        //   }
-        // }
+          if (existingBadge && existingBadge.isActive) {
+            throw new GraphQLError(
+              "A badge with this point requirement already exists.",
+            );
+          }
+        }
 
-        // const payload = {
-        //   name: input.name,
-        //   description: input.description,
-        //   type: (input.type === "ACTION" ? "ACTION" : "POINTS") as
-        //     | "ACTION"
-        //     | "POINTS",
-        //   module: input.type === "ACTION" ? input.module : null,
-        //   action: input.type === "ACTION" ? input.action : null,
-        //   targetValue: targetValue,
-        //   icon: input.icon,
-        //   condition: input.condition || "",
-        //   isActive: true,
-        //   entityId: entity,
-        // };
+        const payload = {
+          name: input.name,
+          description: input.description,
+          type: (input.type === "ACTION" ? "ACTION" : "POINTS") as
+            | "ACTION"
+            | "POINTS",
+          module: input.type === "ACTION" ? input.module : null,
+          action: input.type === "ACTION" ? input.action : null,
+          targetValue: targetValue,
+          icon: input.icon,
+          condition: input.condition || "",
+          isActive: true,
+          entityId: entity,
+        };
 
-        // const [newBadge] = await db.insert(badges).values(payload).returning();
-        // return newBadge;
+        const [newBadge] = await db.insert(badges).values(payload).returning();
+        return newBadge;
       } catch (error: any) {
         logger.error(`Error in createBadge: ${error.message}`, {
           error,
@@ -388,11 +408,11 @@ export const gamificationResolvers = {
         if (error.code === "23505") {
           if (input.type === "ACTION") {
             throw new GraphQLError(
-              "A badge with this module, action, and count already exists."
+              "A badge with this module, action, and count already exists.",
             );
           } else {
             throw new GraphQLError(
-              "A badge with this point requirement already exists."
+              "A badge with this point requirement already exists.",
             );
           }
         }
@@ -425,7 +445,7 @@ export const gamificationResolvers = {
 
         if (!updatedBadge) {
           throw new GraphQLError(
-            "Badge not found or you do not have permission to update it."
+            "Badge not found or you do not have permission to update it.",
           );
         }
 
@@ -454,7 +474,7 @@ export const gamificationResolvers = {
 
         if (!badge) {
           throw new GraphQLError(
-            "Badge not found or you do not have permission to toggle it."
+            "Badge not found or you do not have permission to toggle it.",
           );
         }
 
@@ -492,7 +512,7 @@ export const gamificationResolvers = {
 
         if (!deletedBadge) {
           throw new GraphQLError(
-            "Badge not found or you do not have permission to delete it."
+            "Badge not found or you do not have permission to delete it.",
           );
         }
 
@@ -515,13 +535,13 @@ export const gamificationResolvers = {
             eq(pointRules.module, input.module),
             eq(pointRules.action, input.action),
             eq(pointRules.trigger, input.trigger),
-            eq(pointRules.isActive, true)
+            eq(pointRules.isActive, true),
           ),
         });
 
         if (existingRule) {
           throw new GraphQLError(
-            "A point rule for this module, action, and trigger already exists."
+            "A point rule for this module, action, and trigger already exists.",
           );
         }
 
@@ -545,7 +565,7 @@ export const gamificationResolvers = {
         // Handle unique constraint violation
         if (error.code === "23505") {
           throw new GraphQLError(
-            "A point rule for this module, action, and trigger already exists."
+            "A point rule for this module, action, and trigger already exists.",
           );
         }
 
@@ -567,7 +587,7 @@ export const gamificationResolvers = {
 
         if (!updatedRule) {
           throw new GraphQLError(
-            "Point rule not found or you do not have permission to update it."
+            "Point rule not found or you do not have permission to update it.",
           );
         }
 
@@ -593,7 +613,7 @@ export const gamificationResolvers = {
 
         if (!rule) {
           throw new GraphQLError(
-            "Point rule not found or you do not have permission to toggle it."
+            "Point rule not found or you do not have permission to toggle it.",
           );
         }
 
@@ -628,7 +648,7 @@ export const gamificationResolvers = {
 
         if (!deletedRule) {
           throw new GraphQLError(
-            "Point rule not found or you do not have permission to delete it."
+            "Point rule not found or you do not have permission to delete it.",
           );
         }
 
@@ -652,7 +672,7 @@ export const gamificationResolvers = {
           input.minPoints > input.maxPoints
         ) {
           throw new GraphQLError(
-            "Minimum points cannot be greater than maximum points."
+            "Minimum points cannot be greater than maximum points.",
           );
         }
 
@@ -681,7 +701,7 @@ export const gamificationResolvers = {
         if (input.minPoints !== undefined && input.maxPoints !== undefined) {
           if (input.minPoints > input.maxPoints) {
             throw new GraphQLError(
-              "Minimum points cannot be greater than maximum points."
+              "Minimum points cannot be greater than maximum points.",
             );
           }
         }
@@ -696,7 +716,7 @@ export const gamificationResolvers = {
 
         if (!updatedRank) {
           throw new GraphQLError(
-            "Rank not found or you do not have permission to update it."
+            "Rank not found or you do not have permission to update it.",
           );
         }
 
@@ -722,7 +742,7 @@ export const gamificationResolvers = {
 
         if (!rank) {
           throw new GraphQLError(
-            "Rank not found or you do not have permission to toggle it."
+            "Rank not found or you do not have permission to toggle it.",
           );
         }
 
@@ -760,7 +780,7 @@ export const gamificationResolvers = {
 
           if (!updatedRank) {
             throw new GraphQLError(
-              `Rank with id ${id} not found or you do not have permission to update it.`
+              `Rank with id ${id} not found or you do not have permission to update it.`,
             );
           }
 
@@ -789,7 +809,7 @@ export const gamificationResolvers = {
 
         if (!deletedRank) {
           throw new GraphQLError(
-            "Rank not found or you do not have permission to delete it."
+            "Rank not found or you do not have permission to delete it.",
           );
         }
 
