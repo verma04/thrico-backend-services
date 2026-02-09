@@ -211,6 +211,11 @@ export class NotificationService {
     shouldSendPush,
     pushTitle,
     pushBody,
+    communityId,
+    commNotifType,
+    imageUrl,
+    listingId,
+    jobId,
   }: {
     db: any;
     userId: string;
@@ -222,6 +227,11 @@ export class NotificationService {
     shouldSendPush?: boolean;
     pushTitle?: string;
     pushBody?: string;
+    communityId?: string;
+    commNotifType?: any; // Using any for now to avoid circular dependency or import issues if not careful
+    imageUrl?: string;
+    listingId?: string;
+    jobId?: string;
   }) {
     try {
       if (!userId || !content || !notificationType || !entityId) {
@@ -252,8 +262,21 @@ export class NotificationService {
         })
         .returning();
 
-      // Cache in Redis (which now also publishes for SSE)
-      await pushNotificationToCache(entityId, userId, notification);
+      // If it's a community notification, also insert into the separate table
+      if (communityId && commNotifType) {
+        const { communityMetadataNotification } =
+          await import("@thrico/database");
+        await db.insert(communityMetadataNotification).values({
+          user: userId,
+          community: communityId,
+          type: commNotifType,
+          notification: notification.id,
+          content,
+        });
+      }
+
+      // // Cache in Redis (which now also publishes for SSE)
+      // await pushNotificationToCache(entityId, userId, notification);
 
       console.log({
         userId,
@@ -263,6 +286,11 @@ export class NotificationService {
         payload: {
           notificationId: notification.id,
           notificationType,
+          communityId: communityId,
+          commNotifType: commNotifType,
+          imageUrl: imageUrl,
+          listingId: listingId,
+          jobId: jobId,
         },
       });
       // Trigger Push if requested
@@ -275,6 +303,11 @@ export class NotificationService {
           payload: {
             notificationId: notification.id,
             notificationType,
+            communityId: communityId,
+            commNotifType: commNotifType,
+            image: imageUrl,
+            listingId: listingId,
+            jobId: jobId,
           },
         }).catch((err: any) => {
           log.error("Failed to send push as part of notification creation", {
@@ -357,6 +390,26 @@ export class NotificationService {
     } catch (error) {
       log.error("Error in getTargetDeviceTokens", { error, userId, entityId });
       return [];
+    }
+  }
+
+  static async removeInvalidDeviceToken(token: string) {
+    try {
+      log.info("Removing invalid device token", { token });
+
+      // Find all sessions with this device token
+      const sessions = await USER_LOGIN_SESSION.scan("deviceToken")
+        .eq(token)
+        .exec();
+
+      if (sessions.length > 0) {
+        log.info(
+          `Found ${sessions.length} sessions with invalid token. Removing...`,
+        );
+        await Promise.all(sessions.map((session: any) => session.delete()));
+      }
+    } catch (error) {
+      log.error("Error in removeInvalidDeviceToken", { error, token });
     }
   }
 
@@ -449,6 +502,212 @@ export class NotificationService {
         userId,
         notificationTypes,
       });
+      throw error;
+    }
+  }
+
+  static async getFeedNotifications({
+    db,
+    userId,
+    cursor,
+    limit = 10,
+  }: {
+    db: any;
+    userId: string;
+    cursor?: string;
+    limit?: number;
+  }) {
+    try {
+      const { lt, inArray } = await import("drizzle-orm");
+      const { feedMetadataNotification } = await import("@thrico/database");
+
+      log.debug("Getting feed notifications", { userId, cursor, limit });
+
+      const feedTypes = ["FEED_COMMENT", "FEED_LIKE"];
+
+      const query = db
+        .select({
+          id: notifications.id,
+          notificationType: notifications.notificationType,
+          content: notifications.content,
+          isRead: notifications.isRead,
+          createdAt: notifications.createdAt,
+          sender: {
+            id: user.id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            avatar: user.avatar,
+          },
+          feed: userFeed,
+          metadata: feedMetadataNotification,
+        })
+        .from(notifications)
+        .leftJoin(user, eq(notifications.sender, user.id))
+
+        .leftJoin(userFeed, eq(notifications.feed, userFeed.id))
+        .leftJoin(
+          feedMetadataNotification,
+          eq(notifications.id, feedMetadataNotification.notification),
+        )
+        .where(
+          and(
+            eq(notifications.user, userId),
+            inArray(notifications.notificationType, feedTypes as any),
+            cursor ? lt(notifications.createdAt, new Date(cursor)) : undefined,
+          ),
+        )
+        .orderBy(desc(notifications.createdAt))
+        .limit(limit);
+
+      const result = await query;
+
+      return {
+        result,
+        nextCursor:
+          result.length === limit ? result[result.length - 1].createdAt : null,
+      };
+    } catch (error) {
+      log.error("Error in getFeedNotifications", { error, userId });
+      throw error;
+    }
+  }
+
+  static async getCommunityNotifications({
+    db,
+    userId,
+    cursor,
+    limit = 10,
+  }: {
+    db: any;
+    userId: string;
+    cursor?: string;
+    limit?: number;
+  }) {
+    try {
+      const { lt, inArray } = await import("drizzle-orm");
+      const { communityMetadataNotification, groups } =
+        await import("@thrico/database");
+
+      log.debug("Getting community notifications", { userId, cursor, limit });
+
+      const communityTypes = [
+        "COMMUNITIES",
+        "COMMUNITY_CREATED",
+        "COMMUNITY_JOIN_REQUEST",
+        "COMMUNITY_RATING",
+        "COMMUNITY_ROLE_UPDATED",
+        "COMMUNITY_JOIN_APPROVED",
+      ];
+
+      const query = db
+        .select({
+          id: notifications.id,
+          notificationType: notifications.notificationType,
+          content: notifications.content,
+          isRead: notifications.isRead,
+          createdAt: notifications.createdAt,
+          sender: {
+            id: userToEntity.id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            avatar: user.avatar,
+          },
+          community: {
+            id: groups.id,
+            title: groups.title,
+            slug: groups.slug,
+            cover: groups.cover,
+          },
+          metadata: communityMetadataNotification,
+        })
+        .from(notifications)
+        .leftJoin(userToEntity, eq(notifications.sender, userToEntity.id))
+        .leftJoin(user, eq(userToEntity.userId, user.id))
+        .leftJoin(
+          communityMetadataNotification,
+          eq(notifications.id, communityMetadataNotification.notification),
+        )
+        .leftJoin(
+          groups,
+          eq(communityMetadataNotification.community, groups.id),
+        )
+        .where(
+          and(
+            eq(notifications.user, userId),
+            inArray(notifications.notificationType, communityTypes as any),
+            cursor ? lt(notifications.createdAt, new Date(cursor)) : undefined,
+          ),
+        )
+        .orderBy(desc(notifications.createdAt))
+        .limit(limit);
+
+      const result = await query;
+
+      return {
+        result,
+        nextCursor:
+          result.length === limit ? result[result.length - 1].createdAt : null,
+      };
+    } catch (error) {
+      log.error("Error in getCommunityNotifications", { error, userId });
+      throw error;
+    }
+  }
+
+  static async getNetworkNotifications({
+    db,
+    userId,
+    cursor,
+    limit = 10,
+  }: {
+    db: any;
+    userId: string;
+    cursor?: string;
+    limit?: number;
+  }) {
+    try {
+      const { lt, inArray } = await import("drizzle-orm");
+
+      log.debug("Getting network notifications", { userId, cursor, limit });
+
+      const networkTypes = ["CONNECTION_REQUEST", "CONNECTION_ACCEPTED"];
+
+      const query = db
+        .select({
+          id: notifications.id,
+          notificationType: notifications.notificationType,
+          content: notifications.content,
+          isRead: notifications.isRead,
+          createdAt: notifications.createdAt,
+          sender: {
+            id: userToEntity.id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            avatar: user.avatar,
+          },
+        })
+        .from(notifications)
+        .leftJoin(userToEntity, eq(notifications.sender, userToEntity.id))
+        .leftJoin(user, eq(userToEntity.userId, user.id))
+        .where(
+          and(
+            eq(notifications.user, userId),
+            inArray(notifications.notificationType, networkTypes as any),
+            cursor ? lt(notifications.createdAt, new Date(cursor)) : undefined,
+          ),
+        )
+        .orderBy(desc(notifications.createdAt))
+        .limit(limit);
+
+      const result = await query;
+
+      return {
+        result,
+        nextCursor:
+          result.length === limit ? result[result.length - 1].createdAt : null,
+      };
+    } catch (error) {
+      log.error("Error in getNetworkNotifications", { error, userId });
       throw error;
     }
   }

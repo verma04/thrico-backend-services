@@ -1,12 +1,13 @@
 import { log } from "@thrico/logging";
 import { GraphQLError } from "graphql";
-import { and, eq, ne, or, sql } from "drizzle-orm";
+import { and, eq, ne, or, sql, desc, lt, count } from "drizzle-orm";
 import {
   aboutUser,
   connections,
   connectionsRequest,
   user,
   userToEntity,
+  userProfile,
   userReports,
   blockedUsers,
   userFollows,
@@ -165,14 +166,16 @@ export class NetworkService {
     db,
     currentUserId,
     entityId,
+    cursor,
     limit = 10,
-    offset = 0,
+    offset,
     search = "",
   }: {
     db: any;
     currentUserId: string;
     entityId: string;
     limit?: number;
+    cursor?: string | null;
     offset?: number;
     search?: string;
   }) {
@@ -183,11 +186,17 @@ export class NetworkService {
         });
       }
 
-      log.debug("Getting network", {
+      const calculatedOffset = cursor
+        ? parseInt(
+            Buffer.from(cursor, "base64").toString("ascii").split(":")[1],
+          )
+        : offset || 0;
+
+      log.debug("Getting network (cursor)", {
         currentUserId,
         entityId,
         limit,
-        offset,
+        offset: calculatedOffset,
         search,
       });
 
@@ -280,13 +289,14 @@ export class NetworkService {
         )
         .orderBy(sql`${userStatus.mutualFriendsCount} DESC`)
         .limit(limit + 1)
-        .offset(offset);
+        .offset(calculatedOffset);
 
-      const { data: results } = this.applyPagination(data, limit, offset);
+      const hasNextPage = data.length > limit;
+      const nodes = hasNextPage ? data.slice(0, limit) : data;
 
       // Enrich each user with their number of connections
       const enrichedResults = await Promise.all(
-        results.map(async (item) => {
+        nodes.map(async (item: any) => {
           const [connectionsCount] = await db
             .select({
               count: sql<number>`count(*)`.as("count"),
@@ -324,126 +334,59 @@ export class NetworkService {
         count: enrichedResults.length,
       });
 
+      const edges = enrichedResults.map((node, index: number) => ({
+        cursor: Buffer.from(`offset:${calculatedOffset + index + 1}`).toString(
+          "base64",
+        ),
+        node,
+      }));
+
+      // Get count using simple count query (approximation or reused logic)
+      // Reusing logic for accuracy
+      const countQuery = db.$with("user_status_count").as(
+        db
+          .selectDistinct({
+            id: userToEntity.id,
+            entityId: userToEntity.entityId,
+            firstName: user.firstName,
+            lastName: user.lastName,
+          })
+          .from(userToEntity)
+          .leftJoin(blockedUsers, this.getBlockedUsersCondition(currentUserId))
+          .innerJoin(user, eq(userToEntity.userId, user.id))
+          .where(sql`${blockedUsers.id} IS NULL`),
+      );
+
+      const [totalCountResult] = await db
+        .with(countQuery)
+        .select({ value: count(countQuery.id) })
+        .from(countQuery)
+        .where(
+          and(
+            ne(countQuery.id, currentUserId),
+            eq(countQuery.entityId, entityId),
+            search
+              ? sql`(
+            LOWER(${countQuery.firstName}) LIKE LOWER(${`%${search}%`}) OR
+            LOWER(${countQuery.lastName}) LIKE LOWER(${`%${search}%`}) OR
+            LOWER(CONCAT(${countQuery.firstName}, ' ', ${
+              countQuery.lastName
+            })) LIKE LOWER(${`%${search}%`})
+          )`
+              : sql`true`,
+          ),
+        );
+
       return {
-        data: enrichedResults,
-        pagination: {
-          total: null,
-          limit,
-          offset,
-          hasMore: data.length > limit,
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
         },
+        totalCount: totalCountResult?.value || 0,
       };
     } catch (error) {
       log.error("Error in getNetwork", { error, currentUserId, entityId });
-      throw error;
-    }
-  }
-
-  static async getNetworkUserProfile({
-    db,
-    currentUserId,
-    entityId,
-    id,
-  }: {
-    db: any;
-    currentUserId: string;
-    entityId: string;
-    id: string;
-  }) {
-    try {
-      if (!currentUserId || !entityId || !id) {
-        throw new GraphQLError(
-          "User ID, Entity ID, and Profile ID are required.",
-          {
-            extensions: { code: "BAD_USER_INPUT" },
-          },
-        );
-      }
-
-      log.debug("Getting user profile", {
-        currentUserId,
-        entityId,
-        profileId: id,
-      });
-
-      const statusQuery = this.getConnectionStatusQuery(currentUserId);
-
-      const query = await db
-        .select({ status: statusQuery })
-        .from(connectionsRequest)
-        .where(
-          and(
-            eq(connectionsRequest.entity, entityId),
-            or(
-              and(
-                eq(connectionsRequest.sender, currentUserId),
-                eq(connectionsRequest.receiver, id),
-              ),
-              and(
-                eq(connectionsRequest.sender, id),
-                eq(connectionsRequest.receiver, currentUserId),
-              ),
-            ),
-          ),
-        )
-        .limit(1);
-
-      const condition = await db.query.userToEntity.findFirst({
-        where: (userToEntity: any, { eq }: any) =>
-          and(eq(userToEntity.id, id), eq(userToEntity.entityId, entityId)),
-        with: {
-          user: {
-            with: {
-              profile: true,
-              about: true,
-            },
-          },
-        },
-      });
-
-      if (!condition) {
-        throw new GraphQLError("User profile not found.", {
-          extensions: { code: "NOT_FOUND" },
-        });
-      }
-
-      const mutualFriends = await this.getMutualFriends({
-        db,
-        currentUserId,
-        targetUserId: id,
-        entityId,
-      });
-
-      const [followStatus] = await db
-        .select()
-        .from(userFollows)
-        .where(
-          and(
-            eq(userFollows.followerId, currentUserId),
-            eq(userFollows.followingId, id),
-            eq(userFollows.entityId, entityId),
-          ),
-        )
-        .limit(1);
-
-      log.info("User profile retrieved", { currentUserId, profileId: id });
-
-      return {
-        ...condition,
-        status: query[0] ? query[0].status : "NO_CONNECTION",
-        isFollowing: !!followStatus,
-        mutualFriends: {
-          count: mutualFriends.length,
-          friends: mutualFriends,
-        },
-      };
-    } catch (error) {
-      log.error("Error in getNetworkUserProfile", {
-        error,
-        currentUserId,
-        entityId,
-        profileId: id,
-      });
       throw error;
     }
   }
@@ -566,6 +509,115 @@ export class NetworkService {
         currentUserId,
         entityId,
         profileId: userId,
+      });
+      throw error;
+    }
+  }
+
+  static async getNetworkUserProfile({
+    db,
+    currentUserId,
+    entityId,
+    id,
+  }: {
+    db: any;
+    currentUserId: string;
+    entityId: string;
+    id: string;
+  }) {
+    try {
+      if (!currentUserId || !entityId || !id) {
+        throw new GraphQLError(
+          "User ID, Entity ID, and Profile ID are required.",
+          {
+            extensions: { code: "BAD_USER_INPUT" },
+          },
+        );
+      }
+
+      log.debug("Getting user profile", {
+        currentUserId,
+        entityId,
+        profileId: id,
+      });
+
+      const statusQuery = this.getConnectionStatusQuery(currentUserId);
+
+      const query = await db
+        .select({ status: statusQuery })
+        .from(connectionsRequest)
+        .where(
+          and(
+            eq(connectionsRequest.entity, entityId),
+            or(
+              and(
+                eq(connectionsRequest.sender, currentUserId),
+                eq(connectionsRequest.receiver, id),
+              ),
+              and(
+                eq(connectionsRequest.sender, id),
+                eq(connectionsRequest.receiver, currentUserId),
+              ),
+            ),
+          ),
+        )
+        .limit(1);
+
+      const condition = await db.query.userToEntity.findFirst({
+        where: (userToEntity: any, { eq }: any) =>
+          and(eq(userToEntity.id, id), eq(userToEntity.entityId, entityId)),
+        with: {
+          user: {
+            with: {
+              profile: true,
+              about: true,
+            },
+          },
+        },
+      });
+
+      if (!condition) {
+        throw new GraphQLError("User profile not found.", {
+          extensions: { code: "NOT_FOUND" },
+        });
+      }
+
+      const mutualFriends = await this.getMutualFriends({
+        db,
+        currentUserId,
+        targetUserId: id,
+        entityId,
+      });
+
+      const [followStatus] = await db
+        .select()
+        .from(userFollows)
+        .where(
+          and(
+            eq(userFollows.followerId, currentUserId),
+            eq(userFollows.followingId, id),
+            eq(userFollows.entityId, entityId),
+          ),
+        )
+        .limit(1);
+
+      log.info("User profile retrieved", { currentUserId, profileId: id });
+
+      return {
+        ...condition,
+        status: query[0] ? query[0].status : "NO_CONNECTION",
+        isFollowing: !!followStatus,
+        mutualFriends: {
+          count: mutualFriends.length,
+          friends: mutualFriends,
+        },
+      };
+    } catch (error) {
+      log.error("Error in getNetworkUserProfile", {
+        error,
+        currentUserId,
+        entityId,
+        profileId: id,
       });
       throw error;
     }
@@ -738,6 +790,7 @@ export class NetworkService {
         entityId: entity,
         content: `${senderName} wants to connect with you.`,
         notificationType: "CONNECTION_REQUEST",
+        imageUrl: senderRecord.user.avatar,
       });
 
       // C. Push Notification (uses global userId)
@@ -749,6 +802,7 @@ export class NetworkService {
         payload: {
           type: "CONNECTION_REQUEST",
           senderId: sender,
+          image: senderRecord.user.avatar,
         },
       });
 
@@ -885,6 +939,7 @@ export class NetworkService {
           entityId: entity,
           content: `${receiverName} accepted your connection request.`,
           notificationType: "CONNECTION_ACCEPTED",
+          imageUrl: receiverRecord.user.avatar,
         });
 
         // C. Push Notification (uses global userId)
@@ -896,6 +951,7 @@ export class NetworkService {
           payload: {
             type: "CONNECTION_ACCEPTED",
             senderId: receiver,
+            image: receiverRecord.user.avatar,
           },
         });
 
@@ -1542,13 +1598,17 @@ export class NetworkService {
     currentUserId,
     entityId,
     limit = 10,
-    offset = 0,
+    cursor,
+    offset,
+    search = "",
   }: {
     db: any;
     currentUserId: string;
     entityId: string;
     limit?: number;
+    cursor?: string | null;
     offset?: number;
+    search?: string;
   }) {
     try {
       if (!currentUserId || !entityId) {
@@ -1557,12 +1617,42 @@ export class NetworkService {
         });
       }
 
-      log.debug("Getting blocked users", {
+      const calculatedOffset = cursor
+        ? parseInt(
+            Buffer.from(cursor, "base64").toString("ascii").split(":")[1],
+          )
+        : offset || 0;
+
+      log.debug("Getting blocked users (cursor)", {
         currentUserId,
         entityId,
         limit,
-        offset,
+        offset: calculatedOffset,
+        search,
       });
+
+      const whereConditions = [
+        eq(blockedUsers.blockerId, currentUserId),
+        eq(blockedUsers.entityId, entityId),
+      ];
+
+      // Add search term condition
+      if (search) {
+        whereConditions.push(
+          sql`(
+            LOWER(${user.firstName}) LIKE LOWER(${`%${search}%`}) OR
+            LOWER(${user.lastName}) LIKE LOWER(${`%${search}%`}) OR
+            LOWER(CONCAT(${user.firstName}, ' ', ${
+              user.lastName
+            })) LIKE LOWER(${`%${search}%`})
+          )`,
+        );
+      }
+
+      // Add cursor condition
+      if (cursor) {
+        whereConditions.push(lt(blockedUsers.createdAt, new Date(cursor)));
+      }
 
       const data = await db
         .select({
@@ -1578,23 +1668,305 @@ export class NetworkService {
           eq(blockedUsers.blockedUserId, userToEntity.id),
         )
         .innerJoin(user, eq(userToEntity.userId, user.id))
-        .where(
-          and(
-            eq(blockedUsers.blockerId, currentUserId),
-            eq(blockedUsers.entityId, entityId),
-          ),
+        .where(and(...whereConditions))
+        .orderBy(desc(blockedUsers.createdAt))
+        .limit(limit + 1)
+        .offset(calculatedOffset);
+
+      const hasNextPage = data.length > limit;
+      const nodes = hasNextPage ? data.slice(0, limit) : data;
+
+      log.info("Blocked users retrieved", {
+        currentUserId,
+        count: nodes.length,
+      });
+
+      const edges = nodes.map((node: any, index: number) => ({
+        cursor: Buffer.from(`offset:${calculatedOffset + index + 1}`).toString(
+          "base64",
+        ),
+        node,
+      }));
+
+      // Get total count
+      const totalWhere = [
+        eq(blockedUsers.blockerId, currentUserId),
+        eq(blockedUsers.entityId, entityId),
+      ];
+
+      if (search) {
+        totalWhere.push(
+          sql`(
+              LOWER(${user.firstName}) LIKE LOWER(${`%${search}%`}) OR
+              LOWER(${user.lastName}) LIKE LOWER(${`%${search}%`}) OR
+              LOWER(CONCAT(${user.firstName}, ' ', ${
+                user.lastName
+              })) LIKE LOWER(${`%${search}%`})
+            )`,
+        );
+      }
+
+      const [totalCountResult] = await db
+        .select({ value: count(blockedUsers.id) })
+        .from(blockedUsers)
+        .innerJoin(
+          userToEntity,
+          eq(blockedUsers.blockedUserId, userToEntity.id),
         )
+        .innerJoin(user, eq(userToEntity.userId, user.id))
+        .where(and(...totalWhere));
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount: totalCountResult?.value || 0,
+      };
+    } catch (error) {
+      log.error("Error in getBlockedUsers", { error, currentUserId, entityId });
+      throw error;
+    }
+  }
+
+  static async getMemberBirthdays({
+    db,
+    entityId,
+    limit = 10,
+    cursor,
+    filter,
+    currentUserId,
+  }: {
+    db: any;
+    entityId: string;
+    limit?: number;
+    cursor?: string | null;
+    filter: "TODAY" | "UPCOMING" | "THIS_MONTH" | "PAST";
+    currentUserId: string;
+  }) {
+    try {
+      const offset = cursor
+        ? parseInt(
+            Buffer.from(cursor, "base64").toString("ascii").split(":")[1],
+          )
+        : 0;
+
+      log.debug("Getting member birthdays", {
+        entityId,
+        limit,
+        offset,
+        filter,
+      });
+
+      const dobDate = sql`to_date(${userProfile.DOB}, 'YYYY-MM-DD')`;
+      const currentMonth = sql`extract(month from now())`;
+      const currentDay = sql`extract(day from now())`;
+      const dobMonth = sql`extract(month from ${dobDate})`;
+      const dobDay = sql`extract(day from ${dobDate})`;
+
+      const whereConditions = [
+        eq(userToEntity.entityId, entityId),
+        eq(userToEntity.status, "APPROVED"),
+        sql`${userProfile.DOB} IS NOT NULL`,
+        sql`${userProfile.DOB} != ''`,
+        ne(user.id, currentUserId), // Exclude self
+      ];
+
+      // Logic for filters
+      if (filter === "TODAY") {
+        whereConditions.push(
+          and(eq(dobMonth, currentMonth), eq(dobDay, currentDay)) as any,
+        );
+      } else if (filter === "THIS_MONTH") {
+        whereConditions.push(eq(dobMonth, currentMonth));
+      } else if (filter === "UPCOMING") {
+        whereConditions.push(
+          or(
+            sql`${dobMonth} > ${currentMonth}`,
+            and(
+              eq(dobMonth, currentMonth),
+              sql`${dobDay} >= ${currentDay}`,
+            ) as any,
+          ) as any,
+        );
+      } else if (filter === "PAST") {
+        whereConditions.push(
+          or(
+            sql`${dobMonth} < ${currentMonth}`,
+            and(
+              eq(dobMonth, currentMonth),
+              sql`${dobDay} < ${currentDay}`,
+            ) as any,
+          ) as any,
+        );
+      }
+
+      // Order by Logic
+      let orderByClause: any[] = [];
+      if (filter === "PAST") {
+        orderByClause = [desc(dobMonth), desc(dobDay)];
+      } else {
+        orderByClause = [sql`${dobMonth} ASC`, sql`${dobDay} ASC`];
+      }
+
+      const data = await db
+        .select({
+          id: userToEntity.id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          avatar: user.avatar,
+          designation: aboutUser.headline,
+          dob: userProfile.DOB,
+          userId: user.id,
+          isOnline:
+            sql`CASE WHEN ${userToEntity.lastActive} + interval '10 minutes' > now() THEN true ELSE false END`.as(
+              "is_online",
+            ),
+        })
+        .from(userToEntity)
+        .innerJoin(user, eq(userToEntity.userId, user.id))
+        .leftJoin(userProfile, eq(user.id, userProfile.userId))
+        .leftJoin(aboutUser, eq(user.id, aboutUser.userId))
+        .where(and(...whereConditions))
+        .orderBy(...orderByClause)
         .limit(limit + 1)
         .offset(offset);
 
-      const result = this.applyPagination(data, limit, offset);
-      log.info("Blocked users retrieved", {
-        currentUserId,
-        count: result.data.length,
-      });
-      return result;
+      const hasNextPage = data.length > limit;
+      const nodes = hasNextPage ? data.slice(0, limit) : data;
+
+      const enrichedResults = await Promise.all(
+        nodes.map(async (item: any) => {
+          const [connectionsCount] = await db
+            .select({
+              count: sql<number>`count(*)`.as("count"),
+            })
+            .from(connections)
+            .where(
+              and(
+                eq(connections.entity, entityId),
+                eq(connections.connectionStatusEnum, "ACCEPTED"),
+                or(
+                  eq(connections.user1, item.id),
+                  eq(connections.user2, item.id),
+                ),
+              ),
+            );
+          const mutualFriends = await this.getMutualFriends({
+            db,
+            currentUserId,
+            targetUserId: item.id,
+            entityId,
+          });
+
+          // Get connection status
+          const statusQuery = await db
+            .select({ status: connectionsRequest.connectionStatusEnum })
+            .from(connectionsRequest)
+            .where(
+              and(
+                eq(connectionsRequest.entity, entityId),
+                or(
+                  and(
+                    eq(connectionsRequest.sender, currentUserId),
+                    eq(connectionsRequest.receiver, item.id),
+                  ),
+                  and(
+                    eq(connectionsRequest.sender, item.id),
+                    eq(connectionsRequest.receiver, currentUserId),
+                  ),
+                ),
+              ),
+            )
+            .limit(1);
+
+          // Check if connected
+          const isConnected = await db
+            .select()
+            .from(connections)
+            .where(
+              and(
+                eq(connections.entity, entityId),
+                eq(connections.connectionStatusEnum, "ACCEPTED"),
+                or(
+                  and(
+                    eq(connections.user1, currentUserId),
+                    eq(connections.user2, item.id),
+                  ),
+                  and(
+                    eq(connections.user2, currentUserId),
+                    eq(connections.user1, item.id),
+                  ),
+                ),
+              ),
+            )
+            .limit(1);
+
+          let status = "NO_CONNECTION";
+          if (isConnected[0]) status = "CONNECTED";
+          else if (statusQuery[0]) {
+            if (statusQuery[0].status === "PENDING") {
+              // Check who sent it. This simplifies logic.
+              // Ideally we check sender/receiver.
+              // Assuming if pending, return status from request.
+              // But GraphQL enum has REQUEST_RECEIVED / REQUEST_SENT.
+              // Re-query request with direction.
+              const req = await db.query.userRequest.findFirst({
+                where: (r: any, { or, and, eq }: any) =>
+                  and(
+                    eq(r.entity, entityId),
+                    eq(r.connectionStatusEnum, "PENDING"),
+                    or(
+                      and(eq(r.sender, currentUserId), eq(r.receiver, item.id)),
+                      and(eq(r.sender, item.id), eq(r.receiver, currentUserId)),
+                    ),
+                  ),
+              });
+              if (req) {
+                status =
+                  req.sender === currentUserId
+                    ? "REQUEST_SENT"
+                    : "REQUEST_RECEIVED";
+              }
+            }
+          }
+
+          return {
+            ...item,
+            mutualFriends: {
+              count: mutualFriends.length,
+              friends: mutualFriends,
+            },
+            numberOfConnections: Number(connectionsCount?.count || 0),
+            status: status, // Simplified
+          };
+        }),
+      );
+
+      const edges = enrichedResults.map((node: any, index: number) => ({
+        cursor: Buffer.from(`offset:${offset + index + 1}`).toString("base64"),
+        node,
+      }));
+
+      // Get total count
+      const [totalCountResult] = await db
+        .select({ value: count(userToEntity.id) })
+        .from(userToEntity)
+        .innerJoin(user, eq(userToEntity.userId, user.id))
+        .leftJoin(userProfile, eq(user.id, userProfile.userId))
+        .where(and(...whereConditions));
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount: totalCountResult?.value || 0,
+      };
     } catch (error) {
-      log.error("Error in getBlockedUsers", { error, currentUserId, entityId });
+      log.error("Error in getMemberBirthdays", { error, entityId });
       throw error;
     }
   }
@@ -1604,12 +1976,14 @@ export class NetworkService {
     currentUserId,
     entityId,
     limit = 10,
-    offset = 0,
+    cursor,
+    offset,
     search = "",
   }: {
     db: any;
     currentUserId: string;
     entityId: string;
+    cursor?: string | null;
     limit?: number;
     offset?: number;
     search?: string;
@@ -1621,23 +1995,43 @@ export class NetworkService {
         });
       }
 
-      log.debug("Getting my connections", {
+      const calculatedOffset = cursor
+        ? parseInt(
+            Buffer.from(cursor, "base64").toString("ascii").split(":")[1],
+          )
+        : offset || 0;
+
+      log.debug("Getting my connections (cursor)", {
         currentUserId,
         entityId,
         limit,
-        offset,
+        offset: calculatedOffset,
         search,
       });
 
-      const searchCondition = search
-        ? sql`(
+      const whereConditions = [
+        eq(connections.entity, entityId),
+        eq(connections.connectionStatusEnum, "ACCEPTED"),
+        sql`${blockedUsers.id} IS NULL`,
+      ];
+
+      // Add search term condition
+      if (search) {
+        whereConditions.push(
+          sql`(
             LOWER(${user.firstName}) LIKE LOWER(${`%${search}%`}) OR
             LOWER(${user.lastName}) LIKE LOWER(${`%${search}%`}) OR
             LOWER(CONCAT(${user.firstName}, ' ', ${
               user.lastName
             })) LIKE LOWER(${`%${search}%`})
-          )`
-        : sql`true`;
+          )`,
+        );
+      }
+
+      // Add cursor condition
+      if (cursor) {
+        whereConditions.push(lt(connections.createdAt, new Date(cursor)));
+      }
 
       const data = await db
         .selectDistinct({
@@ -1671,21 +2065,16 @@ export class NetworkService {
         .innerJoin(user, eq(userToEntity.userId, user.id))
         .leftJoin(aboutUser, eq(userToEntity.userId, aboutUser.userId))
         .leftJoin(blockedUsers, this.getBlockedUsersCondition(currentUserId))
-        .where(
-          and(
-            eq(connections.entity, entityId),
-            eq(connections.connectionStatusEnum, "ACCEPTED"),
-            sql`${blockedUsers.id} IS NULL`,
-            searchCondition,
-          ),
-        )
+        .where(and(...whereConditions))
+        .orderBy(desc(connections.createdAt))
         .limit(limit + 1)
-        .offset(offset);
+        .offset(calculatedOffset);
 
-      const { data: results } = this.applyPagination(data, limit, offset);
+      const hasNextPage = data.length > limit;
+      const nodes = hasNextPage ? data.slice(0, limit) : data;
 
       const enrichedResults = await Promise.all(
-        results.map(async (item) => {
+        nodes.map(async (item: any) => {
           const [connectionsCount] = await db
             .select({
               count: sql<number>`count(*)`.as("count"),
@@ -1723,14 +2112,57 @@ export class NetworkService {
         count: enrichedResults.length,
       });
 
+      const edges = nodes.map((node: any, index: number) => ({
+        cursor: Buffer.from(`offset:${calculatedOffset + index + 1}`).toString(
+          "base64",
+        ),
+        node,
+      }));
+
+      const totalWhere = [
+        eq(connections.entity, entityId),
+        eq(connections.connectionStatusEnum, "ACCEPTED"),
+        sql`${blockedUsers.id} IS NULL`,
+      ];
+      if (search) {
+        totalWhere.push(
+          sql`(
+              LOWER(${user.firstName}) LIKE LOWER(${`%${search}%`}) OR
+              LOWER(${user.lastName}) LIKE LOWER(${`%${search}%`}) OR
+              LOWER(CONCAT(${user.firstName}, ' ', ${
+                user.lastName
+              })) LIKE LOWER(${`%${search}%`})
+            )`,
+        );
+      }
+
+      const [trueTotalCount] = await db
+        .select({ value: count(connections.id) })
+        .from(connections)
+        .innerJoin(
+          userToEntity,
+          or(
+            and(
+              eq(connections.user1, currentUserId),
+              eq(connections.user2, userToEntity.id),
+            ),
+            and(
+              eq(connections.user2, currentUserId),
+              eq(connections.user1, userToEntity.id),
+            ),
+          ),
+        )
+        .innerJoin(user, eq(userToEntity.userId, user.id))
+        .leftJoin(blockedUsers, this.getBlockedUsersCondition(currentUserId))
+        .where(and(...totalWhere));
+
       return {
-        data: enrichedResults,
-        pagination: {
-          total: null,
-          limit,
-          offset,
-          hasMore: data.length > limit,
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
         },
+        totalCount: trueTotalCount?.value || 0,
       };
     } catch (error) {
       log.error("Error in getMyConnections", {
@@ -1747,12 +2179,14 @@ export class NetworkService {
     currentUserId,
     entityId,
     limit = 10,
-    offset = 0,
+    cursor,
+    offset,
     search = "",
   }: {
     db: any;
     currentUserId: string;
     entityId: string;
+    cursor?: string | null;
     limit?: number;
     offset?: number;
     search?: string;
@@ -1764,23 +2198,44 @@ export class NetworkService {
         });
       }
 
-      log.debug("Getting connection requests", {
+      const calculatedOffset = cursor
+        ? parseInt(
+            Buffer.from(cursor, "base64").toString("ascii").split(":")[1],
+          )
+        : offset || 0;
+
+      log.debug("Getting connection requests (cursor)", {
         currentUserId,
         entityId,
         limit,
-        offset,
+        offset: calculatedOffset,
         search,
       });
 
-      const searchCondition = search
-        ? sql`(
+      const whereConditions = [
+        eq(connectionsRequest.receiver, currentUserId),
+        eq(connectionsRequest.connectionStatusEnum, "PENDING"),
+        eq(connectionsRequest.entity, entityId),
+        sql`${blockedUsers.id} IS NULL`,
+      ];
+
+      if (search) {
+        whereConditions.push(
+          sql`(
             LOWER(${user.firstName}) LIKE LOWER(${`%${search}%`}) OR
             LOWER(${user.lastName}) LIKE LOWER(${`%${search}%`}) OR
             LOWER(CONCAT(${user.firstName}, ' ', ${
               user.lastName
             })) LIKE LOWER(${`%${search}%`})
-          )`
-        : sql`true`;
+          )`,
+        );
+      }
+
+      if (cursor) {
+        whereConditions.push(
+          lt(connectionsRequest.createdAt, new Date(cursor)),
+        );
+      }
 
       const data = await db
         .select({
@@ -1799,22 +2254,16 @@ export class NetworkService {
         .innerJoin(user, eq(userToEntity.userId, user.id))
         .leftJoin(aboutUser, eq(userToEntity.userId, aboutUser.userId))
         .leftJoin(blockedUsers, this.getBlockedUsersCondition(currentUserId))
-        .where(
-          and(
-            eq(connectionsRequest.receiver, currentUserId),
-            eq(connectionsRequest.connectionStatusEnum, "PENDING"),
-            eq(connectionsRequest.entity, entityId),
-            sql`${blockedUsers.id} IS NULL`,
-            searchCondition,
-          ),
-        )
+        .where(and(...whereConditions))
+        .orderBy(desc(connectionsRequest.createdAt))
         .limit(limit + 1)
-        .offset(offset);
+        .offset(calculatedOffset);
 
-      const { data: results } = this.applyPagination(data, limit, offset);
+      const hasNextPage = data.length > limit;
+      const nodes = hasNextPage ? data.slice(0, limit) : data;
 
       const enrichedResults = await Promise.all(
-        results.map(async (item) => {
+        nodes.map(async (item: any) => {
           const [connectionsCount] = await db
             .select({
               count: sql<number>`count(*)`.as("count"),
@@ -1852,14 +2301,48 @@ export class NetworkService {
         count: enrichedResults.length,
       });
 
+      const edges = nodes.map((node: any, index: number) => ({
+        cursor: Buffer.from(`offset:${calculatedOffset + index + 1}`).toString(
+          "base64",
+        ),
+        node,
+      }));
+
+      // Get total count
+      const totalWhere = [
+        eq(connectionsRequest.receiver, currentUserId),
+        eq(connectionsRequest.connectionStatusEnum, "PENDING"),
+        eq(connectionsRequest.entity, entityId),
+        sql`${blockedUsers.id} IS NULL`,
+      ];
+
+      if (search) {
+        totalWhere.push(
+          sql`(
+              LOWER(${user.firstName}) LIKE LOWER(${`%${search}%`}) OR
+              LOWER(${user.lastName}) LIKE LOWER(${`%${search}%`}) OR
+              LOWER(CONCAT(${user.firstName}, ' ', ${
+                user.lastName
+              })) LIKE LOWER(${`%${search}%`})
+            )`,
+        );
+      }
+
+      const [totalCountResult] = await db
+        .select({ value: count(connectionsRequest.id) })
+        .from(connectionsRequest)
+        .innerJoin(userToEntity, eq(connectionsRequest.sender, userToEntity.id))
+        .innerJoin(user, eq(userToEntity.userId, user.id))
+        .leftJoin(blockedUsers, this.getBlockedUsersCondition(currentUserId))
+        .where(and(...totalWhere));
+
       return {
-        data: enrichedResults,
-        pagination: {
-          total: null,
-          limit,
-          offset,
-          hasMore: data.length > limit,
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
         },
+        totalCount: totalCountResult?.value || 0,
       };
     } catch (error) {
       log.error("Error in getConnectionRequests", {

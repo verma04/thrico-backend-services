@@ -69,6 +69,68 @@ export class GamificationQueryService {
   }
 
   /**
+   * Fetches the user's total points, current rank, and total badges count by userId
+   */
+  async getGamificationStatsByUserId({
+    userId,
+    entityId,
+    db = this.db,
+  }: {
+    userId: string;
+    entityId: string;
+    db?: any;
+  }) {
+    try {
+      const profile = await this.getUserGamificationProfile({
+        userId,
+        entityId,
+        db,
+      });
+
+      if (!profile) {
+        return null;
+      }
+
+      // 1. Calculate global rank within entity
+      const [rankRes] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(gamificationUser)
+        .where(
+          and(
+            eq(gamificationUser.entityId, entityId),
+            sql`${gamificationUser.totalPoints} > ${profile.totalPoints}`,
+          ),
+        );
+      const rank = Number(rankRes?.count || 0) + 1;
+
+      // 2. Count total earned badges
+      const [badgesCountRes] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(userBadges)
+        .where(
+          and(
+            eq(userBadges.userId, profile.id),
+            eq(userBadges.isCompleted, true),
+          ),
+        );
+      const totalBadges = Number(badgesCountRes?.count || 0);
+
+      return {
+        ...profile,
+        rank,
+        totalBadges,
+      };
+    } catch (error) {
+      log.error("Error in getGamificationStatsByUserId", {
+        error,
+        userId,
+        entityId,
+      });
+      throw error;
+    }
+  }
+
+  /**
    * Fetches a list of badges earned by the user with pagination
    */
   async getUserEarnedBadges({

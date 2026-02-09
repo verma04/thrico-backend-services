@@ -53,6 +53,7 @@ export const typeDefs = `#graphql
   type user {
     id: ID
     email: String
+    profile: userProfile
   }
 
   input inputId {
@@ -93,6 +94,7 @@ export const typeDefs = `#graphql
     about: aboutUser
     cover: String
     location: JSON
+    profile: profile
   }
   type aboutUser {
     headline: String
@@ -161,6 +163,8 @@ export const typeDefs = `#graphql
     signupWithEmail(input: inputSignup): success # Add signup mutation
     registerDeviceToken(token: String!, deviceId: String, deviceOs: String): GenericResponse
     updateActiveEntity(entityId: ID!): GenericResponse
+    logoutUser: GenericResponse
+    allowPushNotification(token: String!): GenericResponse
   }
 
   type Subscription {

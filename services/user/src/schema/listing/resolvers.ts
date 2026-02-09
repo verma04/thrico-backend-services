@@ -15,11 +15,11 @@ const listingResolvers: any = {
     async getAllListing(_: any, { input }: any, context: any) {
       try {
         const { userId, entityId, db } = await checkAuth(context);
-        const page = input?.page || 1;
+        const cursor = input?.cursor;
         const limit = input?.limit || 10;
         const search = input?.search || "";
         return ListingService.getAllListings(db, entityId, userId, {
-          page,
+          cursor,
           limit,
           search,
         });
@@ -32,11 +32,11 @@ const listingResolvers: any = {
     async getFeaturedListings(_: any, { input }: any, context: any) {
       try {
         const { userId, entityId, db } = await checkAuth(context);
-        const page = input?.page || 1;
+        const cursor = input?.cursor;
         const limit = input?.limit || 10;
         const search = input?.search || "";
         return ListingService.getFeaturedListings(db, entityId, userId, {
-          page,
+          cursor,
           limit,
           search,
         });
@@ -49,11 +49,11 @@ const listingResolvers: any = {
     async getTrendingListings(_: any, { input }: any, context: any) {
       try {
         const { userId, entityId, db } = await checkAuth(context);
-        const page = input?.page || 1;
+        const cursor = input?.cursor;
         const limit = input?.limit || 10;
         const search = input?.search || "";
         return ListingService.getTrendingListings(db, entityId, userId, {
-          page,
+          cursor,
           limit,
           search,
         });
@@ -66,14 +66,14 @@ const listingResolvers: any = {
     async getMyListings(_: any, { input }: any, context: any) {
       try {
         const { userId, entityId, db } = await checkAuth(context);
-        const page = input?.page || 1;
+        const cursor = input?.cursor;
         const limit = input?.limit || 10;
         const status = input?.status || "ALL";
         const search = input?.search || "";
 
         if (status === "ALL") {
           return ListingService.getMyListings(db, entityId, userId, {
-            page,
+            cursor,
             limit,
             search,
           });
@@ -83,7 +83,7 @@ const listingResolvers: any = {
             entityId,
             userId,
             status,
-            { page, limit, search }
+            { cursor, limit, search },
           );
         }
       } catch (error) {
@@ -95,12 +95,12 @@ const listingResolvers: any = {
     async getUserListingEnquiries(_: any, { input }: any, context: any) {
       try {
         const { userId, db } = await checkAuth(context);
-        const page = input?.page || 1;
+        const cursor = input?.cursor;
         const limit = input?.limit || 10;
         return ListingContactService.getUserListingEnquiries({
           db,
           userId,
-          page,
+          cursor,
           limit,
         });
       } catch (error) {
@@ -114,7 +114,7 @@ const listingResolvers: any = {
         const hasContacted = await ListingContactService.hasContactedSeller(
           db,
           listingId,
-          userId
+          userId,
         );
         return { hasContacted };
       } catch (error) {
@@ -125,13 +125,13 @@ const listingResolvers: any = {
     async getSellerReceivedEnquiries(_: any, { input }: any, context: any) {
       try {
         const { userId, db } = await checkAuth(context);
-        const page = input?.page || 1;
+        const cursor = input?.cursor;
         const limit = input?.limit || 10;
         return ListingContactService.getSellerReceivedEnquiries(
           db,
           userId,
-          page,
-          limit
+          cursor,
+          limit,
         );
       } catch (error) {
         console.log(error);
@@ -142,18 +142,18 @@ const listingResolvers: any = {
     async getListingConversationMessages(
       _: any,
       { conversationId, input }: any,
-      context: any
+      context: any,
     ) {
       try {
         const { userId, db } = await checkAuth(context);
-        const page = input?.page || 1;
+        const cursor = input?.cursor;
         const limit = input?.limit || 50;
         return ListingContactService.getListingConversationMessages(
           db,
           conversationId,
           userId,
-          page,
-          limit
+          cursor,
+          limit,
         );
       } catch (error) {
         console.log(error);
@@ -178,7 +178,7 @@ const listingResolvers: any = {
           db,
           entityId,
           identifier,
-          userId
+          userId,
         );
       } catch (error) {
         console.log(error);
@@ -196,7 +196,7 @@ const listingResolvers: any = {
           entityId,
           listingId,
           userId,
-          limit || 6
+          limit || 6,
         );
 
         return { listings };
@@ -209,14 +209,14 @@ const listingResolvers: any = {
     async getListingsByUserId(_: any, { input }: any, context: any) {
       try {
         const { userId, entityId, db } = await checkAuth(context);
-        const { userId: targetUserId, page, limit } = input;
+        const { userId: targetUserId, cursor, limit } = input;
 
         return ListingService.getListingsByUserId(
           db,
           entityId,
           targetUserId,
           userId,
-          { page: page || 1, limit: limit || 10 }
+          { cursor, limit: limit || 10 },
         );
       } catch (error) {
         console.log(error);
@@ -228,10 +228,10 @@ const listingResolvers: any = {
     async getListingEnquiries(_: any, { input }: any, context: any) {
       try {
         const { userId, db } = await checkAuth(context);
-        const { listingId, page, limit } = input;
+        const { listingId, cursor, limit } = input;
 
         return ListingService.getListingEnquiries(db, listingId, userId, {
-          page: page || 1,
+          cursor,
           limit: limit || 10,
         });
       } catch (error) {
@@ -240,7 +240,7 @@ const listingResolvers: any = {
           error instanceof Error
             ? error.message
             : "Failed to fetch listing enquiries",
-          { extensions: { code: "INTERNAL_SERVER_ERROR" } }
+          { extensions: { code: "INTERNAL_SERVER_ERROR" } },
         );
       }
     },
@@ -258,7 +258,7 @@ const listingResolvers: any = {
           error instanceof Error
             ? error.message
             : "Failed to fetch enquiry statistics",
-          { extensions: { code: "INTERNAL_SERVER_ERROR" } }
+          { extensions: { code: "INTERNAL_SERVER_ERROR" } },
         );
       }
     },
@@ -290,9 +290,12 @@ const listingResolvers: any = {
     async mapViewAllListings(_: any, { input }: any, context: any) {
       try {
         const { entityId, db } = await checkAuth(context);
-        const page = input?.page || 1;
+        const cursor = input?.cursor;
         const limit = input?.limit || 100;
-        return ListingService.mapViewAllListings(db, entityId, { page, limit });
+        return ListingService.mapViewAllListings(db, entityId, {
+          cursor,
+          limit,
+        });
       } catch (error) {
         console.log(error);
         throw error;
@@ -309,7 +312,7 @@ const listingResolvers: any = {
           db,
           entityId,
           userId,
-          input
+          input,
         );
         return newListing;
       } catch (error) {
@@ -396,7 +399,7 @@ const listingResolvers: any = {
         console.log(error);
         throw new GraphQLError(
           error instanceof Error ? error.message : "Failed to send message",
-          { extensions: { code: "INTERNAL_SERVER_ERROR" } }
+          { extensions: { code: "INTERNAL_SERVER_ERROR" } },
         );
       }
     },

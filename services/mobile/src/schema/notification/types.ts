@@ -37,6 +37,9 @@ export const notificationTypes = `#graphql
 
   extend type Query {
     getUserNotification(input: paginationInput): notifications
+    getFeedNotifications(input: cursorPaginationInput): paginatedNotifications
+    getCommunityNotifications(input: cursorPaginationInput): paginatedNotifications
+    getNetworkNotifications(input: cursorPaginationInput): paginatedNotifications
     getGamificationNotifications: Int!
     getGamificationNotification(input: paginationInput): [GamificationNotification!]!
     getNetworkNotification: Int!
@@ -44,5 +47,20 @@ export const notificationTypes = `#graphql
 
   extend type Mutation {
    markGamificationNotificationsAsRead: ClearNotificationsResponse!
+  }
+
+  input paginationInput {
+    limit: Int
+    offset: Int
+  }
+
+  input cursorPaginationInput {
+    limit: Int
+    cursor: String
+  }
+
+  type paginatedNotifications {
+    result: [notification]
+    nextCursor: String
   }
 `;

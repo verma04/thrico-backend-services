@@ -15,6 +15,8 @@ export const gamificationTypes = `#graphql
     currentRank: GamificationRank
     user: String!
     entityId: String!
+    rank: Int
+    totalBadges: Int
   }
 
   type Badge {
@@ -90,6 +92,7 @@ export const gamificationTypes = `#graphql
     getUserGamificationSummary: GamificationSummary!
     getUserLeaderboard(input: GamificationLeaderboardInput): GamificationLeaderboard!
     getUserNextLevelProgress: NextLevelProgress!
+    getGamificationStatsByUserId(userId: ID!): GamificationProfile
   }
 
   input GamificationLeaderboardInput {

@@ -336,12 +336,14 @@ const communitiesResolvers: any = {
         const { entityId, db, userId } = await checkAuth(context);
         const currentUserId = userId;
 
-        return CommunityQueryService.getMyOwnedCommunities({
+        const community = await CommunityQueryService.getMyOwnedCommunities({
           currentUserId,
           entityId,
           db,
           ...input,
         });
+
+        return community;
       } catch (error) {
         logger.error(`Error in getMyOwnedCommunities: ${error}`);
         throw error;
@@ -382,7 +384,7 @@ const communitiesResolvers: any = {
       }
     },
 
-    async getMyCommunities(_: any, { input }: any, context: any) {
+    async getMyJoinedCommunities(_: any, { input }: any, context: any) {
       try {
         const { entityId, db, userId } = await checkAuth(context);
         const currentUserId = userId;

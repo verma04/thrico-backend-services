@@ -64,6 +64,33 @@ export const listingTypes = `#graphql
     hasPreviousPage: Boolean
   }
 
+  type PageInfo {
+    hasNextPage: Boolean!
+    endCursor: String
+  }
+
+  type SellerProfile {
+    id: ID!
+    firstName: String!
+    lastName: String!
+    avatar: String!
+    email: String!
+    cover: String!
+    rating: SellerRating!
+  }
+
+  type UserListingsConnection {
+    seller: SellerProfile!
+    edges: [ListingEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
+  }
+
+  type ListingEdge {
+    cursor: String!
+    node: marketPlaceList!
+  }
+
   type marketPlaceListWithPagination {
     listings: [marketPlaceList]
     pagination: paginationInfo
@@ -128,7 +155,7 @@ export const listingTypes = `#graphql
 
   input GetUserListingsInput {
     userId: ID!
-    page: Int
+    cursor: String
     limit: Int
   }
 
@@ -164,7 +191,7 @@ export const listingTypes = `#graphql
     ): RelatedListingsResponse!
     getListingsByUserId(
       input: GetUserListingsInput!
-    ): marketPlaceListWithPagination!
+    ): UserListingsConnection!
     getListingEnquiries(input: GetListingEnquiriesInput!): EnquiryListResponse!
     getListingEnquiryStats(listingId: ID!): EnquiryStatistics!
     getListingEnquiriesGroupedByBuyer(listingId: ID!): [BuyerEnquiryGroup!]!

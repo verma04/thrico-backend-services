@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import path from "path";
 import http from "http";
 import { startConsumer } from "./queue/push.queue";
+import { startAggregationWorker } from "./processors/aggregation-worker";
 
 // Load root .env
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
@@ -29,6 +30,7 @@ async function init() {
 
   try {
     startConsumer();
+    startAggregationWorker();
     log.info("Firebase Push Worker initialized successfully");
   } catch (error: any) {
     log.error("Failed to start Firebase Push Worker", { error: error.message });

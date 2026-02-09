@@ -13,6 +13,9 @@ import { upload } from "../upload";
 import { BaseCommunityService } from "./base.service";
 import generateSlug from "../generateSlug";
 import { GamificationEventService } from "../gamification/gamification-event.service";
+import { CommunityQueryService } from "./query.service";
+import { CommunityNotificationPublisher } from "./notification-publisher";
+import { UserService } from "../user/user.service";
 
 export class CommunityManagementService {
   static readonly DEFAULT_COMMUNITY_RULES = [
@@ -228,6 +231,35 @@ export class CommunityManagementService {
       });
 
       console.log(createdGroup);
+
+      // Trigger Notification
+      const userDetails = await UserService.getUserDetails({
+        userId,
+        db,
+      }).catch((err) => {
+        log.error("Failed to fetch user details for notification", {
+          userId,
+          error: err.message,
+        });
+        return null;
+      });
+
+      if (userDetails) {
+        CommunityNotificationPublisher.publishCommunityCreated({
+          userId,
+          communityId: createdGroup.id,
+          community: createdGroup,
+          user: userDetails,
+          db,
+          entityId,
+        }).catch((err) => {
+          log.error("Failed to publish community creation notification", {
+            userId,
+            groupId: createdGroup.id,
+            error: err.message,
+          });
+        });
+      }
 
       return createdGroup;
     } catch (error) {
@@ -547,7 +579,12 @@ export class CommunityManagementService {
         .where(eq(groups.id, id))
         .returning();
 
-      return updatedGroup;
+      return CommunityQueryService.getCommunityDetails({
+        currentUserId: userId,
+        entityId,
+        db,
+        groupId: updatedGroup.id,
+      });
     } catch (error) {
       log.error("Error in editCommunity", {
         error,

@@ -71,6 +71,54 @@ export const notificationResolvers = {
         throw error;
       }
     },
+    async getFeedNotifications(_: any, { input }: any, context: any) {
+      try {
+        const { db, userId } = await checkAuth(context);
+        const { NotificationService } = await import("@thrico/services");
+
+        return await NotificationService.getFeedNotifications({
+          db,
+          userId,
+          cursor: input?.cursor,
+          limit: input?.limit || 10,
+        });
+      } catch (error) {
+        log.error("Error in getFeedNotifications", { error, input });
+        throw error;
+      }
+    },
+    async getCommunityNotifications(_: any, { input }: any, context: any) {
+      try {
+        const { db, userId } = await checkAuth(context);
+        const { NotificationService } = await import("@thrico/services");
+
+        return await NotificationService.getCommunityNotifications({
+          db,
+          userId,
+          cursor: input?.cursor,
+          limit: input?.limit || 10,
+        });
+      } catch (error) {
+        log.error("Error in getCommunityNotifications", { error, input });
+        throw error;
+      }
+    },
+    async getNetworkNotifications(_: any, { input }: any, context: any) {
+      try {
+        const { db, userId } = await checkAuth(context);
+        const { NotificationService } = await import("@thrico/services");
+
+        return await NotificationService.getNetworkNotifications({
+          db,
+          userId,
+          cursor: input?.cursor,
+          limit: input?.limit || 10,
+        });
+      } catch (error) {
+        log.error("Error in getNetworkNotifications", { error, input });
+        throw error;
+      }
+    },
   },
 
   Mutation: {

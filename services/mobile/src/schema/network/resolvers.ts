@@ -14,11 +14,10 @@ export const networkResolvers = {
           currentUserId: id,
           entityId,
           limit: input?.limit || 10,
-          offset: input?.offset || 0,
+          cursor: input?.cursor,
           search: input?.search || "",
         });
 
-        console.log(data);
         return data;
       } catch (error: any) {
         log.error("Error in getNetwork", { error, input });
@@ -35,7 +34,7 @@ export const networkResolvers = {
           currentUserId: id,
           entityId,
           limit: input?.limit || 10,
-          offset: input?.offset || 0,
+          cursor: input?.cursor,
           search: input?.search || "",
         });
       } catch (error: any) {
@@ -60,22 +59,6 @@ export const networkResolvers = {
       }
     },
 
-    async getUserProfile(_: any, { input }: any, context: any) {
-      try {
-        const { db, id, entityId } = await checkAuth(context);
-
-        return await NetworkService.getUserProfile({
-          db,
-          currentUserId: id,
-          entityId,
-          userId: input.id,
-        });
-      } catch (error: any) {
-        log.error("Error in getUserProfile", { error, input });
-        throw error;
-      }
-    },
-
     async getConnectionRequests(_: any, { input }: any, context: any) {
       try {
         const { db, id, entityId } = await checkAuth(context);
@@ -85,7 +68,7 @@ export const networkResolvers = {
           currentUserId: id,
           entityId,
           limit: input?.limit || 10,
-          offset: input?.offset || 0,
+          cursor: input?.cursor,
           search: input?.search || "",
         });
       } catch (error: any) {
@@ -118,12 +101,31 @@ export const networkResolvers = {
           currentUserId: id,
           entityId,
           limit: input?.limit || 10,
-          offset: input?.offset || 0,
+          cursor: input?.cursor,
+          search: input?.search || "",
         });
 
         return blockedUsers;
       } catch (error: any) {
         log.error("Error in getBlockedUsers", { error, input });
+        throw error;
+      }
+    },
+
+    async getMemberBirthdays(_: any, { input }: any, context: any) {
+      try {
+        const { id, db, entityId } = await checkAuth(context);
+
+        return await NetworkService.getMemberBirthdays({
+          db,
+          currentUserId: id,
+          entityId,
+          limit: input?.limit || 10,
+          cursor: input?.cursor,
+          filter: input?.filter,
+        });
+      } catch (error: any) {
+        log.error("Error in getMemberBirthdays", { error, input });
         throw error;
       }
     },

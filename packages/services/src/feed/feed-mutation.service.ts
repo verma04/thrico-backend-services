@@ -9,6 +9,7 @@ import {
   polls,
   pollOptions,
   pollsAuditLogs,
+  user,
 } from "@thrico/database";
 import { GamificationEventService } from "../gamification/gamification-event.service";
 import type { FeedInput } from "./types";
@@ -21,6 +22,7 @@ import { CelebrationService } from "../celebration/celebration.service";
 import { upload } from "../upload";
 import uploadVideo from "./uploadVideo";
 import { NotificationService } from "../notification/notification.service";
+import { NotificationAggregatorService } from "../notification/notification-aggregator.service";
 import { ModerationPublisher } from "../utils/moderation-publisher";
 
 const uploadVideoPlaceholder = async (video: any) => {
@@ -307,6 +309,17 @@ export class FeedMutationService {
         entityId: entity,
       });
 
+      // Aggregated Notification for Like
+      if (feed.userId !== currentUserId) {
+        await NotificationAggregatorService.pushEvent({
+          recipientId: feed.userId,
+          actorId: currentUserId,
+          type: "FEED_LIKE",
+          feedId: input.id,
+          entityId: entity,
+        });
+      }
+
       return { status: true };
     } else {
       await db.transaction(async (tx: any) => {
@@ -397,27 +410,15 @@ export class FeedMutationService {
       cooldownSeconds: 120,
     });
 
-    // Notify feed owner
+    // Aggregated Notification for Comment
     if (feed.userId !== currentUserId) {
-      try {
-        await NotificationService.createNotification({
-          db,
-          userId: feed.userId,
-          senderId: currentUserId,
-          entityId: entity,
-          content: "commented on your post",
-          notificationType: "FEED_COMMENT",
-          feedId: input.feedID,
-          shouldSendPush: true,
-          pushTitle: "New Comment",
-          pushBody: `Someone commented on your post: "${input.comment.substring(0, 50)}${input.comment.length > 50 ? "..." : ""}"`,
-        });
-      } catch (err) {
-        log.error("Failed to send comment notification", {
-          err,
-          feedId: input.feedID,
-        });
-      }
+      await NotificationAggregatorService.pushEvent({
+        recipientId: feed.userId,
+        actorId: currentUserId,
+        type: "FEED_COMMENT",
+        feedId: input.feedID,
+        entityId: entity,
+      });
     }
 
     const result = await db.query.feedComment.findFirst({
@@ -741,5 +742,126 @@ export class FeedMutationService {
     }
 
     return updatedComment;
+  }
+
+  // Repost feed with thought
+  static async repostFeed({
+    currentUserId,
+    input,
+    entity,
+    db,
+  }: {
+    currentUserId: string;
+    input: { feedId: string; description?: string; privacy?: string };
+    entity: string;
+    db: any;
+  }) {
+    const originalFeed = await db.query.userFeed.findFirst({
+      where: eq(userFeed.id, input.feedId),
+    });
+
+    if (!originalFeed) {
+      throw new GraphQLError("Original feed not found", {
+        extensions: { code: 404, http: { status: 404 } },
+      });
+    }
+
+    try {
+      const feed = await db.transaction(async (tx: any) => {
+        const newFeed = await tx
+          .insert(userFeed)
+          .values({
+            userId: currentUserId,
+            entity,
+            description: input?.description,
+            source: "rePost",
+            privacy: input.privacy,
+            repostId: input.feedId,
+          })
+          .returning({ id: userFeed.id });
+
+        // Increment repost count on original feed
+        await tx
+          .update(userFeed)
+          .set({ totalReShare: originalFeed.totalReShare + 1 })
+          .where(eq(userFeed.id, input.feedId));
+
+        // Fetch the created feed with relations
+        const createdFeed = await tx.query.userFeed.findFirst({
+          where: eq(userFeed.id, newFeed[0].id),
+          with: {
+            comment: true,
+            reactions: true,
+            user: {
+              with: {
+                about: true,
+              },
+            },
+          },
+        });
+        return createdFeed;
+      });
+
+      // Send notification to original post author
+      if (originalFeed.userId && originalFeed.userId !== currentUserId) {
+        const reposter = await db.query.user.findFirst({
+          where: eq(user.id, currentUserId),
+        });
+
+        if (reposter) {
+          const content = `${reposter.firstName} ${reposter.lastName} reposted your post`;
+
+          const notification = await NotificationService.createNotification({
+            db,
+            userId: originalFeed.userId,
+            senderId: currentUserId,
+            entityId: entity,
+            content,
+            notificationType: "FEED_REPOST",
+            feedId: input.feedId,
+            shouldSendPush: false, // We'll send push manually
+            imageUrl: reposter.avatar || undefined,
+          });
+
+          // Store metadata
+          const { feedMetadataNotification } = await import("@thrico/database");
+          await db.insert(feedMetadataNotification).values({
+            user: originalFeed.userId,
+            feed: input.feedId,
+            type: "FEED_REPOST",
+            notification: notification.id,
+            content,
+            actors: [currentUserId],
+            count: 1,
+          });
+
+          // Send push notification
+          await NotificationService.sendPushNotification({
+            userId: originalFeed.userId,
+            entityId: entity,
+            title: "New Repost",
+            body: content,
+            payload: {
+              notificationType: "FEED_REPOST",
+              feedId: input.feedId,
+              notificationId: notification.id,
+              count: 1,
+              imageUrl: reposter.avatar || undefined,
+            },
+          });
+
+          log.info("Repost notification sent", {
+            originalPostAuthor: originalFeed.userId,
+            reposter: currentUserId,
+            feedId: input.feedId,
+          });
+        }
+      }
+
+      return feed;
+    } catch (error) {
+      log.error("Error in repostFeed", { error, currentUserId, input });
+      throw error;
+    }
   }
 }

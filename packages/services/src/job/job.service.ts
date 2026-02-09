@@ -12,6 +12,37 @@ import {
 import generateSlug from "../generateSlug";
 import { GamificationEventService } from "../gamification/gamification-event.service";
 
+import { NotificationService } from "../notification/notification.service";
+import { uploadPdf } from "./upload.utils";
+import { JobNotificationService } from "./job.notification.service";
+
+export interface PageInfo {
+  hasNextPage: boolean;
+  endCursor: string | null;
+}
+
+export interface JobEdge {
+  cursor: string;
+  node: any;
+}
+
+export interface JobConnection {
+  edges: JobEdge[];
+  pageInfo: PageInfo;
+  totalCount: number;
+}
+
+export interface ApplicantEdge {
+  cursor: string;
+  node: any;
+}
+
+export interface ApplicantConnection {
+  edges: ApplicantEdge[];
+  pageInfo: PageInfo;
+  totalCount: number;
+}
+
 export class JobService {
   private static buildSearchCondition(search?: string) {
     if (!search) return undefined;
@@ -24,31 +55,30 @@ export class JobService {
   static async getAllJobs({
     entityId,
     db,
-    page,
-    limit,
+    cursor,
+    limit = 10,
     currentUserId,
+    targetUserId,
     canReport = true,
     search,
   }: {
     entityId: string;
     db: any;
-    page: number;
-    limit: number;
+    cursor?: string;
+    limit?: number;
     currentUserId?: string;
+    targetUserId?: string;
     canReport?: boolean;
     search?: string;
-    slugifyFn?: (text: string) => string;
-  }) {
+  }): Promise<JobConnection> {
     try {
-      if (!entityId || !page || !limit) {
-        throw new GraphQLError("Entity ID, page, and limit are required.", {
+      if (!entityId) {
+        throw new GraphQLError("Entity ID is required.", {
           extensions: { code: "BAD_USER_INPUT" },
         });
       }
 
-      log.debug("Getting all jobs", { entityId, page, limit, search });
-
-      const offset = (page - 1) * limit;
+      log.debug("Getting all jobs", { entityId, cursor, limit, search });
 
       const condition = await db.query.trendingConditionsJobs.findFirst({
         where: (trendingConditionsJobs: any, { eq }: any) =>
@@ -56,12 +86,18 @@ export class JobService {
       });
 
       const trendingScoreExpr = sql<number>`
-        (${condition?.views ? jobs.numberOfViews : 0} + ${
-          condition?.applicant ? jobs.numberOfApplicant : 0
-        })
+        (COALESCE(${jobs.numberOfViews}, 0) + COALESCE(${jobs.numberOfApplicant}, 0))
       `;
 
       const whereConditions = [eq(jobs.entityId, entityId)];
+      if (targetUserId) {
+        whereConditions.push(eq(jobs.postedBy, targetUserId));
+      }
+
+      if (cursor) {
+        whereConditions.push(sql`${jobs.createdAt} < ${new Date(cursor)}`);
+      }
+
       const searchCondition = this.buildSearchCondition(search);
       if (searchCondition) whereConditions.push(searchCondition);
 
@@ -85,39 +121,49 @@ export class JobService {
         .from(jobs)
         .where(and(...whereConditions))
         .orderBy(desc(jobs.createdAt))
-        .limit(limit)
-        .offset(offset);
+        .limit(limit + 1);
 
-      const sorted = [...result].sort((a, b) => b.rank - a.rank);
+      const hasNextPage = result.length > limit;
+      const nodes = hasNextPage ? result.slice(0, limit) : result;
+
+      const sorted = [...nodes].sort((a, b) => b.rank - a.rank);
       const topValue = new Set(
         sorted.slice(0, condition?.length || 0).map((j) => j.id),
       );
-      const final = result.map((set: any) => {
+
+      const edges = nodes.map((set: any) => {
         const isOwner = currentUserId ? set.postedBy === currentUserId : false;
         const isJobSaved = false;
         return {
-          ...set,
-          isTrending: topValue.has(set.id),
-          isOwner,
-          canDelete: isOwner,
-          canReport: canReport && !isOwner,
-          applicationCount: set.applicationCount,
-          isJobSaved,
+          cursor: set.details.createdAt.toISOString(),
+          node: {
+            ...set,
+            isTrending: topValue.has(set.id),
+            isOwner,
+            canDelete: isOwner,
+            canReport: canReport && !isOwner,
+            applicationCount: set.applicationCount,
+            isJobSaved,
+          },
         };
       });
 
       log.info("All jobs retrieved", {
         entityId,
-        count: final.length,
+        count: edges.length,
         totalCount: Number(count),
       });
 
       return {
-        jobs: final,
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
         totalCount: Number(count),
       };
     } catch (error) {
-      log.error("Error in getAllJobs", { error, entityId, page, limit });
+      log.error("Error in getAllJobs", { error, entityId, cursor, limit });
       throw error;
     }
   }
@@ -125,39 +171,60 @@ export class JobService {
   static getAllTrendingJobs = async ({
     entityId,
     db,
-    page,
-    limit,
-    search, // <-- Add this
+    cursor,
+    limit = 10,
+    search,
   }: {
     entityId: string;
     db: any;
-    page: number;
-    limit: number;
-    search?: string; // <-- Add this
-  }) => {
+    cursor?: string;
+    limit?: number;
+    search?: string;
+  }): Promise<JobConnection> => {
     try {
-      const offset = (page - 1) * limit;
-
       const condition = await db.query.trendingConditionsJobs.findFirst({
         where: (trendingConditionsJobs: any, { eq }: any) =>
           eq(trendingConditionsJobs.entity, entityId),
       });
 
-      const trendingScoreExpr = sql<number>`
-        (${condition?.views ? jobs.numberOfViews : 0} + ${
-          condition?.applicant ? jobs.numberOfApplicant : 0
-        })
-      `;
+      const parts = [];
+      if (condition?.views) {
+        parts.push(sql`COALESCE(${jobs.numberOfViews}, 0)`);
+      }
+      if (condition?.applicant) {
+        parts.push(sql`COALESCE(${jobs.numberOfApplicant}, 0)`);
+      }
+
+      // Default to 0 if no conditions are met or configured
+      const trendingScoreExpr =
+        parts.length > 0
+          ? sql<number>`(${sql.join(parts, sql` + `)})`
+          : sql<number>`0`;
 
       const whereConditions = [eq(jobs.entityId, entityId)];
       const searchCondition = JobService.buildSearchCondition(search);
       if (searchCondition) whereConditions.push(searchCondition);
 
+      if (cursor) {
+        if (cursor.includes(":")) {
+          const [score, date] = cursor.split(":");
+          whereConditions.push(
+            sql`(${trendingScoreExpr} < ${Number(score)}) OR (${trendingScoreExpr} = ${Number(score)} AND ${jobs.createdAt} < ${new Date(date)})`,
+          );
+        } else {
+          whereConditions.push(sql`${trendingScoreExpr} < ${Number(cursor)}`);
+        }
+      }
+
+      const [{ count }] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(jobs)
+        .where(and(...whereConditions));
+
       const jobsList = await db
         .select({
           id: jobs.id,
-          title: jobs.title,
-          description: jobs.description,
+          details: jobs,
           isFeatured: jobs.isFeatured,
           postedBy: jobs.postedBy,
           createdAt: jobs.createdAt,
@@ -165,11 +232,28 @@ export class JobService {
         })
         .from(jobs)
         .where(and(...whereConditions))
-        .orderBy(desc(trendingScoreExpr))
-        .limit(limit)
-        .offset(offset);
+        .orderBy(desc(trendingScoreExpr), desc(jobs.createdAt))
+        .limit(limit + 1);
 
-      return jobsList;
+      const hasNextPage = jobsList.length > limit;
+      const nodes = hasNextPage ? jobsList.slice(0, limit) : jobsList;
+
+      const edges = nodes.map((j: any) => ({
+        cursor: `${j.trendingScore}:${j.createdAt.toISOString()}`,
+        node: {
+          ...j,
+          isTrending: true,
+        },
+      }));
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount: Number(count),
+      };
     } catch (error) {
       log.error("getAllTrendingJobs failed:", error);
       throw new Error(`getAllTrendingJobs failed: ${error}`);
@@ -179,19 +263,17 @@ export class JobService {
   static getFeaturedJobs = async ({
     entityId,
     db,
-    page,
-    limit,
-    search, // <-- Add this
+    cursor,
+    limit = 10,
+    search,
   }: {
     entityId: string;
     db: any;
-    page: number;
-    limit: number;
-    search?: string; // <-- Add this
-  }) => {
+    cursor?: string;
+    limit?: number;
+    search?: string;
+  }): Promise<JobConnection> => {
     try {
-      const offset = (page - 1) * limit;
-
       const whereConditions = [
         eq(jobs.entityId, entityId),
         eq(jobs.isFeatured, true),
@@ -199,11 +281,19 @@ export class JobService {
       const searchCondition = JobService.buildSearchCondition(search);
       if (searchCondition) whereConditions.push(searchCondition);
 
+      if (cursor) {
+        whereConditions.push(sql`${jobs.createdAt} < ${new Date(cursor)}`);
+      }
+
+      const [{ count }] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(jobs)
+        .where(and(...whereConditions));
+
       const jobsList = await db
         .select({
           id: jobs.id,
-          title: jobs.title,
-          description: jobs.description,
+          details: jobs,
           isFeatured: jobs.isFeatured,
           postedBy: jobs.postedBy,
           createdAt: jobs.createdAt,
@@ -211,10 +301,24 @@ export class JobService {
         .from(jobs)
         .where(and(...whereConditions))
         .orderBy(desc(jobs.createdAt))
-        .limit(limit)
-        .offset(offset);
+        .limit(limit + 1);
 
-      return jobsList;
+      const hasNextPage = jobsList.length > limit;
+      const nodes = hasNextPage ? jobsList.slice(0, limit) : jobsList;
+
+      const edges = nodes.map((j: any) => ({
+        cursor: j.createdAt.toISOString(),
+        node: j,
+      }));
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount: Number(count),
+      };
     } catch (error) {
       log.error("getFeaturedJobs failed:", error);
       throw new Error(`getFeaturedJobs failed: ${error}`);
@@ -224,80 +328,114 @@ export class JobService {
   static getAllJobsApplied = async ({
     userId,
     db,
-    page,
-    limit,
+    cursor,
+    limit = 10,
     currentUserId,
     canReport = true,
-    search, // <-- Add this
+    search,
   }: {
     userId: string;
     db: any;
-    page: number;
-    limit: number;
+    cursor?: string;
+    limit?: number;
     currentUserId?: string;
     canReport?: boolean;
-    search?: string; // <-- Add this
-  }) => {
+    search?: string;
+  }): Promise<JobConnection> => {
     try {
-      const offset = (page - 1) * limit;
-
-      // Get job IDs the user has applied to
       const applied = await db
-        .select({ jobId: jobApplications.jobId })
+        .select({
+          jobId: jobApplications.jobId,
+          resume: jobApplications.resume,
+          appliedAt: jobApplications.appliedAt,
+          name: jobApplications.name,
+          email: jobApplications.email,
+        })
         .from(jobApplications)
         .where(eq(jobApplications.userId, userId))
         .limit(1000);
 
       const jobIds = applied.map((a: any) => a.jobId);
-      if (jobIds.length === 0) return { jobs: [], totalCount: 0 };
+      const applicationsMap = new Map(applied.map((a: any) => [a.jobId, a]));
+
+      if (jobIds.length === 0) {
+        return {
+          edges: [],
+          pageInfo: { hasNextPage: false, endCursor: null },
+          totalCount: 0,
+        };
+      }
 
       const whereConditions = [inArray(jobs.id, jobIds)];
       const searchCondition = JobService.buildSearchCondition(search);
       if (searchCondition) whereConditions.push(searchCondition);
 
-      // Get total count for pagination
+      if (cursor) {
+        whereConditions.push(sql`${jobs.createdAt} < ${new Date(cursor)}`);
+      }
+
       const [{ count }] = await db
         .select({ count: sql<number>`count(*)` })
         .from(jobs)
         .where(and(...whereConditions));
 
-      // Get job details with application count and trending score
       const result = await db
         .select({
           id: jobs.id,
           details: jobs,
           isFeatured: jobs.isFeatured,
-          trendingScore: sql<number>`(${jobs.numberOfViews} + ${jobs.numberOfApplicant})`,
-          rank: sql<number>`RANK() OVER (ORDER BY (${jobs.numberOfViews} + ${jobs.numberOfApplicant}) DESC)`,
+          trendingScore: sql<number>`(COALESCE(${jobs.numberOfViews}, 0) + COALESCE(${jobs.numberOfApplicant}, 0))`,
+          rank: sql<number>`RANK() OVER (ORDER BY (COALESCE(${jobs.numberOfViews}, 0) + COALESCE(${jobs.numberOfApplicant}, 0)) DESC)`,
           postedBy: jobs.postedBy,
           applicationCount: sql<number>`
-        (SELECT COUNT(*) FROM ${jobApplications} WHERE ${jobApplications.jobId} = ${jobs.id})
-      `,
+            (SELECT COUNT(*) FROM ${jobApplications} WHERE ${jobApplications.jobId} = ${jobs.id})
+          `,
         })
         .from(jobs)
         .where(and(...whereConditions))
         .orderBy(desc(jobs.createdAt))
-        .limit(limit)
-        .offset(offset);
+        .limit(limit + 1);
 
-      // Trending logic
-      const sorted = [...result].sort((a, b) => b.rank - a.rank);
-      const topValue = new Set(sorted.slice(0, 10).map((j) => j.id)); // 10 trending by default
+      const hasNextPage = result.length > limit;
+      const nodes = hasNextPage ? result.slice(0, limit) : result;
 
-      const final = result.map((set: any) => {
+      const sorted = [...nodes].sort((a, b) => b.rank - a.rank);
+      const topValue = new Set(sorted.slice(0, 10).map((j) => j.id));
+
+      const edges = nodes.map((set: any) => {
         const isOwner = currentUserId ? set.postedBy === currentUserId : false;
+
+        let appDetails = null;
+        if (applicationsMap.has(set.id)) {
+          const app: any = applicationsMap.get(set.id);
+          appDetails = {
+            resume: app.resume,
+            appliedAt: app.appliedAt,
+            name: app.name,
+            email: app.email,
+          };
+        }
+
         return {
-          ...set,
-          isTrending: topValue.has(set.id),
-          isOwner,
-          canDelete: isOwner,
-          canReport: canReport && !isOwner,
-          applicationCount: set.applicationCount,
+          cursor: set.details.createdAt.toISOString(),
+          node: {
+            ...set,
+            isTrending: topValue.has(set.id),
+            isOwner,
+            canDelete: canReport && isOwner,
+            canReport: canReport && !isOwner,
+            isJobSaved: false, // You might want to implement this check if needed
+            application: appDetails,
+          },
         };
       });
 
       return {
-        jobs: final,
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
         totalCount: Number(count),
       };
     } catch (error) {
@@ -310,11 +448,15 @@ export class JobService {
     jobId,
     ownerId,
     db,
+    cursor,
+    limit = 10,
   }: {
     jobId: string;
     ownerId: string;
     db: any;
-  }) => {
+    cursor?: string;
+    limit?: number;
+  }): Promise<ApplicantConnection> => {
     try {
       // Ensure the requester is the owner of the job
       const [job] = await db
@@ -329,6 +471,18 @@ export class JobService {
         );
       }
 
+      const whereConditions = [eq(jobApplications.jobId, jobId)];
+      if (cursor) {
+        whereConditions.push(
+          sql`${jobApplications.appliedAt} < ${new Date(cursor)}`,
+        );
+      }
+
+      const [{ count }] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(jobApplications)
+        .where(and(...whereConditions));
+
       // Get applicants
       const applicants = await db
         .select({
@@ -339,10 +493,26 @@ export class JobService {
           appliedAt: jobApplications.appliedAt,
         })
         .from(jobApplications)
-        .where(eq(jobApplications.jobId, jobId))
-        .orderBy(desc(jobApplications.appliedAt));
+        .where(and(...whereConditions))
+        .orderBy(desc(jobApplications.appliedAt))
+        .limit(limit + 1);
 
-      return applicants;
+      const hasNextPage = applicants.length > limit;
+      const nodes = hasNextPage ? applicants.slice(0, limit) : applicants;
+
+      const edges = nodes.map((a: any) => ({
+        cursor: a.appliedAt.toISOString(),
+        node: a,
+      }));
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount: Number(count),
+      };
     } catch (error) {
       log.error("getApplicantsForJob failed:", error);
       throw new Error(`getApplicantsForJob failed: ${error}`);
@@ -436,6 +606,16 @@ export class JobService {
         jobId: jobAdded.id,
         title: input.title,
       });
+
+      // Trigger Job Posted Notification
+      await JobNotificationService.publishJobPosted({
+        userId,
+        jobId: jobAdded.id,
+        jobTitle: input.title,
+        entityId,
+        db,
+      });
+
       return jobAdded;
     } catch (error) {
       log.error("Error in postJob", { error, userId, entityId });
@@ -454,7 +634,7 @@ export class JobService {
     jobId: string;
     name: string;
     email: string;
-    resume: string;
+    resume: any;
     db: any;
     userId: string;
   }) {
@@ -466,6 +646,11 @@ export class JobService {
             extensions: { code: "BAD_USER_INPUT" },
           },
         );
+      }
+
+      let resumeUrl = "";
+      if (resume) {
+        resumeUrl = await uploadPdf(resume);
       }
 
       log.debug("Applying to job", { jobId, userId });
@@ -495,7 +680,7 @@ export class JobService {
             userId,
             name,
             email,
-            resume: resume || "",
+            resume: resumeUrl || "",
             appliedAt: new Date(),
           })
           .returning();
@@ -523,19 +708,32 @@ export class JobService {
         applicationId: application.id,
       });
 
-      // Gamification Trigger
-      const [job] = await db
-        .select({ entityId: jobs.entityId })
+      // Notification and Gamification Trigger
+      const [jobData] = await db
+        .select({
+          entityId: jobs.entityId,
+          postedBy: jobs.postedBy,
+          title: jobs.title,
+        })
         .from(jobs)
         .where(eq(jobs.id, jobId))
         .limit(1);
 
-      if (job) {
+      if (jobData) {
         await GamificationEventService.triggerEvent({
           triggerId: "tr-job-apply",
           moduleId: "jobs",
           userId,
-          entityId: job.entityId,
+          entityId: jobData.entityId,
+        });
+
+        // Send notification to job poster & applicant
+        await JobNotificationService.publishJobApplication({
+          jobData,
+          userId,
+          name,
+          jobId,
+          db,
         });
       }
 
@@ -579,7 +777,7 @@ export class JobService {
       await db.delete(jobs).where(eq(jobs.id, jobId));
 
       log.info("Job deleted successfully", { jobId, userId });
-      return { success: true, message: "Job deleted successfully." };
+      return true;
     } catch (error) {
       log.error("Error in deleteJob", { error, jobId, userId });
       throw error;
@@ -850,20 +1048,18 @@ export class JobService {
     userId,
     entityId,
     db,
-    page,
-    limit,
-    search, // <-- Add this
+    cursor,
+    limit = 10,
+    search,
   }: {
     userId: string;
     entityId: string;
     db: any;
-    page: number;
-    limit: number;
-    search?: string; // <-- Add this
-  }) => {
+    cursor?: string;
+    limit?: number;
+    search?: string;
+  }): Promise<JobConnection> => {
     try {
-      const offset = (page - 1) * limit;
-
       const whereConditions = [
         eq(jobs.entityId, entityId),
         eq(jobs.postedBy, userId),
@@ -871,13 +1067,15 @@ export class JobService {
       const searchCondition = JobService.buildSearchCondition(search);
       if (searchCondition) whereConditions.push(searchCondition);
 
-      // Get total count for pagination
+      if (cursor) {
+        whereConditions.push(sql`${jobs.createdAt} < ${new Date(cursor)}`);
+      }
+
       const [{ count }] = await db
         .select({ count: sql<number>`count(*)` })
         .from(jobs)
         .where(and(...whereConditions));
 
-      // Get paginated jobs with application count
       const result = await db
         .select({
           id: jobs.id,
@@ -885,31 +1083,40 @@ export class JobService {
           isFeatured: jobs.isFeatured,
           postedBy: jobs.postedBy,
           applicationCount: sql<number>`
-          (SELECT COUNT(*) FROM ${jobApplications} WHERE ${jobApplications.jobId} = ${jobs.id})
-        `,
+            (SELECT COUNT(*) FROM ${jobApplications} WHERE ${jobApplications.jobId} = ${jobs.id})
+          `,
         })
         .from(jobs)
         .where(and(...whereConditions))
         .orderBy(desc(jobs.createdAt))
-        .limit(limit)
-        .offset(offset);
+        .limit(limit + 1);
 
-      const final = result.map((set: any) => {
+      const hasNextPage = result.length > limit;
+      const nodes = hasNextPage ? result.slice(0, limit) : result;
+
+      const edges = nodes.map((set: any) => {
         const isOwner = true;
         const isJobSaved = false;
         return {
-          ...set,
-          isTrending: false,
-          isOwner,
-          canDelete: isOwner,
-          canReport: false,
-          applicationCount: set.applicationCount,
-          isJobSaved,
+          cursor: set.details.createdAt.toISOString(),
+          node: {
+            ...set,
+            isTrending: false,
+            isOwner,
+            canDelete: isOwner,
+            canReport: false,
+            applicationCount: set.applicationCount,
+            isJobSaved,
+          },
         };
       });
 
       return {
-        jobs: final,
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
         totalCount: Number(count),
       };
     } catch (error) {

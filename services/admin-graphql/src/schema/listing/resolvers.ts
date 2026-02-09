@@ -104,8 +104,8 @@ export const listingResolvers = {
           .where(
             and(
               eq(marketPlace.entityId, entity),
-              sql`${marketPlace.createdAt} <= ${endOfLastMonth}`
-            )
+              sql`${marketPlace.createdAt} <= ${endOfLastMonth}`,
+            ),
           );
         const totalListingsLastMonth =
           totalListingsLastMonthResult[0]?.count || 0;
@@ -117,8 +117,8 @@ export const listingResolvers = {
           .where(
             and(
               eq(marketPlace.entityId, entity),
-              eq(marketPlace.status, "APPROVED")
-            )
+              eq(marketPlace.status, "APPROVED"),
+            ),
           );
         const activeListings = activeListingsResult[0]?.count || 0;
 
@@ -131,8 +131,8 @@ export const listingResolvers = {
             marketPlace,
             and(
               eq(listingVerification.listingId, marketPlace.id),
-              eq(marketPlace.entityId, entity)
-            )
+              eq(marketPlace.entityId, entity),
+            ),
           );
         const verifiedListings = verifiedListingsResult[0]?.count || 0;
 
@@ -154,8 +154,8 @@ export const listingResolvers = {
           .where(
             and(
               eq(marketPlace.entityId, entity),
-              sql`${marketPlace.updatedAt} >= ${startOfThisWeek}`
-            )
+              sql`${marketPlace.updatedAt} >= ${startOfThisWeek}`,
+            ),
           );
         const viewsThisWeek = viewsThisWeekResult[0]?.total || 0;
 
@@ -198,7 +198,10 @@ export const listingResolvers = {
           .select({ total: sql<number>`SUM(${marketPlace.numberOfViews})` })
           .from(marketPlace)
           .where(
-            and(eq(marketPlace.id, listingId), eq(marketPlace.entityId, entity))
+            and(
+              eq(marketPlace.id, listingId),
+              eq(marketPlace.entityId, entity),
+            ),
           );
         const totalViews = viewsResult[0]?.total || 0;
 
@@ -212,7 +215,10 @@ export const listingResolvers = {
           })
           .from(marketPlace)
           .where(
-            and(eq(marketPlace.id, listingId), eq(marketPlace.entityId, entity))
+            and(
+              eq(marketPlace.id, listingId),
+              eq(marketPlace.entityId, entity),
+            ),
           );
         const totalContactClicks = contactClicksResult[0]?.total || 0;
 
@@ -237,8 +243,8 @@ export const listingResolvers = {
             and(
               eq(marketPlace.id, listingId),
               eq(marketPlace.entityId, entity),
-              sql`${marketPlace.updatedAt} >= ${startOfThisWeek}`
-            )
+              sql`${marketPlace.updatedAt} >= ${startOfThisWeek}`,
+            ),
           );
         const thisWeekViews = thisWeekViewsResult[0]?.total || 0;
 
@@ -251,8 +257,8 @@ export const listingResolvers = {
               eq(marketPlace.id, listingId),
               eq(marketPlace.entityId, entity),
               sql`${marketPlace.updatedAt} >= ${startOfLastWeek}`,
-              sql`${marketPlace.updatedAt} < ${startOfThisWeek}`
-            )
+              sql`${marketPlace.updatedAt} < ${startOfThisWeek}`,
+            ),
           );
         const lastWeekViews = lastWeekViewsResult[0]?.total || 0;
 
@@ -336,6 +342,23 @@ export const listingResolvers = {
             verification: true,
           },
         });
+
+        if (updatedListing && action === "APPROVE" && updatedListing.postedBy) {
+          try {
+            const { ListingNotificationPublisher } =
+              await import("@thrico/services");
+            await ListingNotificationPublisher.publishListingApproved({
+              db,
+              userId: updatedListing.postedBy,
+              listingId: updatedListing.id,
+              listing: updatedListing,
+              entityId: entity,
+            });
+          } catch (notifError) {
+            console.error("Failed to send approval notification:", notifError);
+            // Don't fail the mutation if notification fails
+          }
+        }
 
         return updatedListing;
       } catch (error) {
@@ -527,7 +550,7 @@ export const listingResolvers = {
             and(
               eq(listing.entityId, entity),
               eq(listing.title, input.title),
-              ne(listing.id, input.id)
+              ne(listing.id, input.id),
             ),
         });
 
@@ -563,7 +586,7 @@ export const listingResolvers = {
             slug: input.title,
           })
           .where(
-            and(eq(marketPlace.id, input.id), eq(marketPlace.entityId, entity))
+            and(eq(marketPlace.id, input.id), eq(marketPlace.entityId, entity)),
           )
           .returning();
 

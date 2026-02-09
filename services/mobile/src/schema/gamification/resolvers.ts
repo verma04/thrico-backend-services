@@ -123,5 +123,19 @@ export const gamificationResolvers = {
         throw error;
       }
     },
+    async getGamificationStatsByUserId(_: any, { userId }: any, context: any) {
+      try {
+        const { db, entityId } = context.user || (await checkAuth(context));
+        const gamificationQueryService = new GamificationQueryService(db);
+        return await gamificationQueryService.getGamificationStatsByUserId({
+          userId,
+          entityId,
+          db,
+        });
+      } catch (error) {
+        log.error("Error in getGamificationStatsByUserId", { error, userId });
+        throw error;
+      }
+    },
   },
 };

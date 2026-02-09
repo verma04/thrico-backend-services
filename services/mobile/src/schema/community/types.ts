@@ -889,7 +889,7 @@ const communitiesTypes = `#graphql
 
     getCommunitiesByUserId(input: CommunityCursorInput): CommunityConnection!
     getMyOwnedCommunities(input: CommunityCursorInput): CommunityConnection!
-    getMyCommunities(input: CommunityCursorInput): CommunityConnection!
+    getMyJoinedCommunities(input: CommunityCursorInput): CommunityConnection!
     getSavedCommunities(input: CommunityCursorInput): CommunityConnection!
 
     getAllCommunitiesDetails(input: inputId): group

@@ -29,7 +29,7 @@ const upload = async (file: any) => {
   if (typeof createReadStream !== "function") {
     console.error("Upload object structure:", resolvedFile);
     throw new Error(
-      "createReadStream is not a function on the provided upload object"
+      "createReadStream is not a function on the provided upload object",
     );
   }
 
@@ -64,4 +64,45 @@ const upload = async (file: any) => {
   }
 };
 
-export { upload };
+const uploadFile = async (file: any) => {
+  const s3 = new AWS.S3({
+    endpoint: "blr1.digitaloceanspaces.com",
+    accessKeyId: process.env.SPACES_KEY,
+    secretAccessKey: process.env.SPACES_SECRET,
+  });
+
+  const resolvedFile = await (file.promise || file);
+  const { createReadStream, filename, mimetype } = resolvedFile;
+
+  if (typeof createReadStream !== "function") {
+    console.error("Upload object structure:", resolvedFile);
+    throw new Error(
+      "createReadStream is not a function on the provided upload object",
+    );
+  }
+
+  const date = moment().format("YYYYMMDD");
+  const randomString = Math.random().toString(36).substring(2, 7);
+  const ext = filename.split(".").pop();
+  const newFilename = `${date}-${randomString}.${ext}`;
+
+  try {
+    const fileBuffer = await streamToBuffer(createReadStream());
+
+    const params = {
+      Bucket: "thrico",
+      Key: newFilename,
+      Body: fileBuffer,
+      ACL: "public-read",
+      ContentType: mimetype,
+    };
+
+    const data = await s3.upload(params).promise();
+    return newFilename;
+  } catch (error: any) {
+    console.error("Upload error:", error);
+    throw new Error(`Failed to upload file: ${error.message}`);
+  }
+};
+
+export { upload, uploadFile };

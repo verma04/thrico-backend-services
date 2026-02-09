@@ -31,11 +31,14 @@ export class ListingContactService {
   static async getSellerReceivedEnquiries(
     db: any,
     userId: string,
-    page: number = 1,
+    cursor?: string,
     limit: number = 10,
   ) {
     try {
-      const offset = (page - 1) * limit;
+      const conditions = [eq(listingContact.sellerId, userId)];
+      if (cursor) {
+        conditions.push(sql`${listingContact.createdAt} < ${new Date(cursor)}`);
+      }
 
       const enquiries = await db
         .select({
@@ -75,29 +78,30 @@ export class ListingContactService {
           listingConversation,
           eq(listingContact.conversationId, listingConversation.id),
         )
-        .where(eq(listingContact.sellerId, userId))
+        .where(and(...conditions))
         .orderBy(desc(listingContact.createdAt))
-        .limit(limit)
-        .offset(offset);
+        .limit(limit + 1);
+
+      const hasNextPage = enquiries.length > limit;
+      const nodes = hasNextPage ? enquiries.slice(0, limit) : enquiries;
 
       const [{ total }] = await db
         .select({ total: sql<number>`count(*)::int` })
         .from(listingContact)
         .where(eq(listingContact.sellerId, userId));
 
+      const edges = nodes.map((e: any) => ({
+        cursor: e.createdAt.toISOString(),
+        node: e,
+      }));
+
       return {
-        enquiries: enquiries.map((e: any) => ({
-          ...e,
-          buyer: e.buyer,
-        })),
-        pagination: {
-          currentPage: page,
-          totalPages: Math.ceil(total / limit),
-          totalCount: total,
-          limit,
-          hasNextPage: page < Math.ceil(total / limit),
-          hasPreviousPage: page > 1,
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
         },
+        totalCount: total,
       };
     } catch (error) {
       log.error("Error in getSellerReceivedEnquiries", { error, userId });
@@ -109,12 +113,10 @@ export class ListingContactService {
     db: any,
     conversationId: string,
     userId: string,
-    page: number = 1,
+    cursor?: string,
     limit: number = 50,
   ) {
     try {
-      const offset = (page - 1) * limit;
-
       // First verify participation
       const conversation = await db.query.listingConversation.findFirst({
         where: (conv: any, { eq, or, and }: any) =>
@@ -128,12 +130,15 @@ export class ListingContactService {
         throw new GraphQLError("Conversation not found or access denied");
       }
 
+      const conditions = [eq(listingMessage.conversationId, conversationId)];
+      if (cursor) {
+        conditions.push(sql`${listingMessage.createdAt} < ${new Date(cursor)}`);
+      }
+
       const messages = await db.query.listingMessage.findMany({
-        where: (msg: any, { eq }: any) =>
-          eq(msg.conversationId, conversationId),
+        where: (msg: any, { eq, and }: any) => and(...conditions),
         orderBy: (msg: any, { desc }: any) => [desc(msg.createdAt)],
-        limit: limit,
-        offset: offset,
+        limit: limit + 1,
         with: {
           sender: {
             columns: {
@@ -146,24 +151,29 @@ export class ListingContactService {
         },
       });
 
+      const hasNextPage = messages.length > limit;
+      const nodes = hasNextPage ? messages.slice(0, limit) : messages;
+
       const totalMessages = await db
         .select({ count: sql<number>`count(*)::int` })
         .from(listingMessage)
         .where(eq(listingMessage.conversationId, conversationId));
 
-      return {
-        messages: messages.map((m: any) => ({
+      const edges = nodes.map((m: any) => ({
+        cursor: m.createdAt.toISOString(),
+        node: {
           ...m,
           isMine: m.senderId === userId,
-        })),
-        pagination: {
-          currentPage: page,
-          totalPages: Math.ceil(totalMessages[0].count / limit),
-          totalCount: totalMessages[0].count,
-          limit,
-          hasNextPage: page < Math.ceil(totalMessages[0].count / limit),
-          hasPreviousPage: page > 1,
         },
+      }));
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount: totalMessages[0].count,
       };
     } catch (error) {
       log.error("Error in getListingConversationMessages", {
@@ -303,6 +313,9 @@ export class ListingContactService {
           title: true,
           addedBy: true,
         },
+        with: {
+          media: true,
+        },
       });
 
       if (!listing || !listing.postedBy) {
@@ -407,6 +420,31 @@ export class ListingContactService {
         contactId: contactId!,
       });
 
+      // Trigger Notification
+      try {
+        const { ListingNotificationPublisher } =
+          await import("./listing-notification-publisher");
+        const buyer = await db.query.user.findFirst({
+          where: (user: any, { eq }: any) => eq(user.id, buyerId),
+        });
+
+        await ListingNotificationPublisher.publishListingInquiry({
+          db,
+          sellerId: listing.postedBy!,
+          buyerId,
+          listingId,
+          listing,
+          buyer,
+          entityId,
+        });
+      } catch (notifError) {
+        log.error("Error triggering listing contact notification", {
+          notifError,
+          listingId,
+          sellerId: listing.postedBy,
+        });
+      }
+
       // Gamification Trigger
       await GamificationEventService.triggerEvent({
         triggerId: "tr-list-contact",
@@ -493,6 +531,43 @@ export class ListingContactService {
         messageId: newMessage.id,
       });
 
+      // Trigger Notification
+      try {
+        const { ListingNotificationPublisher } =
+          await import("./listing-notification-publisher");
+
+        const recipientId =
+          conv.buyerId === senderId ? conv.sellerId : conv.buyerId;
+
+        const listing = await db.query.marketPlace.findFirst({
+          where: (listing: any, { eq }: any) => eq(listing.id, conv.listingId),
+          with: { media: true },
+        });
+
+        const sender = await db.query.user.findFirst({
+          where: (user: any, { eq }: any) => eq(user.id, senderId),
+        });
+
+        if (listing) {
+          await ListingNotificationPublisher.publishListingMessage({
+            recipientId,
+            senderId,
+            listingId: conv.listingId,
+            listing,
+            sender,
+            message: content,
+            db,
+            entityId: listing.entityId,
+          });
+        }
+      } catch (notifError) {
+        log.error("Error triggering listing message notification", {
+          notifError,
+          conversationId,
+          senderId,
+        });
+      }
+
       return newMessage;
     } catch (error) {
       log.error("Error in sendMessage", { error, conversationId, senderId });
@@ -563,12 +638,12 @@ export class ListingContactService {
   static async getUserListingEnquiries({
     db,
     userId,
-    page = 1,
+    cursor,
     limit = 10,
   }: {
     db: any;
     userId: string;
-    page?: number;
+    cursor?: string;
     limit?: number;
   }) {
     try {
@@ -578,9 +653,12 @@ export class ListingContactService {
         });
       }
 
-      log.debug("Getting user listing enquiries", { userId, page, limit });
+      log.debug("Getting user listing enquiries", { userId, cursor, limit });
 
-      const offset = (page - 1) * limit;
+      const conditions = [eq(listingContact.contactedBy, userId)];
+      if (cursor) {
+        conditions.push(sql`${listingContact.createdAt} < ${new Date(cursor)}`);
+      }
 
       const enquiries = await db
         .select({
@@ -613,32 +691,36 @@ export class ListingContactService {
           listingConversation,
           eq(listingContact.conversationId, listingConversation.id),
         )
-        .where(eq(listingContact.contactedBy, userId))
+        .where(and(...conditions))
         .orderBy(desc(listingContact.createdAt))
-        .limit(limit)
-        .offset(offset);
+        .limit(limit + 1);
+
+      const hasNextPage = enquiries.length > limit;
+      const nodes = hasNextPage ? enquiries.slice(0, limit) : enquiries;
 
       const [{ total }] = await db
         .select({ total: sql<number>`count(*)::int` })
         .from(listingContact)
         .where(eq(listingContact.contactedBy, userId));
 
+      const edges = nodes.map((e: any) => ({
+        cursor: e.createdAt.toISOString(),
+        node: e,
+      }));
+
       log.info("User listing enquiries retrieved", {
         userId,
-        count: enquiries.length,
+        count: nodes.length,
         total,
       });
 
       return {
-        enquiries,
-        pagination: {
-          currentPage: page,
-          totalPages: Math.ceil(total / limit),
-          totalCount: total,
-          limit,
-          hasNextPage: page < Math.ceil(total / limit),
-          hasPreviousPage: page > 1,
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
         },
+        totalCount: total,
       };
     } catch (error) {
       log.error("Error in getUserListingEnquiries", { error, userId });

@@ -8,6 +8,7 @@ export { CustomFormService } from "./survey/custom-form.service";
 export { StoryService } from "./story/story.service";
 export { ProfileService } from "./profile/profile.service";
 export { NotificationService } from "./notification/notification.service";
+export { NotificationAggregatorService } from "./notification/notification-aggregator.service";
 export {
   FirebaseService,
   PushNotificationPayload,
@@ -33,7 +34,9 @@ export { CommunityManagementService } from "./community/management.service";
 export { CommunityMediaService } from "./community/media.service";
 export { CommunityActionsService } from "./community/actions.service";
 export { CommunityAnalyticsService } from "./community/analytics.service";
+export { CommunityNotificationPublisher } from "./community/notification-publisher";
 export { CommunityService } from "./community/community.service";
+export { ListingNotificationPublisher } from "./listing/listing-notification-publisher";
 export { FeedQueryService } from "./feed/feed-query.service";
 export { FeedMutationService } from "./feed/feed-mutation.service";
 export { FeedPollService } from "./feed/feed-poll.service";

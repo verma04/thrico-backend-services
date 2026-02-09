@@ -28,7 +28,7 @@ export const feedTypes = `#graphql
     lastName: String
     about: about
     isOnline: Boolean
-    # profile: userprofile
+    profile: userProfile
     cover: String
     status: Status!
   }
@@ -155,7 +155,6 @@ export const feedTypes = `#graphql
     id: ID
     title: String
     company: JSON
-
     description: String
     location: JSON
     jobType: String
@@ -165,7 +164,7 @@ export const feedTypes = `#graphql
     id: ID
     title: String
     description: String
-    location: String
+    location: JSON
     condition: String
     category: String
     price: String
@@ -232,7 +231,7 @@ export const feedTypes = `#graphql
     # getCommunitiesFeedList(input: FeedCursorInput, id: ID!): FeedConnection!
     getFeedStats(input: GetFeedStatsInput!): FeedStats!
     getFeedReactions(input: GetFeedReactionsInput!): [FeedReaction!]!
- # Added missing query def based on resolver
+    getFeedActivityByUserId(userId: ID!, input: FeedCursorInput): FeedConnection!
   }
   input inputPollOption {
     option: String!

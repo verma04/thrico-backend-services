@@ -16,6 +16,7 @@ import {
 } from "@thrico/database";
 import { CommunityActionsService } from "./actions.service";
 import { BaseCommunityService } from "./base.service";
+import { CommunityNotificationPublisher } from "./notification-publisher";
 interface CommunityMemberStats {
   totalPosts: number;
   approvedPosts: number;
@@ -392,13 +393,31 @@ export class CommunityMemberService {
           updatedBy: currentUserId,
         },
       });
-
       log.info("Member role updated", {
         groupId,
         memberId,
         newRole,
         previousRole: targetCurrentRole,
       });
+
+      // Trigger Notification
+      if (
+        ["ADMIN", "MANAGER"].includes(newRole) &&
+        targetCurrentRole !== newRole
+      ) {
+        try {
+          await CommunityNotificationPublisher.publishRoleUpdated({
+            userId: memberId,
+            communityId: groupId,
+            community,
+            newRole,
+            db,
+            entityId,
+          });
+        } catch (notifError) {
+          log.error("Failed to send role update notification", notifError);
+        }
+      }
 
       return {
         success: true,
@@ -714,6 +733,21 @@ export class CommunityMemberService {
         action,
         handledBy: currentUserId,
       });
+
+      // Trigger Notification
+      if (action === "ACCEPT") {
+        try {
+          await CommunityNotificationPublisher.publishJoinApproved({
+            userId: joinRequest.userId,
+            communityId: groupId,
+            community,
+            db,
+            entityId,
+          });
+        } catch (notifError) {
+          log.error("Failed to send join approval notification", notifError);
+        }
+      }
 
       return {
         success: true,

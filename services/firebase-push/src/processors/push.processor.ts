@@ -1,6 +1,6 @@
 import * as admin from "firebase-admin";
 import { log } from "@thrico/logging";
-import { PushNotificationPayload } from "@thrico/services";
+import { PushNotificationPayload, NotificationService } from "@thrico/services";
 
 export class PushProcessor {
   private static isInitialized = false;
@@ -20,15 +20,37 @@ export class PushProcessor {
 
       const serviceAccount = JSON.parse(serviceAccountJson);
 
+      // Debug: Check for essential fields
+      const requiredFields = [
+        "project_id",
+        "private_key",
+        "client_email",
+        "type",
+      ];
+      const missingFields = requiredFields.filter((f) => !serviceAccount[f]);
+
+      if (missingFields.length > 0) {
+        log.error("❌ Firebase Service Account is missing fields", {
+          missingFields,
+        });
+        return;
+      }
+
+      log.info("Attempting to initialize Firebase Admin", {
+        projectId: serviceAccount.project_id,
+        clientEmail: serviceAccount.client_email,
+      });
+
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
       });
 
       this.isInitialized = true;
       log.info("🔥 Firebase Admin initialized successfully in Push Worker");
-    } catch (error) {
+    } catch (error: any) {
       log.error("❌ Failed to initialize Firebase Admin in Push Worker", {
-        error,
+        error: error.message,
+        stack: error.stack,
       });
     }
   }
@@ -94,6 +116,20 @@ export class PushProcessor {
               token: tokens[idx],
               error: resp.error,
             });
+
+            // Handle invalid registration tokens
+            if (
+              resp.error?.code === "messaging/registration-token-not-registered"
+            ) {
+              NotificationService.removeInvalidDeviceToken(tokens[idx]).catch(
+                (err: any) => {
+                  log.error("Failed to remove invalid device token", {
+                    token: tokens[idx],
+                    error: err.message,
+                  });
+                },
+              );
+            }
           }
         });
       }

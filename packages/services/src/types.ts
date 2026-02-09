@@ -1,8 +1,8 @@
 // Common types used across services
 export interface PaginationParams {
-  page?: number;
+  cursor?: string;
   limit?: number;
-  offset?: number;
+  search?: string;
 }
 
 export interface PaginationResult<T> {

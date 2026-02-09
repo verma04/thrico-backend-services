@@ -1,5 +1,5 @@
 import { eq, and, sql } from "drizzle-orm";
-import { userToEntity } from "@thrico/database";
+import { userToEntity, userProfile, aboutUser, user } from "@thrico/database";
 import { log } from "@thrico/logging";
 import { GraphQLError } from "graphql";
 
@@ -53,11 +53,8 @@ export class UserService {
 
       log.debug("Getting user details", { userId });
 
-      const user = await db.query.userToEntity.findFirst({
-        where: (userToEntity: any, { eq }: any) => eq(userToEntity.id, userId),
-        with: {
-          user: true,
-        },
+      const user = await db.query.user.findFirst({
+        where: (user: any, { eq }: any) => eq(user.id, userId),
       });
 
       if (!user) {
@@ -67,9 +64,9 @@ export class UserService {
       }
 
       const userData = {
-        email: user?.user.email,
-        firstName: user?.user.firstName,
-        lastName: user?.user.lastName,
+        email: user?.email,
+        firstName: user?.firstName,
+        lastName: user?.lastName,
       };
 
       log.info("User details retrieved", { userId, email: userData.email });
@@ -218,6 +215,101 @@ export class UserService {
       };
     } catch (error) {
       log.error("Error in getOnlineConnections", { error, userId, entityId });
+      throw error;
+    }
+  }
+
+  static async getProfileCompletion({
+    userId,
+    db,
+  }: {
+    userId: string;
+    db: any;
+  }) {
+    try {
+      if (!userId) {
+        throw new GraphQLError("User ID is required.", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+
+      log.debug("Calculating profile completion", { userId });
+
+      const profileData = await db
+        .select({
+          education: userProfile.education,
+          experience: userProfile.experience,
+          dob: userProfile.DOB,
+          skills: userProfile.skills,
+          social: userProfile?.socialLinks,
+        })
+        .from(user)
+        .leftJoin(userProfile, eq(userProfile.userId, user.id))
+        .leftJoin(aboutUser, eq(aboutUser.userId, user.id))
+        .where(eq(user.id, userId))
+        .limit(1);
+
+      if (!profileData || profileData.length === 0) {
+        throw new GraphQLError("User profile not found.", {
+          extensions: { code: "NOT_FOUND" },
+        });
+      }
+
+      const data = profileData[0];
+      const pendingFields: string[] = [];
+      let completedCount = 0;
+      const totalFields = 5;
+
+      // 1. Education
+      if (Array.isArray(data.education) && data.education.length > 0) {
+        completedCount++;
+      } else {
+        pendingFields.push("Education");
+      }
+
+      // 2. Experience
+      if (Array.isArray(data.experience) && data.experience.length > 0) {
+        completedCount++;
+      } else {
+        pendingFields.push("Experience");
+      }
+
+      // 3. DOB
+      if (data.dob && data.dob.trim() !== "") {
+        completedCount++;
+      } else {
+        pendingFields.push("Date of Birth");
+      }
+
+      // 4. Skills
+      if (Array.isArray(data.skills) && data.skills.length > 0) {
+        completedCount++;
+      } else {
+        pendingFields.push("Skills");
+      }
+
+      // 5. Social (About)
+      if (
+        data.social &&
+        ((Array.isArray(data.social) && data.social.length > 0) ||
+          (typeof data.social === "object" &&
+            Object.keys(data.social).length > 0))
+      ) {
+        completedCount++;
+      } else {
+        pendingFields.push("Social Links");
+      }
+
+      const percentage = Math.round((completedCount / totalFields) * 100);
+
+      log.info("Profile completion calculated", { userId, percentage });
+
+      return {
+        percentage,
+        pendingFields,
+      };
+    } catch (error) {
+      log.error("Error in getProfileCompletion", { error, userId });
       throw error;
     }
   }

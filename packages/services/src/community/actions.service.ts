@@ -24,6 +24,7 @@ import { FeedQueryService } from "../feed/feed-query.service";
 import { BaseCommunityService } from "./base.service";
 import { CommunityQueryService } from "./query.service";
 import { GamificationEventService } from "../gamification/gamification-event.service";
+import { CommunityNotificationPublisher } from "./notification-publisher";
 interface CommunityMemberPermissions {
   canEdit: boolean;
   canDelete: boolean;
@@ -146,6 +147,10 @@ export class CommunityActionsService {
       });
       if (existingRequest) throw new GraphQLError("Already requested");
 
+      const userDetails = await db.query.user.findFirst({
+        where: eq(user.id, userId),
+      });
+
       const autoApprove = group.joiningTerms === "ANYONE_CAN_JOIN";
 
       await db.transaction(async (tx: any) => {
@@ -168,12 +173,32 @@ export class CommunityActionsService {
             userId,
             entityId,
           });
+
+          // Publish Welcome Message (RabbitMQ)
+          CommunityNotificationPublisher.publishWelcomeMessage({
+            userId,
+            communityId: groupId,
+            community: group,
+            user: userDetails,
+            db,
+            entityId,
+          });
         } else {
           await tx.insert(groupRequest).values({
             groupId,
             userId,
             memberStatusEnum: "PENDING",
             notes: reason,
+          });
+
+          // Publish Join Request Notification (RabbitMQ)
+          CommunityNotificationPublisher.publishJoinRequest({
+            requesterId: userId,
+            communityId: groupId,
+            community: group,
+            user: userDetails,
+            db,
+            entityId,
           });
         }
       });

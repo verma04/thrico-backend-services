@@ -7,7 +7,7 @@ export const jobsTypes = `#graphql
     id: ID
     name: String
     email: String
-    # Add other user fields as needed
+    profile: userProfile
   }
 
   type location {
@@ -46,6 +46,13 @@ export const jobsTypes = `#graphql
     numberOfApplicant: Int
   }
 
+  type userApplication {
+    resume: String
+    appliedAt: Date
+    name: String
+    email: String
+  }
+
   type jobList {
     id: ID
     isFeatured: Boolean
@@ -57,18 +64,25 @@ export const jobsTypes = `#graphql
     canDelete: Boolean
     isOwner: Boolean
     isJobSaved: Boolean
+    application: userApplication
   }
 
-  type paginationInfo {
-    total: Int
-    page: Int
-    limit: Int
-    hasNextPage: Boolean
+  type PageInfo {
+    hasNextPage: Boolean!
+    endCursor: String
   }
 
-  type jobListWithPagination {
-    jobs: [jobList]
-    pagination: paginationInfo
+
+
+  type jobEdge {
+    cursor: String
+    node: jobList
+  }
+
+  type jobConnection {
+    edges: [jobEdge]
+    pageInfo: PageInfo
+    totalCount: Int
   }
 
   type applicant {
@@ -77,6 +91,19 @@ export const jobsTypes = `#graphql
     email: String
     resume: String
     appliedAt: Date
+  }
+
+
+
+  type applicantEdge {
+    cursor: String
+    node: applicant
+  }
+
+  type applicantConnection {
+    edges: [applicantEdge]
+    pageInfo: PageInfo
+    totalCount: Int
   }
 
   input inputPostJob {
@@ -102,14 +129,14 @@ export const jobsTypes = `#graphql
   }
 
   input inputGetJobs {
-    page: Int
+    cursor: String
     limit: Int
     search: String
   }
 
   input inputGetJobsByUserId {
     id: ID!
-    page: Int
+    cursor: String
     limit: Int
     search: String
   }
@@ -133,7 +160,7 @@ export const jobsTypes = `#graphql
 
   input inputEditJob {
     jobId: ID!
-    title: String!
+    title: String
     company: JSON
     location: JSON
     jobType: String
@@ -154,6 +181,8 @@ export const jobsTypes = `#graphql
   }
   input getApplicantsForJobInput {
     id: ID!
+    cursor: String
+    limit: Int
   }
   type jobDetails {
     postedBy: user
@@ -178,16 +207,16 @@ export const jobsTypes = `#graphql
   }
 
   type Query {
-    getAllJobs(input: inputGetJobs): jobListWithPagination
-    getAllJobsUserId(input: inputGetJobsByUserId): jobListWithPagination
+    getAllJobs(input: inputGetJobs): jobConnection
+    getAllJobsUserId(input: inputGetJobsByUserId): jobConnection
     getJobLocation(input: inputValue): [location]
     getJobCompany(input: inputValue): [company]
     getJobDetailsById(input: getJobDetailsByIdInput): jobDetails
-    getAllTrendingJobs(input: inputGetJobs): jobListWithPagination
-    getFeaturedJobs(input: inputGetJobs): jobListWithPagination
-    getMyJobs(input: inputGetJobs): jobListWithPagination
-    getAllJobsApplied(input: inputGetJobs): jobListWithPagination
-    getApplicantsForJob(input: getApplicantsForJobInput): [applicant]
+    getAllTrendingJobs(input: inputGetJobs): jobConnection
+    getFeaturedJobs(input: inputGetJobs): jobConnection
+    getMyJobs(input: inputGetJobs): jobConnection
+    getAllJobsApplied(input: inputGetJobs): jobConnection
+    getApplicantsForJob(input: getApplicantsForJobInput): applicantConnection
     getNumberApplicantOfJobs(input: jobIdsInput!): [jobApplicantCount]
     getJobStatistics(input: jobIdsInput!): [jobStatistics]
   }

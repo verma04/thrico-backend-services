@@ -146,17 +146,13 @@ export class AuthService {
     userId,
     input,
     generateJwtTokenFn,
-    getThemeFn, // Kept for backward compatibility but implemented using db if not provided in updated implementation
-    getDomainFn,
-    createSessionFn,
+    sessionId: currentSessionId,
   }: {
     db: any;
     userId: string;
     input: any;
     generateJwtTokenFn: (data: any) => Promise<string>;
-    getThemeFn?: (entityId: string) => Promise<any>;
-    getDomainFn?: (entityId: string) => Promise<any>;
-    createSessionFn?: (data: any) => Promise<any>;
+    sessionId?: string;
   }): Promise<{ token: string; theme: any }> {
     try {
       if (!userId || !input?.entityId) {
@@ -168,6 +164,7 @@ export class AuthService {
       log.debug("Switching account", {
         userId,
         targetEntityId: input.entityId,
+        currentSessionId,
       });
 
       const userRecord = await db.query.user.findFirst({
@@ -206,31 +203,34 @@ export class AuthService {
 
       const themeData = themeResult.toJSON()[0] || null;
 
+      // Clear old session if sessionId is provided
+      if (currentSessionId) {
+        try {
+          await USER_LOGIN_SESSION.delete({ id: currentSessionId });
+          log.debug("Old session cleared during switchAccount", {
+            sessionId: currentSessionId,
+          });
+        } catch (err: any) {
+          log.warn("Failed to clear old session during switchAccount", {
+            sessionId: currentSessionId,
+            error: err.message,
+          });
+          // Continue execution even if session deletion fails
+        }
+      }
+
       const sessionId = `session-${Date.now()}`;
 
       // Use helper or Model directly
-      let loginSession;
-      if (createSessionFn) {
-        loginSession = await createSessionFn({
-          id: sessionId,
-          userId: entity.id,
-          device_id: input.device_id,
-          deviceToken: input.deviceToken,
-          deviceName: input.deviceName,
-          activeEntityId: input.entityId,
-          token: uuidv4(),
-        });
-      } else {
-        loginSession = await LoginSessionModel.create({
-          id: sessionId,
-          userId: entity.id,
-          device_id: input.device_id,
-          deviceToken: input.deviceToken,
-          deviceName: input.deviceName,
-          activeEntityId: input.entityId,
-          token: uuidv4(),
-        });
-      }
+      let loginSession = await LoginSessionModel.create({
+        id: sessionId,
+        userId: entity.id,
+        device_id: input.device_id,
+        deviceToken: input.deviceToken,
+        deviceName: input.deviceName,
+        activeEntityId: input.entityId,
+        token: uuidv4(),
+      });
 
       // Generate JWT token using injected function
       const token = await generateJwtTokenFn({
@@ -896,6 +896,34 @@ export class AuthService {
       return { success: true };
     } catch (error) {
       log.error("Error in updateSession", { error, sessionId });
+      throw error;
+    }
+  }
+
+  static async logoutUser({ sessionId }: { sessionId: string }) {
+    try {
+      if (!sessionId) {
+        throw new GraphQLError("Session ID is required.", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+
+      log.debug("Logging out user", { sessionId });
+
+      const session = await USER_LOGIN_SESSION.get(sessionId);
+      if (!session) {
+        throw new GraphQLError("Session not found.", {
+          extensions: { code: "NOT_FOUND" },
+        });
+      }
+
+      // Delete the session to clear token and session data
+      await USER_LOGIN_SESSION.delete({ id: sessionId });
+
+      log.info("User logged out successfully", { sessionId });
+      return { success: true, message: "Logged out successfully" };
+    } catch (error) {
+      log.error("Error in logoutUser", { error, sessionId });
       throw error;
     }
   }

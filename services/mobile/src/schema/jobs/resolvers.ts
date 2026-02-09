@@ -1,4 +1,4 @@
-import { PAGE } from "@thrico/database";
+import { PAGE, user } from "@thrico/database";
 import { JobService, upload } from "@thrico/services";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 
@@ -36,17 +36,19 @@ const jobsResolvers: any = {
 
     async getAllJobsUserId(_: any, { input }: any, context: any) {
       try {
-        const { id, entityId, db } = await checkAuth(context);
-        const currentUserId = id;
-        const page = input?.page || 1;
+        const { entityId, db, id } = await checkAuth(context);
+        const cursor = input?.cursor;
         const limit = input?.limit || 10;
+        const search = input?.search;
 
         const result = await JobService.getAllJobs({
           entityId,
           db,
-          page,
+          cursor,
           limit,
-          currentUserId: input.id,
+          currentUserId: id,
+          targetUserId: input.id,
+          search,
         });
 
         return result;
@@ -58,19 +60,17 @@ const jobsResolvers: any = {
 
     async getAllJobs(_: any, { input }: any, context: any) {
       try {
-        const { entityId, db, id } = await checkAuth(context);
-        const page = input?.page || 1;
+        const { entityId, db, userId } = await checkAuth(context);
+        const cursor = input?.cursor;
         const limit = input?.limit || 10;
-        const currentUserId = id;
-        const search = input?.search || ""; // <-- Add this line
+        const search = input?.search;
 
-        console.log("Search term:", search);
         return JobService.getAllJobs({
           entityId,
           db,
-          page,
+          cursor,
           limit,
-          currentUserId,
+          currentUserId: userId,
           search,
         });
       } catch (error) {
@@ -81,7 +81,7 @@ const jobsResolvers: any = {
 
     async getJobDetailsById(_: any, { input }: any, context: any) {
       try {
-        const { db, id, userId } = await checkAuth(context);
+        const { db, userId } = await checkAuth(context);
         return JobService.getJobDetails({
           jobId: input.id,
           currentUserId: userId,
@@ -95,16 +95,17 @@ const jobsResolvers: any = {
 
     async getAllTrendingJobs(_: any, { input }: any, context: any) {
       try {
-        const { entityId, db } = await checkAuth(context);
-        const page = input?.page || 1;
+        const { entityId, db, userId } = await checkAuth(context);
+        const cursor = input?.cursor;
         const limit = input?.limit || 10;
+        const search = input?.search;
 
         return JobService.getAllTrendingJobs({
           entityId,
           db,
-          page,
+          cursor,
           limit,
-          search: input?.search || "",
+          search,
         });
       } catch (error) {
         console.log(error);
@@ -115,15 +116,16 @@ const jobsResolvers: any = {
     async getFeaturedJobs(_: any, { input }: any, context: any) {
       try {
         const { entityId, db } = await checkAuth(context);
-        const page = input?.page || 1;
+        const cursor = input?.cursor;
         const limit = input?.limit || 10;
+        const search = input?.search;
 
         return JobService.getFeaturedJobs({
           entityId,
           db,
-          page,
+          cursor,
           limit,
-          search: input?.search || "",
+          search,
         });
       } catch (error) {
         console.log(error);
@@ -133,17 +135,18 @@ const jobsResolvers: any = {
 
     async getMyJobs(_: any, { input }: any, context: any) {
       try {
-        const { userId, entityId, db } = await checkAuth(context);
-        const page = input?.page || 1;
+        const { entityId, db, userId } = await checkAuth(context);
+        const cursor = input?.cursor;
         const limit = input?.limit || 10;
+        const search = input?.search;
 
         return JobService.getMyJobs({
-          userId,
+          userId: userId,
           entityId,
           db,
-          page,
+          cursor,
           limit,
-          search: input?.search || "",
+          search,
         });
       } catch (error) {
         console.log(error);
@@ -153,16 +156,18 @@ const jobsResolvers: any = {
 
     async getAllJobsApplied(_: any, { input }: any, context: any) {
       try {
-        const { id, db } = await checkAuth(context);
-        const page = input?.page || 1;
+        const { db, userId } = await checkAuth(context);
+        const cursor = input?.cursor;
         const limit = input?.limit || 10;
+        const search = input?.search;
 
         return JobService.getAllJobsApplied({
-          userId: id,
+          userId: userId,
           db,
-          page,
+          cursor,
           limit,
-          search: input?.search || "",
+          currentUserId: userId,
+          search,
         });
       } catch (error) {
         console.log(error);
@@ -172,11 +177,16 @@ const jobsResolvers: any = {
 
     async getApplicantsForJob(_: any, { input }: any, context: any) {
       try {
-        const { userId, db } = await checkAuth(context);
+        const { db, userId } = await checkAuth(context);
+        const cursor = input?.cursor;
+        const limit = input?.limit || 10;
+
         return JobService.getApplicantsForJob({
           jobId: input.id,
           ownerId: userId,
           db,
+          cursor,
+          limit,
         });
       } catch (error) {
         console.log(error);
@@ -215,7 +225,7 @@ const jobsResolvers: any = {
   Mutation: {
     async addJob(_: any, { input }: any, context: any) {
       try {
-        const { id, entityId, userId, db } = await checkAuth(context);
+        const { entityId, userId, db } = await checkAuth(context);
 
         return JobService.postJob({ input, userId, entityId, db });
       } catch (error) {
@@ -242,7 +252,7 @@ const jobsResolvers: any = {
 
     async applyJob(_: any, { input }: any, context: any) {
       try {
-        const { id, db } = await checkAuth(context);
+        const { db, userId } = await checkAuth(context);
         const { jobId, name, email, resume } = input;
         const job = await JobService.applyToJob({
           jobId,
@@ -250,7 +260,7 @@ const jobsResolvers: any = {
           email,
           resume,
           db,
-          userId: id,
+          userId: jobId,
         });
         return {
           succuss: true,
@@ -281,10 +291,10 @@ const jobsResolvers: any = {
 
     async deleteJob(_: any, { jobId }: any, context: any) {
       try {
-        const { id, db } = await checkAuth(context);
+        const { db, userId } = await checkAuth(context);
         return JobService.deleteJob({
           jobId,
-          userId: id,
+          userId,
           db,
         });
       } catch (error) {

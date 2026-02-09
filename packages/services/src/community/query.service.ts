@@ -419,7 +419,7 @@ export class CommunityQueryService {
       // Build dynamic where conditions
       const whereConditions = [
         eq(groups.entity, entityId),
-        eq(groups.isApproved, true),
+        // eq(groups.isApproved, true), // Owner should see all their communities
         eq(groups.creator, currentUserId), // Filter by creator
       ];
 
@@ -990,7 +990,7 @@ export class CommunityQueryService {
       // Build dynamic where conditions
       const whereConditions = [
         eq(groups.entity, entityId),
-        eq(groups.isApproved, true),
+        // eq(groups.isApproved, true),
         eq(groupMember.userId, currentUserId), // Only communities where user is a member
         eq(groupMember.memberStatusEnum, "ACCEPTED"),
         ne(groups.creator, currentUserId), // Exclude communities created by the user (Owned)

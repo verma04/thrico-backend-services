@@ -12,7 +12,7 @@ export const profileTypes = `#graphql
     education: JSON
     experience: JSON
     categories: [String]
-    skills: [String]
+    skills: [skill]
   }
 
   type connectionsUsers {
@@ -28,8 +28,9 @@ export const profileTypes = `#graphql
   }
 
   type social {
-    url: String
-    platform: String
+    id: ID!
+    url: String!
+    platform: String!
   }
 
   type about {
@@ -120,9 +121,13 @@ export const profileTypes = `#graphql
     getUserProfileInfo(input: inputId): userProfileCreation
     getUserInterests: [String]
     getUserCategories: [String]
-    updateUserLocation(input: inputUpdateLocation): user
+    updateUserLocation(input: inputUpdateLocation): entityUser
     getProfileExperience: [experience]
     getOnlineConnections(limit: Int, offset: Int): userConnections
+    getEducationItemById(id: String!): education
+    getExperienceItemById(id: String!): experience
+    getSkillsItemById(id: String!): skill
+    getSocialLinkById(id: String!): social
   }
 
   input inputProfileDetails {
@@ -130,6 +135,7 @@ export const profileTypes = `#graphql
     firstName: String!
     lastName: String!
     headline: String!
+    dob: String
     location: JSON
   }
 
@@ -140,18 +146,68 @@ export const profileTypes = `#graphql
   input inputUpdateLocation {
     latitude: Float
     longitude: Float
+ 
+  }
+
+  type ProfileCompletionResponse {
+    percentage: Int!
+    pendingFields: [String]!
+  }
+
+  extend type Query {
+    getProfileCompletion: ProfileCompletionResponse!
+
   }
 
   type Mutation {
+  
     updateUserInterests(input: [String]): [String]
     updateUserCategories(input: [String]): [String]
-    updateProfileDetails(input: inputProfileDetails): user
-    updateProfileCover(input: inputUpdateProfileCover): user
+    updateProfileDetails(input: inputProfileDetails): entityUser
+    updateProfileCover(input: inputUpdateProfileCover): entityUser
 
     editEducation(input: inputEditEducation): [education]
     editExperience(input: inputEditExperience): [experience]
-    editSkills(input: inputEditSkills): [String]
+    addEducationItem(input: inputEducation!): [education]
+    editEducationItem(id: String!, input: inputEducation!): [education]
+    deleteEducationItem(id: String!): [education]
+    addExperienceItem(input: inputExperience!): [experience]
+    editExperienceItem(id: String!, input: inputExperience!): [experience]
+    deleteExperienceItem(id: String!): [experience]
+    editSkills(input: [String]): [String]
+    addSkillsItem(input: inputSkill!): [skill]
+    editSkillsItem(id: String!, input: inputSkill!): [skill]
+    deleteSkillsItem(id: String!): [skill]
+    addSocialLink(input: inputSocial!): [social]
+    editSocialLink(id: String!, input: inputSocial!): [social]
+    deleteSocialLink(id: String!): [social]
     updateOnlineStatus: Boolean
+  }
+
+  type skill {
+    id: ID!
+    name: String!
+    category: String!
+    level: String!
+    tags: [String]!
+    yearsOfExperience: Int
+    description: String
+  }
+
+  input inputSkill {
+    id: String
+    name: String!
+    category: String!
+    level: String!
+    tags: [String]!
+    yearsOfExperience: Int
+    description: String
+  }
+
+  input inputSocial {
+ 
+    url: String!
+    platform: String!
   }
 
   input inputEditEducation {

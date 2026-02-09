@@ -176,12 +176,14 @@ export const resolvers = {
 
     async switchAccount(_: any, { input }: any, context: any) {
       try {
-        const { db, userId } = context.user || (await checkAuth(context));
+        const { db, userId, sessionId } =
+          context.user || (await checkAuth(context));
         return AuthService.switchAccount({
           db,
           userId,
           input,
           generateJwtTokenFn: generateJwtToken,
+          sessionId,
         });
       } catch (error) {
         log.error("Error in switchAccount", { error });
@@ -221,6 +223,31 @@ export const resolvers = {
         });
       } catch (error) {
         log.error("Error in updateActiveEntity", { error });
+        throw error;
+      }
+    },
+
+    async logoutUser(_: any, {}: any, context: any) {
+      try {
+        const { sessionId } = context.user || (await checkAuth(context));
+        return AuthService.logoutUser({ sessionId });
+      } catch (error) {
+        log.error("Error in logoutUser", { error });
+        throw error;
+      }
+    },
+
+    async allowPushNotification(_: any, { token }: any, context: any) {
+      try {
+        const { sessionId } = context.user || (await checkAuth(context));
+        return AuthService.updateSession({
+          sessionId,
+          input: {
+            deviceToken: token,
+          },
+        });
+      } catch (error) {
+        log.error("Error in allowPushNotification", { error });
         throw error;
       }
     },

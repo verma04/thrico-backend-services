@@ -10,6 +10,7 @@ import {
   user,
   AppDatabase,
 } from "@thrico/database";
+import { CommunityNotificationPublisher } from "./notification-publisher";
 
 export class CommunityRatingService {
   static async updateCommunityRating({
@@ -222,12 +223,31 @@ export class CommunityRatingService {
         await this.updateRatingSummary({ groupId, db: tx });
       });
 
-      //   log.info("Community rating added", {
-      //     userId,
-      //     groupId,
-      //     ratingId: "sdsd"
-      //     isUpdate,
-      //   });
+      // Trigger Notification
+      try {
+        const ratingUser = await db.query.user.findFirst({
+          where: eq(user.id, userId),
+          columns: {
+            firstName: true,
+            lastName: true,
+            avatar: true,
+          },
+        });
+
+        if (ratingUser && !isUpdate) {
+          CommunityNotificationPublisher.publishRatingReceived({
+            userId,
+            communityId: groupId,
+            community,
+            user: ratingUser,
+            rating: parseInt(rating),
+            db,
+            entityId,
+          });
+        }
+      } catch (notifError) {
+        log.error("Failed to send rating notification", notifError);
+      }
 
       return ratingRecord;
     } catch (error) {

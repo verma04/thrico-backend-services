@@ -15,7 +15,6 @@ import checkAuth from "../../utils/auth/checkAuth.utils";
 import { GraphQLError } from "graphql";
 import { logger } from "@thrico/logging";
 import upload from "../../utils/upload/upload";
-import { seedShopProducts } from "src/seed/seedShopProducts";
 
 export const shopResolvers = {
   Query: {
@@ -133,8 +132,6 @@ export const shopResolvers = {
 
           await db.insert(shopProductMedia).values(mediaPayload);
         }
-
-        seedShopProducts(db, entity);
 
         return await db.query.shopProducts.findFirst({
           where: eq(shopProducts.id, newProduct.id),

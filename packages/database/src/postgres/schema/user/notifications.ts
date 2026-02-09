@@ -1,11 +1,22 @@
 import { relations, sql } from "drizzle-orm";
-import { pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import {
+  pgEnum,
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+  integer,
+  jsonb,
+} from "drizzle-orm/pg-core";
 import { userToEntity } from "./member/user";
 import { userFeed } from "./feed";
+import { groups } from "./communities";
 
 export const notificationType = pgEnum("notificationType", [
   "FEED_COMMENT",
+  "FEED_REPOST",
   "FEED_LIKE",
+  "FEED_REPOST",
   "NETWORK",
   "COMMUNITIES",
   "LISTING_LIKE",
@@ -15,6 +26,26 @@ export const notificationType = pgEnum("notificationType", [
   "POINTS_EARNED",
   "BADGE_UNLOCKED",
   "RANK_UP",
+  "COMMUNITY_CREATED",
+  "COMMUNITY_JOIN_REQUEST",
+  "COMMUNITY_RATING",
+  "COMMUNITY_ROLE_UPDATED",
+  "COMMUNITY_JOIN_APPROVED",
+  "LISTING_APPROVED",
+  "LISTING_CONTACT",
+  "LISTING_MESSAGE",
+  "JOB_APPLICATION",
+  "JOB_POSTED",
+]);
+
+export const communityNotificationType = pgEnum("communityNotificationType", [
+  "WELCOME",
+  "JOIN_REQUEST",
+  "CREATED",
+  "MEMBER_JOINED",
+  "RATING_RECEIVED",
+  "ROLE_UPDATED",
+  "JOIN_APPROVED",
 ]);
 
 export const notifications = pgTable("userNotifications", {
@@ -25,8 +56,6 @@ export const notifications = pgTable("userNotifications", {
   entity: uuid("entity_id").notNull(),
   content: text("content"),
   feed: uuid("feed_id"),
-  connection: uuid("connection_id"),
-  communities: uuid("communities_id"),
   isRead: text("is_read").default("false"), // Changed to text for simpler handling or keep as boolean if prefer. User requested isRead.
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
@@ -47,12 +76,38 @@ export const jobNotification = pgTable("jobNotifications", {
   job: uuid("job_id").notNull(),
   notification: uuid("notification_id").notNull(),
 });
+// Community Metadata Notification Table
+export const communityMetadataNotification = pgTable(
+  "communityMetadataNotifications",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    user: uuid("user_id").notNull(),
+    community: uuid("community_id").notNull(),
+    type: communityNotificationType("type").notNull(),
+    notification: uuid("notification_id").notNull(),
+    content: text("content"),
+    imageUrl: text("imageUrl"),
+  },
+);
+
+export const feedMetadataNotification = pgTable("feedMetadataNotifications", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  user: uuid("user_id").notNull(),
+
+  type: notificationType("type").notNull(),
+  notification: uuid("notification_id").notNull(),
+  content: text("content"),
+  actors: jsonb("actors").$type<string[]>(),
+  count: integer("count").default(1),
+});
 
 export const notificationsRelations = relations(
   notifications,
   ({ one, many }) => ({
     listingNotifications: many(listingNotification),
     jobNotifications: many(jobNotification),
+    communityMetadataNotifications: many(communityMetadataNotification),
+    feedMetadataNotifications: many(feedMetadataNotification),
     user: one(userToEntity, {
       relationName: "user_id",
       fields: [notifications.user],
@@ -101,5 +156,42 @@ export const jobNotificationRelations = relations(
       references: [notifications.id],
     }),
     // Add job relation if you have a job table
+  }),
+);
+
+export const communityMetadataNotificationRelations = relations(
+  communityMetadataNotification,
+  ({ one }) => ({
+    user: one(userToEntity, {
+      relationName: "user_id",
+      fields: [communityMetadataNotification.user],
+      references: [userToEntity.id],
+    }),
+    community: one(groups, {
+      fields: [communityMetadataNotification.community],
+      references: [groups.id],
+    }),
+    notification: one(notifications, {
+      relationName: "notification_id",
+      fields: [communityMetadataNotification.notification],
+      references: [notifications.id],
+    }),
+  }),
+);
+
+export const feedMetadataNotificationRelations = relations(
+  feedMetadataNotification,
+  ({ one }) => ({
+    user: one(userToEntity, {
+      relationName: "user_id",
+      fields: [feedMetadataNotification.user],
+      references: [userToEntity.id],
+    }),
+
+    notification: one(notifications, {
+      relationName: "notification_id",
+      fields: [feedMetadataNotification.notification],
+      references: [notifications.id],
+    }),
   }),
 );

@@ -256,12 +256,33 @@ export class FeedQueryService {
             title: groups.title,
             cover: groups.cover,
           },
+          job: {
+            id: jobs.id,
+            title: jobs.title,
+            company: jobs.company,
+            description: jobs.description,
+            location: jobs.location,
+            jobType: jobs.jobType,
+            workplaceType: jobs.workplaceType,
+          },
+          listing: {
+            id: marketPlace.id,
+            title: marketPlace.title,
+            description: marketPlace.description,
+            price: marketPlace.price,
+            currency: marketPlace.currency,
+            location: marketPlace.location,
+            category: marketPlace.category,
+            createdAt: marketPlace.createdAt,
+          },
         })
         .from(userFeed)
         .leftJoin(user, eq(userFeed.userId, user.id))
         .leftJoin(groups, eq(userFeed.groupId, groups.id))
         .leftJoin(offers, eq(userFeed.offerId, offers.id))
         .leftJoin(aboutUser, eq(user.id, aboutUser.userId))
+        .leftJoin(marketPlace, eq(userFeed.marketPlaceId, marketPlace.id))
+        .leftJoin(jobs, eq(userFeed.jobId, jobs.id))
         .where(eq(userFeed.id, feedId))
         .limit(1);
 
@@ -682,6 +703,16 @@ export class FeedQueryService {
             jobType: jobs.jobType,
             workplaceType: jobs.workplaceType,
           },
+          listing: {
+            id: marketPlace.id,
+            title: marketPlace.title,
+            description: marketPlace.description,
+            price: marketPlace.price,
+            currency: marketPlace.currency,
+            location: marketPlace.location,
+            category: marketPlace.category,
+            createdAt: marketPlace.createdAt,
+          },
           poll: {
             id: polls.id,
             title: polls.title,
@@ -824,6 +855,97 @@ export class FeedQueryService {
       return this.processFeedsWithPermissions(result);
     } catch (error) {
       log.error("Error in getCommunitiesFeed", { error, currentUserId });
+      throw error;
+    }
+  }
+
+  // Get user activity feed with cursor-based pagination
+  static async getFeedActivityByUserId({
+    currentUserId,
+    userId,
+    db,
+    cursor,
+    limit = 20,
+    entity,
+  }: {
+    currentUserId: string;
+    userId: string;
+    db: any;
+    cursor?: string;
+    limit?: number;
+    entity: string;
+  }) {
+    try {
+      const fields = await this.setField(currentUserId);
+
+      // Build conditions
+      const conditions = [
+        eq(userFeed.userId, userId),
+        eq(userFeed.entity, entity),
+      ];
+
+      // Add cursor condition if provided
+      if (cursor) {
+        conditions.push(sql`${userFeed.createdAt} < ${new Date(cursor)}`);
+      }
+
+      // Fetch limit + 1 to determine if there's a next page
+      const result = await db
+        .select({
+          ...fields,
+          repostId: userFeed?.repostId,
+          group: {
+            id: groups.id,
+            title: groups.title,
+            cover: groups.cover,
+          },
+        })
+        .from(userFeed)
+        .leftJoin(user, eq(userFeed.userId, user.id))
+        .leftJoin(groups, eq(userFeed.groupId, groups.id))
+        .leftJoin(offers, eq(userFeed.offerId, offers.id))
+        .leftJoin(aboutUser, eq(user.id, aboutUser.userId))
+        .where(and(...conditions))
+        .orderBy(desc(userFeed.createdAt))
+        .limit(limit + 1);
+
+      // Determine if there's a next page
+      const hasNextPage = result.length > limit;
+      const nodes = hasNextPage ? result.slice(0, limit) : result;
+
+      // Get total count
+      const [countResult] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(userFeed)
+        .where(and(eq(userFeed.userId, userId), eq(userFeed.entity, entity)));
+
+      const totalCount = Number(countResult?.count || 0);
+
+      // Process feeds with permissions
+      const processedFeeds = this.processFeedsWithPermissions(nodes);
+
+      // Build edges
+      const edges = processedFeeds.map((feed: any) => ({
+        cursor: feed.createdAt.toISOString(),
+        node: feed,
+      }));
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount,
+      };
+    } catch (error) {
+      log.error("Error in getFeedActivityByUserId", {
+        error,
+        userId,
+        entity,
+        cursor,
+        limit,
+      });
       throw error;
     }
   }

@@ -48,6 +48,9 @@ export const networkTypes = `#graphql
   type profile {
     experience: JSON
     education: JSON
+    DOB: String
+       socialLinks: JSON
+         skills: JSON
   }
 
   type network {
@@ -57,10 +60,37 @@ export const networkTypes = `#graphql
     createdAt: Date
   }
 
-  input paginationInput {
+  input NetworkCursorInput {
+    cursor: String
     limit: Int
-    offset: Int
     search: String
+  }
+
+  type PageInfo {
+    hasNextPage: Boolean!
+    endCursor: String
+  }
+
+  type NetworkUserEdge {
+    cursor: String!
+    node: networkUser!
+  }
+
+  type NetworkUserConnection {
+    edges: [NetworkUserEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
+  }
+
+  type ConnectionRequestEdge {
+    cursor: String!
+    node: connectionRequest!
+  }
+
+  type ConnectionRequestConnection {
+    edges: [ConnectionRequestEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
   }
 
   type paginationInfo {
@@ -73,11 +103,6 @@ export const networkTypes = `#graphql
      totalCount:Int
      totalPages:Int
      currentPage:Int
-  }
-
-  type networkResponse {
-    data: [networkUser]
-    pagination: paginationInfo
   }
 
   type connectionRequestResponse {
@@ -113,10 +138,17 @@ export const networkTypes = `#graphql
     blockedAt: Date
   }
 
-  type blockedUsersResponse {
-    data: [blockedUser]
-    pagination: paginationInfo
+  type BlockedUserEdge {
+    cursor: String!
+    node: blockedUser!
   }
+
+  type BlockedUserConnection {
+    edges: [BlockedUserEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
+  }
+
 
   input followUserInput {
     userId: ID!
@@ -141,18 +173,21 @@ export const networkTypes = `#graphql
     email: String
     about: about
     profile: profile
+    cover: String
+    location: JSON
+
   }
 
   # feed type is defined in feed/types.ts
   
   extend type Query {
-    getNetwork(input: paginationInput): networkResponse
-    getMyConnection(input: paginationInput): networkResponse
-    getUserProfile(input: inputId): networkUser
+    getNetwork(input: NetworkCursorInput): NetworkUserConnection!
+    getMyConnection(input: NetworkCursorInput): NetworkUserConnection!
     getNetworkUserProfile(input: inputId): networkUser
-    getConnectionRequests(input: paginationInput): connectionRequestResponse
+    getUserProfile(input: inputId): networkUser
+    getConnectionRequests(input: NetworkCursorInput): ConnectionRequestConnection!
+    getBlockedUsers(input: NetworkCursorInput): BlockedUserConnection!
     getConnectionStats: connectionStats
-    getBlockedUsers(input: paginationInput): blockedUsersResponse
   }
 
   extend type Mutation {
@@ -166,5 +201,33 @@ export const networkTypes = `#graphql
     unblockUser(input: blockUserInput): reportResponse
     followUser(input: followUserInput): followResponse
     unfollowUser(input: followUserInput): followResponse
+  }
+
+  enum BirthdayFilter {
+    TODAY
+    UPCOMING
+    THIS_MONTH
+    PAST
+  }
+
+  input BirthdayCursorInput {
+    cursor: String
+    limit: Int
+    filter: BirthdayFilter!
+  }
+
+  type BirthdayEdge {
+    cursor: String!
+    node: networkUser!
+  }
+
+  type BirthdayConnection {
+    edges: [BirthdayEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
+  }
+
+  extend type Query {
+    getMemberBirthdays(input: BirthdayCursorInput): BirthdayConnection!
   }
 `;

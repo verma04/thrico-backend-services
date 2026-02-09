@@ -9,6 +9,7 @@ import {
   aboutUser,
   groups,
   offers,
+  feedMetadataNotification,
 } from "@thrico/database"; // Changed import to @thrico/database
 import { and, asc, desc, eq, or, sql } from "drizzle-orm";
 import { GraphQLError } from "graphql";
@@ -19,6 +20,7 @@ import {
   FeedStatsService,
   FeedPollService,
   CommunityActionsService,
+  NotificationService,
 } from "@thrico/services";
 import { log } from "@thrico/logging";
 
@@ -238,6 +240,39 @@ const feedResolvers: any = {
         return result;
       } catch (error) {
         log.error("Error in getUserActivityFeed", { error, userId, input });
+        throw error;
+      }
+    },
+
+    async getFeedActivityByUserId(
+      _: any,
+      { userId, input }: any,
+      context: any,
+    ) {
+      let currentUserId: string = "";
+      try {
+        const { db, userId: uid, entityId } = await checkAuth(context);
+        currentUserId = uid;
+
+        const { cursor, limit } = input || {};
+
+        const result = await FeedQueryService.getFeedActivityByUserId({
+          currentUserId,
+          userId,
+          db,
+          cursor,
+          limit,
+          entity: entityId,
+        });
+
+        return result;
+      } catch (error) {
+        log.error("Error in getFeedActivityByUserId", {
+          error,
+          currentUserId,
+          userId,
+          input,
+        });
         throw error;
       }
     },
@@ -505,52 +540,17 @@ const feedResolvers: any = {
     async repostFeedWithThought(_: any, { input }: any, context: any) {
       const { userId, db, entityId } = await checkAuth(context);
 
-      const checkFeed = await db.query.userFeed.findFirst({
-        where: eq(userFeed.id, input.feedId),
-      });
       try {
-        const feed = await db.transaction(async (tx: any) => {
-          const newFeed = await tx
-            .insert(userFeed)
-            .values({
-              userId: userId,
-              entity: entityId,
-              description: input?.description,
-              source: "rePost",
-              privacy: input.privacy,
-              repostId: input.feedId,
-            })
-            .returning({ id: userFeed.id });
-
-          await db
-            .update(userFeed)
-            .set({ totalReShare: checkFeed.totalReShare + 1 })
-            .where(eq(userFeed.id, input.feedId));
-
-          const feed = await tx.query.userFeed.findFirst({
-            where: eq(userFeed.id, newFeed[0].id),
-            with: {
-              comment: true,
-              reactions: true,
-
-              user: {
-                with: {
-                  about: true,
-                },
-              },
-            },
-          });
-          return feed;
+        const feed = await FeedMutationService.repostFeed({
+          currentUserId: userId,
+          input: {
+            feedId: input.feedId,
+            description: input.description,
+            privacy: input.privacy,
+          },
+          entity: entityId,
+          db,
         });
-
-        // // Fixed usage of GamificationService
-        // await GamificationService.checkGamification({
-        //   entity: entityId,
-        //   db,
-        //   userId,
-        //   action: ActionType.SHARE_FEED,
-        //   feedId: feed.id,
-        // });
 
         return {
           ...feed,

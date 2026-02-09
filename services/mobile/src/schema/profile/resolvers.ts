@@ -1,6 +1,11 @@
 import { and, eq, or, sql } from "drizzle-orm";
 import checkAuth from "../../utils/auth/checkAuth.utils";
-import { ProfileService, UserService, upload } from "@thrico/services";
+import {
+  NetworkService,
+  ProfileService,
+  UserService,
+  upload,
+} from "@thrico/services";
 import {
   aboutUser,
   user,
@@ -244,6 +249,86 @@ const profileResolvers: any = {
         throw error;
       }
     },
+
+    async getEducationItemById(_: any, { id: itemId }: any, context: any) {
+      try {
+        const { userId, db } = await checkAuth(context);
+        return await ProfileService.getEducationItemById({
+          db,
+          userId,
+          itemId,
+        });
+      } catch (error) {
+        logger.error(`Error in getEducationItemById: ${error}`);
+        throw error;
+      }
+    },
+
+    async getExperienceItemById(_: any, { id: itemId }: any, context: any) {
+      try {
+        const { userId, db } = await checkAuth(context);
+        return await ProfileService.getExperienceItemById({
+          db,
+          userId,
+          itemId,
+        });
+      } catch (error) {
+        logger.error(`Error in getExperienceItemById: ${error}`);
+        throw error;
+      }
+    },
+
+    async getSkillsItemById(_: any, { id: itemId }: any, context: any) {
+      try {
+        const { userId, db } = await checkAuth(context);
+        return await ProfileService.getSkillsItemById({ db, userId, itemId });
+      } catch (error) {
+        logger.error(`Error in getSkillsItemById: ${error}`);
+        throw error;
+      }
+    },
+
+    async getSocialLinkById(_: any, { id: itemId }: any, context: any) {
+      try {
+        const { userId, db } = await checkAuth(context);
+        return await ProfileService.getSocialLinkById({ db, userId, itemId });
+      } catch (error) {
+        logger.error(`Error in getSocialLinkById: ${error}`);
+        throw error;
+      }
+    },
+
+    async getProfileCompletion(_: any, __: any, context: any) {
+      try {
+        const { id, db, userId } = await checkAuth(context);
+
+        return await UserService.getProfileCompletion({
+          userId,
+          db,
+        });
+      } catch (error) {
+        logger.error(`Error in getProfileCompletion: ${error}`);
+        throw error;
+      }
+    },
+
+    async getUserProfile(_: any, { input }: any, context: any) {
+      try {
+        const { db, id, entityId } = await checkAuth(context);
+
+        console.log(id);
+
+        return await NetworkService.getUserProfile({
+          db,
+          currentUserId: id,
+          entityId,
+          userId: input.id,
+        });
+      } catch (error: any) {
+        // log.error("Error in getUserProfile", { error, input });
+        throw error;
+      }
+    },
   },
 
   Mutation: {
@@ -320,6 +405,13 @@ const profileResolvers: any = {
           .set({ headline: input.headline })
           .where(eq(aboutUser.userId, userId))
           .returning();
+
+        if (input.dob) {
+          await db
+            .update(userProfile)
+            .set({ DOB: input.dob })
+            .where(eq(userProfile.userId, userId));
+        }
 
         const profile = await db.query.userToEntity.findFirst({
           where: and(eq(userToEntity.userId, userId)),
@@ -413,6 +505,80 @@ const profileResolvers: any = {
       }
     },
 
+    async addEducationItem(_: any, { input }: any, context: any) {
+      try {
+        const { userId, db } = await checkAuth(context);
+        return await ProfileService.addEducationItem({ db, userId, input });
+      } catch (error) {
+        logger.error(`Error in addEducationItem: ${error}`);
+        throw error;
+      }
+    },
+
+    async editEducationItem(_: any, { id: itemId, input }: any, context: any) {
+      try {
+        const { userId, db } = await checkAuth(context);
+        return await ProfileService.editEducationItem({
+          db,
+          userId,
+          itemId,
+          input,
+        });
+      } catch (error) {
+        logger.error(`Error in editEducationItem: ${error}`);
+        throw error;
+      }
+    },
+
+    async deleteEducationItem(_: any, { id: itemId }: any, context: any) {
+      try {
+        const { userId, db } = await checkAuth(context);
+        return await ProfileService.deleteEducationItem({ db, userId, itemId });
+      } catch (error) {
+        logger.error(`Error in deleteEducationItem: ${error}`);
+        throw error;
+      }
+    },
+
+    async addExperienceItem(_: any, { input }: any, context: any) {
+      try {
+        const { userId, db } = await checkAuth(context);
+        return await ProfileService.addExperienceItem({ db, userId, input });
+      } catch (error) {
+        logger.error(`Error in addExperienceItem: ${error}`);
+        throw error;
+      }
+    },
+
+    async editExperienceItem(_: any, { id: itemId, input }: any, context: any) {
+      try {
+        const { userId, db } = await checkAuth(context);
+        return await ProfileService.editExperienceItem({
+          db,
+          userId,
+          itemId,
+          input,
+        });
+      } catch (error) {
+        logger.error(`Error in editExperienceItem: ${error}`);
+        throw error;
+      }
+    },
+
+    async deleteExperienceItem(_: any, { id: itemId }: any, context: any) {
+      try {
+        const { userId, db } = await checkAuth(context);
+        return await ProfileService.deleteExperienceItem({
+          db,
+          userId,
+          itemId,
+        });
+      } catch (error) {
+        logger.error(`Error in deleteExperienceItem: ${error}`);
+        throw error;
+      }
+    },
+
     async editSkills(_: any, { input }: any, context: any) {
       try {
         const { userId, db } = await checkAuth(context);
@@ -420,7 +586,7 @@ const profileResolvers: any = {
         const updated = await ProfileService.updateSkills({
           db,
           userId,
-          skillsData: input.skills,
+          skillsData: input,
         });
 
         return updated.skills;
@@ -428,6 +594,80 @@ const profileResolvers: any = {
         logger.error(`Error in editSkills: ${error}`);
 
         throw new Error("Failed to update skills");
+      }
+    },
+
+    async addSkillsItem(_: any, { input }: any, context: any) {
+      try {
+        const { userId, db } = await checkAuth(context);
+        return await ProfileService.addSkillsItem({ db, userId, input });
+      } catch (error) {
+        logger.error(`Error in addSkillsItem: ${error}`);
+        throw error;
+      }
+    },
+
+    async editSkillsItem(_: any, { id: itemId, input }: any, context: any) {
+      try {
+        const { userId, db } = await checkAuth(context);
+        return await ProfileService.editSkillsItem({
+          db,
+          userId,
+          itemId,
+          input,
+        });
+      } catch (error) {
+        logger.error(`Error in editSkillsItem: ${error}`);
+        throw error;
+      }
+    },
+
+    async deleteSkillsItem(_: any, { id: itemId }: any, context: any) {
+      try {
+        const { userId, db } = await checkAuth(context);
+        return await ProfileService.deleteSkillsItem({ db, userId, itemId });
+      } catch (error) {
+        logger.error(`Error in deleteSkillsItem: ${error}`);
+        throw error;
+      }
+    },
+
+    async addSocialLink(_: any, { input }: any, context: any) {
+      try {
+        const { userId, db } = await checkAuth(context);
+        return await ProfileService.addSocialLinksItem({ db, userId, input });
+      } catch (error) {
+        logger.error(`Error in addSocialLink: ${error}`);
+        throw error;
+      }
+    },
+
+    async editSocialLink(_: any, { id: itemId, input }: any, context: any) {
+      try {
+        const { userId, db } = await checkAuth(context);
+        return await ProfileService.editSocialLinksItem({
+          db,
+          userId,
+          itemId,
+          input,
+        });
+      } catch (error) {
+        logger.error(`Error in editSocialLink: ${error}`);
+        throw error;
+      }
+    },
+
+    async deleteSocialLink(_: any, { id: itemId }: any, context: any) {
+      try {
+        const { userId, db } = await checkAuth(context);
+        return await ProfileService.deleteSocialLinksItem({
+          db,
+          userId,
+          itemId,
+        });
+      } catch (error) {
+        logger.error(`Error in deleteSocialLink: ${error}`);
+        throw error;
       }
     },
     async updateOnlineStatus(_: any, __: any, context: any) {

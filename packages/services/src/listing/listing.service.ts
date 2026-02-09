@@ -17,16 +17,11 @@ import slugify from "slugify";
 import { v4 as uuidv4 } from "uuid";
 
 import { type AppDatabase } from "@thrico/database";
-import { ListingNotificationService } from "./listing-notification.service";
+import { ListingNotificationPublisher } from "./listing-notification-publisher";
 import { log } from "@thrico/logging";
 import { uploadFeedImage } from "../feed/upload.utils";
+import { PaginationParams } from "../types";
 import { GamificationEventService } from "../gamification/gamification-event.service";
-
-interface PaginationParams {
-  page?: number;
-  limit?: number;
-  search?: string; // <-- Add this line
-}
 
 interface ListingLocation {
   name?: string;
@@ -41,18 +36,38 @@ interface CreateListingInput {
   [key: string]: any;
 }
 
-interface PaginationResponse {
-  currentPage: number;
-  totalPages: number;
-  totalCount: number;
-  limit: number;
+interface PageInfo {
   hasNextPage: boolean;
-  hasPreviousPage: boolean;
+  endCursor: string | null;
+}
+
+interface ListingEdge {
+  cursor: string;
+  node: any;
 }
 
 interface ListingResponse {
-  listings: any[];
-  pagination: PaginationResponse;
+  edges: ListingEdge[];
+  pageInfo: PageInfo;
+  totalCount: number;
+}
+
+export interface UserListingsResponse {
+  seller: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    avatar: string;
+    email: string;
+    cover: string;
+    rating: {
+      averageRating: number;
+      totalRatings: number;
+    };
+  };
+  edges: ListingEdge[];
+  pageInfo: PageInfo;
+  totalCount: number;
 }
 
 interface ListingDetailResponse {
@@ -72,7 +87,7 @@ export class ListingService {
     if (!search) return undefined;
     return or(
       sql`${marketPlace.title} ILIKE '%' || ${search} || '%'`,
-      sql`${marketPlace.description} ILIKE '%' || ${search} || '%'`
+      sql`${marketPlace.description} ILIKE '%' || ${search} || '%'`,
     );
   }
 
@@ -80,45 +95,70 @@ export class ListingService {
     db: AppDatabase,
     entityId: string,
     userId?: string,
-    { page = 1, limit = 10, search = "" }: PaginationParams = {}
+    { cursor, limit = 10, search = "" }: PaginationParams = {},
   ): Promise<ListingResponse> {
     try {
-      const offset = (page - 1) * limit;
+      // Build conditions
+      const conditions = [
+        eq(marketPlace.entityId, entityId),
+        eq(marketPlace.isExpired, false),
+      ];
 
-      // Fetch trending conditions
-      const condition = await this.getTrendingConditions(db, entityId);
+      if (cursor) {
+        conditions.push(sql`${marketPlace.createdAt} < ${new Date(cursor)}`);
+      }
 
-      // Build search condition
       const searchCondition = this.buildSearchCondition(search);
+      if (searchCondition) {
+        conditions.push(searchCondition);
+      }
 
-      // Get total count with search
+      // Fetch trending conditions for trending calculation
+      const trendingCondition = await this.getTrendingConditions(db, entityId);
+
+      // Get total count
       const total = await this.getListingsCount(
         db,
         entityId,
         undefined,
-        search
+        search,
       );
 
-      // Fetch listings with media and search
+      // Fetch listings with details (limit + 1)
       const listings = await this.fetchListingsWithDetails(
         db,
         entityId,
-        condition,
-        limit,
-        offset,
+        trendingCondition,
+        limit + 1,
+        0, // offset is 0 for cursor-based
         userId,
-        search // <-- Pass search
+        search,
+        cursor,
       );
+
+      // Determine if there's a next page
+      const hasNextPage = listings.length > limit;
+      const nodes = hasNextPage ? listings.slice(0, limit) : listings;
 
       // Calculate trending listings
       const listingsWithTrending = this.calculateTrending(
-        listings,
-        condition?.length
+        nodes,
+        trendingCondition?.length,
       );
 
+      // Build edges
+      const edges = listingsWithTrending.map((listing: any) => ({
+        cursor: listing.details.createdAt.toISOString(),
+        node: listing,
+      }));
+
       return {
-        listings: listingsWithTrending,
-        pagination: this.buildPaginationResponse(page, limit, total),
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount: total,
       };
     } catch (error) {
       log.error("Error in getAllListings", error as Error);
@@ -137,7 +177,7 @@ export class ListingService {
     db: AppDatabase,
     entityId: string,
     userId: string,
-    input: CreateListingInput
+    input: CreateListingInput,
   ): Promise<any> {
     try {
       // Upload media files
@@ -161,15 +201,19 @@ export class ListingService {
             slug,
             autoApprove,
           },
-          uploadedMedia
+          uploadedMedia,
         );
       });
 
-      ListingNotificationService.createListingNotification({
+      // if (newListing.status === "APPROVED") {
+      ListingNotificationPublisher.publishListingApproved({
         userId,
+        listingId: newListing.id,
         listing: newListing,
         db,
+        entityId,
       });
+      // }
 
       // Gamification Trigger
       await GamificationEventService.triggerEvent({
@@ -178,10 +222,66 @@ export class ListingService {
         userId,
         entityId,
       });
-
-      return newListing;
     } catch (error) {
       log.error("Error in createListing", error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update an existing listing
+   */
+  static async updateListing(
+    db: AppDatabase,
+    entityId: string,
+    userId: string,
+    listingId: string,
+    input: CreateListingInput,
+  ): Promise<any> {
+    try {
+      // Verify listing ownership
+      const existingListing = await db.query.marketPlace.findFirst({
+        where: (marketPlace, { eq, and }) =>
+          and(
+            eq(marketPlace.id, listingId),
+            eq(marketPlace.entityId, entityId),
+          ),
+        columns: {
+          postedBy: true,
+        },
+      });
+
+      if (!existingListing) {
+        throw new Error("Listing not found");
+      }
+
+      if (existingListing.postedBy !== userId) {
+        throw new Error("You are not authorized to edit this listing");
+      }
+
+      // Upload new media files if provided
+      let uploadedMedia: any[] = [];
+      if (input.media && input.media.length > 0) {
+        uploadedMedia = await this.handleMediaUpload(entityId, input.media);
+      }
+
+      // Update listing in transaction
+      const updatedListing = await db.transaction(async (tx) => {
+        return await this.updateListingTransaction(
+          tx,
+          listingId,
+          {
+            ...input,
+            entityId,
+            userId,
+          },
+          uploadedMedia,
+        );
+      });
+
+      return updatedListing;
+    } catch (error) {
+      log.error("Error in updateListing", error as Error);
       throw error;
     }
   }
@@ -193,14 +293,14 @@ export class ListingService {
     db: AppDatabase,
     entityId: string,
     identifier: string,
-    userId?: string
+    userId?: string,
   ): Promise<ListingDetailResponse> {
     try {
       // Fetch the listing
       const listing = await this.fetchListingByIdentifier(
         db,
         entityId,
-        identifier
+        identifier,
       );
 
       if (!listing) {
@@ -226,13 +326,13 @@ export class ListingService {
     db: AppDatabase,
     entityId: string,
     identifier: string,
-    userId?: string
+    userId?: string,
   ): Promise<any> {
     try {
       // Check if identifier is UUID or slug
       const isUuid =
         /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-          identifier
+          identifier,
         );
 
       // Fetch listing with all details
@@ -330,8 +430,8 @@ export class ListingService {
             eq(marketPlace.entityId, entityId),
             isUuid
               ? eq(marketPlace.id, identifier)
-              : eq(marketPlace.slug, identifier)
-          )
+              : eq(marketPlace.slug, identifier),
+          ),
         )
         .limit(1);
 
@@ -359,7 +459,7 @@ export class ListingService {
   private static async incrementViewCount(
     db: AppDatabase,
     listingId: string,
-    userId?: string
+    userId?: string,
   ): Promise<void> {
     try {
       await db
@@ -380,7 +480,7 @@ export class ListingService {
   static async deleteListing(
     db: AppDatabase,
     listingId: string,
-    userId: string
+    userId: string,
   ): Promise<{ success: boolean; message: string }> {
     try {
       // Fetch the listing to verify ownership
@@ -452,7 +552,7 @@ export class ListingService {
   static async softDeleteListing(
     db: AppDatabase,
     listingId: string,
-    userId: string
+    userId: string,
   ): Promise<{ success: boolean; message: string }> {
     try {
       // Fetch the listing to verify ownership
@@ -499,7 +599,7 @@ export class ListingService {
   static async adminDeleteListing(
     db: AppDatabase,
     listingId: string,
-    adminId: string
+    adminId: string,
   ): Promise<{ success: boolean; message: string }> {
     try {
       // Fetch the listing
@@ -566,7 +666,7 @@ export class ListingService {
     db: AppDatabase,
     listingId: string,
     userId: string,
-    isAdmin: boolean = false
+    isAdmin: boolean = false,
   ): Promise<{ success: boolean; message: string }> {
     try {
       // Fetch the listing
@@ -621,7 +721,7 @@ export class ListingService {
     db: AppDatabase,
     listingId: string,
     userId: string,
-    isAdmin: boolean = false
+    isAdmin: boolean = false,
   ): Promise<{ success: boolean; message: string }> {
     try {
       // Fetch the listing
@@ -674,7 +774,7 @@ export class ListingService {
     db: AppDatabase,
     listingId: string,
     userId: string,
-    isAdmin: boolean = false
+    isAdmin: boolean = false,
   ): Promise<{ success: boolean; message: string }> {
     try {
       // Fetch the listing
@@ -728,18 +828,23 @@ export class ListingService {
     db: AppDatabase,
     entityId: string,
     userId?: string,
-    { page = 1, limit = 10, search = "" }: PaginationParams = {}
+    { cursor, limit = 10, search = "" }: PaginationParams = {},
   ): Promise<ListingResponse> {
     try {
-      const offset = (page - 1) * limit;
-
-      // Add search condition
+      // Add conditions
       const whereConditions = [
         eq(marketPlace.entityId, entityId),
         eq(marketPlace.isFeatured, true),
         eq(marketPlace.isApproved, true),
         eq(marketPlace.isExpired, false),
       ];
+
+      if (cursor) {
+        whereConditions.push(
+          sql`${marketPlace.createdAt} < ${new Date(cursor)}`,
+        );
+      }
+
       const searchCondition = this.buildSearchCondition(search);
       if (searchCondition) {
         whereConditions.push(searchCondition);
@@ -751,7 +856,7 @@ export class ListingService {
         .from(marketPlace)
         .where(and(...whereConditions));
 
-      // Fetch featured listings
+      // Fetch featured listings (limit + 1)
       const listings = await db
         .select({
           id: marketPlace.id,
@@ -799,15 +904,27 @@ export class ListingService {
         .leftJoin(user, eq(marketPlace.postedBy, user.id))
         .where(and(...whereConditions))
         .orderBy(desc(marketPlace.createdAt))
-        .limit(limit)
-        .offset(offset);
+        .limit(limit + 1);
 
-      return {
-        listings: listings.map((listing) => ({
+      // Determine next page
+      const hasNextPage = listings.length > limit;
+      const nodes = hasNextPage ? listings.slice(0, limit) : listings;
+
+      const edges = nodes.map((listing: any) => ({
+        cursor: listing.details.createdAt.toISOString(),
+        node: {
           ...listing,
           isTrending: false,
-        })),
-        pagination: this.buildPaginationResponse(page, limit, total),
+        },
+      }));
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount: total,
       };
     } catch (error) {
       log.error("Error in getFeaturedListings", error as Error);
@@ -822,32 +939,47 @@ export class ListingService {
     db: AppDatabase,
     entityId: string,
     userId?: string,
-    { page = 1, limit = 10 }: PaginationParams = {}
+    { cursor, limit = 10 }: PaginationParams = {},
   ): Promise<ListingResponse> {
     try {
-      const offset = (page - 1) * limit;
-
       // Fetch trending conditions
       const condition = await this.getTrendingConditions(db, entityId);
       const trendingLength = condition?.length || 10;
 
       // Calculate trending score based on views and contact clicks
       const trendingScore = sql<number>`
-        (${marketPlace.numberOfViews} * 1) + 
-        (${marketPlace.numberOfContactClick} * 2)
+        (COALESCE(${marketPlace.numberOfViews}, 0) * 1) + 
+        (COALESCE(${marketPlace.numberOfContactClick}, 0) * 2)
       `;
+
+      // Build conditions
+      const conditions = [
+        eq(marketPlace.entityId, entityId),
+        eq(marketPlace.isApproved, true),
+        eq(marketPlace.isExpired, false),
+      ];
+
+      // Trending listings are usually a fixed set sorted by score,
+      // but if we want cursor-based pagination here, we might need a different approach.
+      // However, the existing code used offset. I'll stick to score-based if possible,
+      // but for "cursor based pagination" as requested, I'll use scores.
+
+      if (cursor) {
+        if (cursor.includes(":")) {
+          const [score, date] = cursor.split(":");
+          conditions.push(
+            sql`(${trendingScore} < ${Number(score)}) OR (${trendingScore} = ${Number(score)} AND ${marketPlace.createdAt} < ${new Date(date)})`,
+          );
+        } else {
+          conditions.push(sql`${trendingScore} < ${Number(cursor)}`);
+        }
+      }
 
       // Get total count of approved listings
       const [{ total }] = await db
         .select({ total: sql<number>`count(*)::int` })
         .from(marketPlace)
-        .where(
-          and(
-            eq(marketPlace.entityId, entityId),
-            eq(marketPlace.isApproved, true),
-            eq(marketPlace.isExpired, false)
-          )
-        );
+        .where(and(...conditions));
 
       // Fetch trending listings
       const listings = await db
@@ -893,27 +1025,32 @@ export class ListingService {
             )`,
           },
           trendingScore,
-          rank: sql<number>`RANK() OVER (ORDER BY ${trendingScore} DESC)`,
+          createdAt: marketPlace.createdAt,
         })
         .from(marketPlace)
         .leftJoin(user, eq(marketPlace.postedBy, user.id))
-        .where(
-          and(
-            eq(marketPlace.entityId, entityId),
-            eq(marketPlace.isApproved, true),
-            eq(marketPlace.isExpired, false)
-          )
-        )
-        .orderBy(sql`${trendingScore} DESC`)
-        .limit(trendingLength)
-        .offset(offset);
+        .where(and(...conditions))
+        .orderBy(desc(trendingScore), desc(marketPlace.createdAt))
+        .limit(limit + 1);
 
-      return {
-        listings: listings.map((listing) => ({
+      const hasNextPage = listings.length > limit;
+      const nodes = hasNextPage ? listings.slice(0, limit) : listings;
+
+      const edges = nodes.map((listing: any) => ({
+        cursor: `${listing.trendingScore}:${listing.createdAt.toISOString()}`,
+        node: {
           ...listing,
           isTrending: true,
-        })),
-        pagination: this.buildPaginationResponse(page, limit, total),
+        },
+      }));
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount: total,
       };
     } catch (error) {
       log.error("Error in getTrendingListings", error as Error);
@@ -928,115 +1065,22 @@ export class ListingService {
     db: AppDatabase,
     entityId: string,
     userId: string,
-    { page = 1, limit = 10, search = "" }: PaginationParams = {}
+    { cursor, limit = 10, search = "" }: PaginationParams = {},
   ): Promise<ListingResponse> {
     try {
-      const offset = (page - 1) * limit;
-
-      // Get total count of user's listings
-      const [{ total }] = await db
-        .select({ total: sql<number>`count(*)::int` })
-        .from(marketPlace)
-        .where(
-          and(
-            eq(marketPlace.entityId, entityId),
-            eq(marketPlace.postedBy, userId)
-          )
-        );
-
-      // Fetch user's listings
-      const listings = await db
-        .select({
-          id: marketPlace.id,
-          user: {
-            id: user.id,
-            email: user.email,
-          },
-          isOwner: sql<boolean>`true`,
-          canDelete: sql<boolean>`true`,
-          canReport: sql<boolean>`false`,
-          isSold: marketPlace.isSold,
-          details: {
-            ...marketPlace,
-            media: sql<Array<string>>`ARRAY(
-              SELECT ${marketPlaceMedia.url}
-              FROM ${marketPlaceMedia}
-              WHERE ${marketPlaceMedia.marketPlace} = ${marketPlace.id}
-            )`,
-          },
-          isFeatured: marketPlace.isFeatured,
-          numberOfViews: marketPlace.numberOfViews,
-          numberOfContactClick: marketPlace.numberOfContactClick,
-          sellerRating: {
-            averageRating: sql<number>`COALESCE(
-              (SELECT AVG(${listingRating.rating})::numeric(10,2)
-               FROM ${listingRating}
-               WHERE ${listingRating.sellerId} = ${marketPlace.postedBy}),
-              0
-            )`,
-            totalRatings: sql<number>`COALESCE(
-              (SELECT COUNT(*)::int
-               FROM ${listingRating}
-               WHERE ${listingRating.sellerId} = ${marketPlace.postedBy}),
-              0
-            )`,
-          },
-        })
-        .from(marketPlace)
-        .leftJoin(user, eq(marketPlace.postedBy, user.id))
-        .where(
-          and(
-            eq(marketPlace.entityId, entityId),
-            eq(marketPlace.postedBy, userId)
-          )
-        )
-        .orderBy(desc(marketPlace.createdAt))
-        .limit(limit)
-        .offset(offset);
-
-      return {
-        listings: listings.map((listing) => ({
-          ...listing,
-          isTrending: false,
-        })),
-        pagination: this.buildPaginationResponse(page, limit, total),
-      };
-    } catch (error) {
-      log.error("Error in getMyListings", error as Error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get user's listings with status filter
-   */
-  static async getMyListingsByStatus(
-    db: AppDatabase,
-    entityId: string,
-    userId: string,
-    status: "ALL" | "ACTIVE" | "SOLD" | "EXPIRED" | "PENDING",
-    { page = 1, limit = 10 }: PaginationParams = {}
-  ): Promise<ListingResponse> {
-    try {
-      const offset = (page - 1) * limit;
-
-      // Build where conditions based on status
-      let conditions = [
+      // Build conditions
+      const conditions = [
         eq(marketPlace.entityId, entityId),
         eq(marketPlace.postedBy, userId),
       ];
 
-      if (status === "ACTIVE") {
-        conditions.push(
-          eq(marketPlace.isApproved, true),
-          eq(marketPlace.isExpired, false)
-        );
-      } else if (status === "SOLD") {
-        conditions.push(eq(marketPlace.isSold, true));
-      } else if (status === "EXPIRED") {
-        conditions.push(eq(marketPlace.isExpired, true));
-      } else if (status === "PENDING") {
-        conditions.push(eq(marketPlace.isApproved, false));
+      if (cursor) {
+        conditions.push(sql`${marketPlace.createdAt} < ${new Date(cursor)}`);
+      }
+
+      const searchCondition = this.buildSearchCondition(search);
+      if (searchCondition) {
+        conditions.push(searchCondition);
       }
 
       // Get total count
@@ -1045,7 +1089,7 @@ export class ListingService {
         .from(marketPlace)
         .where(and(...conditions));
 
-      // Fetch listings
+      // Fetch listings (limit + 1)
       const listings = await db
         .select({
           id: marketPlace.id,
@@ -1087,15 +1131,135 @@ export class ListingService {
         .leftJoin(user, eq(marketPlace.postedBy, user.id))
         .where(and(...conditions))
         .orderBy(desc(marketPlace.createdAt))
-        .limit(limit)
-        .offset(offset);
+        .limit(limit + 1);
 
-      return {
-        listings: listings.map((listing) => ({
+      const hasNextPage = listings.length > limit;
+      const nodes = hasNextPage ? listings.slice(0, limit) : listings;
+
+      const edges = nodes.map((listing: any) => ({
+        cursor: listing.details.createdAt.toISOString(),
+        node: {
           ...listing,
           isTrending: false,
-        })),
-        pagination: this.buildPaginationResponse(page, limit, total),
+        },
+      }));
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount: total,
+      };
+    } catch (error) {
+      log.error("Error in getMyListings", error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get user's listings with status filter
+   */
+  static async getMyListingsByStatus(
+    db: AppDatabase,
+    entityId: string,
+    userId: string,
+    status: "ALL" | "ACTIVE" | "SOLD" | "EXPIRED" | "PENDING",
+    { cursor, limit = 10 }: PaginationParams = {},
+  ): Promise<ListingResponse> {
+    try {
+      // Build where conditions based on status
+      let conditions = [
+        eq(marketPlace.entityId, entityId),
+        eq(marketPlace.postedBy, userId),
+      ];
+
+      if (cursor) {
+        conditions.push(sql`${marketPlace.createdAt} < ${new Date(cursor)}`);
+      }
+
+      if (status === "ACTIVE") {
+        conditions.push(
+          eq(marketPlace.isApproved, true),
+          eq(marketPlace.isExpired, false),
+        );
+      } else if (status === "SOLD") {
+        conditions.push(eq(marketPlace.isSold, true));
+      } else if (status === "EXPIRED") {
+        conditions.push(eq(marketPlace.isExpired, true));
+      } else if (status === "PENDING") {
+        conditions.push(eq(marketPlace.isApproved, false));
+      }
+
+      // Get total count
+      const [{ total }] = await db
+        .select({ total: sql<number>`count(*)::int` })
+        .from(marketPlace)
+        .where(and(...conditions));
+
+      // Fetch listings (limit + 1)
+      const listings = await db
+        .select({
+          id: marketPlace.id,
+          user: {
+            id: user.id,
+            email: user.email,
+          },
+          isOwner: sql<boolean>`true`,
+          canDelete: sql<boolean>`true`,
+          canReport: sql<boolean>`false`,
+          isSold: marketPlace.isSold,
+          details: {
+            ...marketPlace,
+            media: sql<Array<string>>`ARRAY(
+              SELECT ${marketPlaceMedia.url}
+              FROM ${marketPlaceMedia}
+              WHERE ${marketPlaceMedia.marketPlace} = ${marketPlace.id}
+            )`,
+          },
+          isFeatured: marketPlace.isFeatured,
+          numberOfViews: marketPlace.numberOfViews,
+          numberOfContactClick: marketPlace.numberOfContactClick,
+          sellerRating: {
+            averageRating: sql<number>`COALESCE(
+              (SELECT AVG(${listingRating.rating})::numeric(10,2)
+               FROM ${listingRating}
+               WHERE ${listingRating.sellerId} = ${marketPlace.postedBy}),
+              0
+            )`,
+            totalRatings: sql<number>`COALESCE(
+              (SELECT COUNT(*)::int
+               FROM ${listingRating}
+               WHERE ${listingRating.sellerId} = ${marketPlace.postedBy}),
+              0
+            )`,
+          },
+        })
+        .from(marketPlace)
+        .leftJoin(user, eq(marketPlace.postedBy, user.id))
+        .where(and(...conditions))
+        .orderBy(desc(marketPlace.createdAt))
+        .limit(limit + 1);
+
+      const hasNextPage = listings.length > limit;
+      const nodes = hasNextPage ? listings.slice(0, limit) : listings;
+
+      const edges = nodes.map((listing: any) => ({
+        cursor: listing.details.createdAt.toISOString(),
+        node: {
+          ...listing,
+          isTrending: false,
+        },
+      }));
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount: total,
       };
     } catch (error) {
       log.error("Error in getMyListingsByStatus", error as Error);
@@ -1107,7 +1271,7 @@ export class ListingService {
 
   private static async getTrendingConditions(
     db: AppDatabase,
-    entityId: string
+    entityId: string,
   ): Promise<any> {
     return await db.query.trendingConditionsListing.findFirst({
       where: (trendingConditionsListing: any, { eq }: any) =>
@@ -1119,7 +1283,7 @@ export class ListingService {
     db: AppDatabase,
     entityId: string,
     userId?: string,
-    search: string = ""
+    search: string = "",
   ): Promise<number> {
     const conditions = [eq(marketPlace.entityId, entityId)];
     if (userId) {
@@ -1127,7 +1291,7 @@ export class ListingService {
     }
     if (search) {
       conditions.push(
-        sql`${marketPlace.title} ILIKE '%' || ${search} || '%' OR ${marketPlace.description} ILIKE '%' || ${search} || '%'`
+        sql`${marketPlace.title} ILIKE '%' || ${search} || '%' OR ${marketPlace.description} ILIKE '%' || ${search} || '%'`,
       );
     }
 
@@ -1142,7 +1306,7 @@ export class ListingService {
   private static async getUserListingsCount(
     db: AppDatabase,
     entityId: string,
-    userId: string
+    userId: string,
   ): Promise<number> {
     return this.getListingsCount(db, entityId, userId);
   }
@@ -1154,12 +1318,17 @@ export class ListingService {
     limit: number,
     offset: number,
     userId?: string,
-    search: string = ""
+    search: string = "",
+    cursor?: string,
   ): Promise<any[]> {
     const conditions = [
       eq(marketPlace.isExpired, false),
       eq(marketPlace.entityId, entityId),
     ];
+
+    if (cursor) {
+      conditions.push(sql`${marketPlace.createdAt} < ${new Date(cursor)}`);
+    }
     const searchCondition = this.buildSearchCondition(search);
     if (searchCondition) {
       conditions.push(searchCondition);
@@ -1168,8 +1337,8 @@ export class ListingService {
     console.log("Conditions for fetching listings:", conditions);
 
     const trendingScore = sql<number>`
-      (${marketPlace.numberOfViews} * 1) + 
-      (${marketPlace.numberOfContactClick} * 2)
+      (COALESCE(${marketPlace.numberOfViews}, 0) * 1) + 
+      (COALESCE(${marketPlace.numberOfContactClick}, 0) * 2)
     `;
 
     return await db
@@ -1259,7 +1428,7 @@ export class ListingService {
 
   private static calculateTrending(
     listings: any[],
-    trendingLength?: number
+    trendingLength?: number,
   ): any[] {
     if (!trendingLength || listings.length === 0) {
       return listings.map((listing) => ({ ...listing, isTrending: false }));
@@ -1274,26 +1443,9 @@ export class ListingService {
     }));
   }
 
-  private static buildPaginationResponse(
-    page: number,
-    limit: number,
-    total: number
-  ): PaginationResponse {
-    const totalPages = Math.ceil(total / limit);
-
-    return {
-      currentPage: page,
-      totalPages,
-      totalCount: total,
-      limit,
-      hasNextPage: page < totalPages,
-      hasPreviousPage: page > 1,
-    };
-  }
-
   private static async handleMediaUpload(
     entityId: string,
-    media?: any[]
+    media?: any[],
   ): Promise<any[]> {
     if (!media || media.length === 0) {
       return [];
@@ -1309,7 +1461,7 @@ export class ListingService {
 
   private static async getEntitySettings(
     db: AppDatabase,
-    entityId: string
+    entityId: string,
   ): Promise<any> {
     const settings = await db.query.entitySettingsListing.findFirst({
       where: (entitySettingsListing: any, { eq }: any) =>
@@ -1351,7 +1503,7 @@ export class ListingService {
       autoApprove: boolean;
       [key: string]: any;
     },
-    uploadedMedia: any[]
+    uploadedMedia: any[],
   ): Promise<any> {
     // Insert listing
     const [listing] = await tx
@@ -1395,15 +1547,72 @@ export class ListingService {
     return listing;
   }
 
+  private static async updateListingTransaction(
+    tx: any,
+    listingId: string,
+    data: {
+      entityId: string;
+      userId: string;
+      [key: string]: any;
+    },
+    uploadedMedia: any[],
+  ): Promise<any> {
+    // Update listing
+    const updateData: any = {
+      title: data.title,
+      description: data.description,
+      price: data.price,
+      currency: data.currency || "INR",
+      condition: data.condition,
+      category: data.category,
+      sku: data.sku,
+      lat: data.latitude,
+      lng: data.longitude,
+      location: data.location
+        ? typeof data.location === "string"
+          ? { name: data.location }
+          : data.location
+        : undefined,
+      updatedAt: new Date(),
+    };
+
+    const [listing] = await tx
+      .update(marketPlace)
+      .set(updateData)
+      .where(eq(marketPlace.id, listingId))
+      .returning();
+
+    if (!listing) {
+      throw new Error("Failed to update listing");
+    }
+
+    // Update media if provided
+    if (uploadedMedia.length > 0) {
+      // Delete old media
+      await tx
+        .delete(marketPlaceMedia)
+        .where(eq(marketPlaceMedia.marketPlace, listingId));
+
+      // Insert new media
+      const mediaRecords = uploadedMedia.map((media) => ({
+        url: media.file || media.url, // Handle both upload response and existing media
+        marketPlace: listingId,
+      }));
+      await tx.insert(marketPlaceMedia).values(mediaRecords);
+    }
+
+    return listing;
+  }
+
   private static async fetchListingByIdentifier(
     db: AppDatabase,
     entityId: string,
-    identifier: string
+    identifier: string,
   ): Promise<any> {
     // Try to find by ID first, then by slug
     const isUuid =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        identifier
+        identifier,
       );
 
     const listings = await db
@@ -1443,7 +1652,7 @@ export class ListingService {
       .from(marketPlace)
       .leftJoin(
         marketPlaceMedia,
-        eq(marketPlace.id, marketPlaceMedia.marketPlace)
+        eq(marketPlace.id, marketPlaceMedia.marketPlace),
       )
       .leftJoin(user, eq(marketPlace.postedBy, user.id))
       .where(
@@ -1451,8 +1660,8 @@ export class ListingService {
           eq(marketPlace.entityId, entityId),
           isUuid
             ? eq(marketPlace.id, identifier)
-            : eq(marketPlace.slug, identifier)
-        )
+            : eq(marketPlace.slug, identifier),
+        ),
       )
       .limit(1);
 
@@ -1462,7 +1671,7 @@ export class ListingService {
   private static async trackUserView(
     tx: any,
     listingId: string,
-    userId: string
+    userId: string,
   ): Promise<void> {
     try {
       // Check if view already exists today
@@ -1474,7 +1683,7 @@ export class ListingService {
           and(
             eq(listingViews.listingId, listingId),
             eq(listingViews.userId, userId),
-            gte(listingViews.viewedAt, today)
+            gte(listingViews.viewedAt, today),
           ),
       });
 
@@ -1494,7 +1703,7 @@ export class ListingService {
 
   static async getListingStatus(
     db: AppDatabase,
-    listingId: string
+    listingId: string,
   ): Promise<ListingStatusInfo> {
     try {
       const listing = await db.query.marketPlace.findFirst({
@@ -1530,7 +1739,7 @@ export class ListingService {
     entityId: string,
     listingId: string,
     userId?: string,
-    limit: number = 6
+    limit: number = 6,
   ): Promise<any[]> {
     try {
       // First, get the listing to find its category
@@ -1538,7 +1747,7 @@ export class ListingService {
         where: (marketPlace, { eq, and }) =>
           and(
             eq(marketPlace.id, listingId),
-            eq(marketPlace.entityId, entityId)
+            eq(marketPlace.entityId, entityId),
           ),
         columns: {
           category: true,
@@ -1612,8 +1821,8 @@ export class ListingService {
             eq(marketPlace.category, currentListing.category),
             eq(marketPlace.isApproved, true),
             eq(marketPlace.isExpired, false),
-            sql`${marketPlace.id} != ${listingId}`
-          )
+            sql`${marketPlace.id} != ${listingId}`,
+          ),
         )
         .orderBy(desc(marketPlace.createdAt))
         .limit(limit);
@@ -1632,14 +1841,13 @@ export class ListingService {
     db: AppDatabase,
     listingId: string,
     sellerId: string,
-    { page = 1, limit = 10 }: PaginationParams = {}
+    { cursor, limit = 10 }: PaginationParams = {},
   ): Promise<{
-    enquiries: any[];
-    pagination: PaginationResponse;
+    edges: any[];
+    pageInfo: PageInfo;
+    totalCount: number;
   }> {
     try {
-      const offset = (page - 1) * limit;
-
       // Verify listing ownership
       const listing = await db.query.marketPlace.findFirst({
         where: (marketPlace, { eq }) => eq(marketPlace.id, listingId),
@@ -1656,8 +1864,14 @@ export class ListingService {
 
       if (listing.postedBy !== sellerId) {
         throw new Error(
-          "You are not authorized to view enquiries for this listing"
+          "You are not authorized to view enquiries for this listing",
         );
+      }
+
+      // Build conditions
+      const conditions = [eq(listingContact.listingId, listingId)];
+      if (cursor) {
+        conditions.push(sql`${listingContact.createdAt} < ${new Date(cursor)}`);
       }
 
       // Get total count of enquiries for this listing
@@ -1668,9 +1882,9 @@ export class ListingService {
 
       const total = totalResult[0]?.count || 0;
 
-      // Fetch enquiries with buyer and message details
+      // Fetch enquiries with buyer and message details (limit + 1)
       const enquiries = await db.query.listingContact.findMany({
-        where: (contact, { eq }) => eq(contact.listingId, listingId),
+        where: (contact, { eq, and }) => and(...conditions),
         with: {
           listing: {
             columns: {
@@ -1734,13 +1948,15 @@ export class ListingService {
           },
         },
         orderBy: (contact, { desc }) => [desc(contact.createdAt)],
-        limit,
-        offset,
+        limit: limit + 1,
       });
 
-      console.log({ enquiries });
-      return {
-        enquiries: enquiries.map((enq) => ({
+      const hasNextPage = enquiries.length > limit;
+      const nodes = hasNextPage ? enquiries.slice(0, limit) : enquiries;
+
+      const edges = nodes.map((enq) => ({
+        cursor: enq.createdAt ? enq.createdAt.toISOString() : "",
+        node: {
           id: enq.id,
           createdAt: enq.createdAt,
           listing: {
@@ -1769,12 +1985,20 @@ export class ListingService {
             id: enq.conversation.id,
             lastMessageAt: enq.conversation.lastMessageAt,
             unreadCount: enq.conversation.messages.filter(
-              (msg: any) => !msg.isRead
+              (msg: any) => !msg.isRead,
             ).length,
             lastMessage: enq.conversation.messages[0] || null,
           },
-        })),
-        pagination: this.buildPaginationResponse(page, limit, total),
+        },
+      }));
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount: total,
       };
     } catch (error) {
       log.error("Error in getListingEnquiries", error as Error);
@@ -1788,7 +2012,7 @@ export class ListingService {
   static async getListingEnquiryStats(
     db: AppDatabase,
     listingId: string,
-    sellerId: string
+    sellerId: string,
   ): Promise<{
     totalEnquiries: number;
     unreadEnquiries: number;
@@ -1796,22 +2020,16 @@ export class ListingService {
   }> {
     try {
       // Verify listing ownership
-      console.log({ listingId, sellerId });
       const listing = await db.query.marketPlace.findFirst({
         where: (marketPlace, { eq }) => eq(marketPlace.id, listingId),
-        columns: {
-          id: true,
-          postedBy: true,
-        },
       });
 
       if (!listing) {
         throw new Error("Listing not found");
       }
-
       if (listing.postedBy !== sellerId) {
         throw new Error(
-          "You are not authorized to view stats for this listing"
+          "You are not authorized to view stats for this listing",
         );
       }
 
@@ -1848,8 +2066,8 @@ export class ListingService {
             and(
               sql`${listingMessage.conversationId} = ANY(${conversationIds})`,
               eq(listingMessage.isRead, false),
-              sql`${listingMessage.senderId} != ${sellerId}`
-            )
+              sql`${listingMessage.senderId} != ${sellerId}`,
+            ),
           );
         unreadCount = unread;
       }
@@ -1871,7 +2089,7 @@ export class ListingService {
   static async getListingEnquiriesGroupedByBuyer(
     db: AppDatabase,
     listingId: string,
-    sellerId: string
+    sellerId: string,
   ): Promise<any[]> {
     try {
       // Verify listing ownership
@@ -1889,7 +2107,7 @@ export class ListingService {
 
       if (listing.postedBy !== sellerId) {
         throw new Error(
-          "You are not authorized to view enquiries for this listing"
+          "You are not authorized to view enquiries for this listing",
         );
       }
 
@@ -1926,7 +2144,7 @@ export class ListingService {
         lastMessageAt: conv.lastMessageAt,
         totalMessages: conv.messages.length,
         unreadMessages: conv.messages.filter(
-          (msg) => !msg.isRead && msg.senderId !== sellerId
+          (msg) => !msg.isRead && msg.senderId !== sellerId,
         ).length,
         lastMessage: conv.messages[0] || null,
       }));
@@ -1944,32 +2162,74 @@ export class ListingService {
     entityId: string,
     targetUserId: string,
     currentUserId?: string,
-    { page = 1, limit = 10 }: PaginationParams = {}
-  ): Promise<ListingResponse> {
+    { cursor, limit = 10 }: PaginationParams = {},
+  ): Promise<UserListingsResponse> {
     try {
-      const offset = (page - 1) * limit;
+      // 1. Fetch seller details and ratings
+      const sellerData = await db
+        .select({
+          id: user.id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          avatar: user.avatar,
+          cover: user.cover,
+          averageRating: sql<number>`COALESCE(
+            (SELECT AVG(${listingRating.rating})::numeric(10,2)
+             FROM ${listingRating}
+             WHERE ${listingRating.sellerId} = ${user.id}),
+            0
+          )`,
+          totalRatings: sql<number>`COALESCE(
+            (SELECT COUNT(*)::int
+             FROM ${listingRating}
+             WHERE ${listingRating.sellerId} = ${user.id}),
+            0
+          )`,
+        })
+        .from(user)
+        .where(eq(user.id, targetUserId))
+        .limit(1);
 
-      // Get total count for user's listings
+      if (!sellerData[0]) {
+        throw new Error("User not found");
+      }
+
+      const seller = {
+        id: sellerData[0].id,
+        firstName: sellerData[0].firstName,
+        lastName: sellerData[0].lastName,
+        email: sellerData[0].email,
+        avatar: sellerData[0].avatar || "",
+        cover: sellerData[0].cover || "",
+        rating: {
+          averageRating: Number(sellerData[0].averageRating),
+          totalRatings: sellerData[0].totalRatings,
+        },
+      };
+
+      // 2. Build conditions for listings
+      const conditions = [
+        eq(marketPlace.entityId, entityId),
+        eq(marketPlace.postedBy, targetUserId),
+        // eq(marketPlace.isApproved, true),
+        // eq(marketPlace.isExpired, false),
+      ];
+
+      if (cursor) {
+        conditions.push(sql`${marketPlace.createdAt} < ${new Date(cursor)}`);
+      }
+
+      // 3. Get total count
       const [{ total }] = await db
         .select({ total: sql<number>`count(*)::int` })
         .from(marketPlace)
-        .where(
-          and(
-            eq(marketPlace.entityId, entityId),
-            eq(marketPlace.postedBy, targetUserId),
-            eq(marketPlace.isApproved, true),
-            eq(marketPlace.isExpired, false)
-          )
-        );
+        .where(and(...conditions));
 
-      // Fetch user's listings
+      // 4. Fetch user's listings (limit + 1)
       const listings = await db
         .select({
           id: marketPlace.id,
-          user: {
-            id: user.id,
-            email: user.email,
-          },
           details: {
             id: marketPlace.id,
             title: marketPlace.title,
@@ -2001,38 +2261,28 @@ export class ListingService {
           canReport: currentUserId
             ? sql<boolean>`${marketPlace.postedBy} != ${currentUserId}`
             : sql<boolean>`true`,
-          sellerRating: {
-            averageRating: sql<number>`COALESCE(
-              (SELECT AVG(${listingRating.rating})::numeric(10,2)
-               FROM ${listingRating}
-               WHERE ${listingRating.sellerId} = ${marketPlace.postedBy}),
-              0
-            )`,
-            totalRatings: sql<number>`COALESCE(
-              (SELECT COUNT(*)::int
-               FROM ${listingRating}
-               WHERE ${listingRating.sellerId} = ${marketPlace.postedBy}),
-              0
-            )`,
-          },
         })
         .from(marketPlace)
-        .leftJoin(user, eq(marketPlace.postedBy, user.id))
-        .where(
-          and(
-            eq(marketPlace.entityId, entityId),
-            eq(marketPlace.postedBy, targetUserId),
-            eq(marketPlace.isApproved, true),
-            eq(marketPlace.isExpired, false)
-          )
-        )
+        .where(and(...conditions))
         .orderBy(desc(marketPlace.createdAt))
-        .limit(limit)
-        .offset(offset);
+        .limit(limit + 1);
+
+      const hasNextPage = listings.length > limit;
+      const nodes = hasNextPage ? listings.slice(0, limit) : listings;
+
+      const edges = nodes.map((listing: any) => ({
+        cursor: listing.details.createdAt.toISOString(),
+        node: listing,
+      }));
 
       return {
-        listings,
-        pagination: this.buildPaginationResponse(page, limit, total),
+        seller,
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount: total,
       };
     } catch (error) {
       log.error("Error in getListingsByUserId", error as Error);
@@ -2043,48 +2293,61 @@ export class ListingService {
   static async mapViewAllListings(
     db: AppDatabase,
     entityId: string,
-    { page = 1, limit = 100 }: PaginationParams = {}
-  ): Promise<{ listings: any[]; pagination: PaginationResponse }> {
+    { cursor, limit = 100 }: PaginationParams = {},
+  ): Promise<{ edges: any[]; pageInfo: PageInfo; totalCount: number }> {
     try {
-      const offset = (page - 1) * limit;
+      // Build conditions
+      const conditions = [eq(marketPlace.entityId, entityId)];
+      if (cursor) {
+        conditions.push(sql`${marketPlace.createdAt} < ${new Date(cursor)}`);
+      }
 
-      // Get total count of all listings for the entity
+      // Get total count
       const [{ total }] = await db
         .select({ total: sql<number>`count(*)::int` })
         .from(marketPlace)
         .where(eq(marketPlace.entityId, entityId));
 
-      // Fetch all listings with lat/lng and preview image
+      // Fetch listings (limit + 1)
       const listings = await db
         .select({
           id: marketPlace.id,
           title: marketPlace.title,
           price: marketPlace.price,
-          location: marketPlace.location,
-          latitude: marketPlace.lat,
-          longitude: marketPlace.lng,
-          media: sql<string | null>`(
-          SELECT ${marketPlaceMedia.url}
-          FROM ${marketPlaceMedia}
-          WHERE ${marketPlaceMedia.marketPlace} = ${marketPlace.id}
-          ORDER BY ${marketPlaceMedia.createdAt}
-          LIMIT 1
-        )`,
+          location: sql<string>`${marketPlace.location}->>'name'`,
+          latitude: sql<number>`NULLIF(${marketPlace.lat}, '')::float`,
+          longitude: sql<number>`NULLIF(${marketPlace.lng}, '')::float`,
+          createdAt: marketPlace.createdAt,
+          media: sql<string[]>`ARRAY(
+            SELECT ${marketPlaceMedia.url}
+            FROM ${marketPlaceMedia}
+            WHERE ${marketPlaceMedia.marketPlace} = ${marketPlace.id}
+            ORDER BY ${marketPlaceMedia.createdAt}
+          )`,
           isApproved: marketPlace.isApproved,
           isExpired: marketPlace.isExpired,
           isSold: marketPlace.isSold,
         })
         .from(marketPlace)
-        .where(eq(marketPlace.entityId, entityId))
+        .where(and(...conditions))
         .orderBy(desc(marketPlace.createdAt))
-        .limit(limit)
-        .offset(offset);
+        .limit(limit + 1);
 
-      console.log({ listings });
+      const hasNextPage = listings.length > limit;
+      const nodes = hasNextPage ? listings.slice(0, limit) : listings;
+
+      const edges = nodes.map((listing: any) => ({
+        cursor: listing.createdAt ? listing.createdAt.toISOString() : "",
+        node: listing,
+      }));
 
       return {
-        listings,
-        pagination: this.buildPaginationResponse(page, limit, total),
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount: total,
       };
     } catch (error) {
       log.error("Error in mapViewAllListings", error as Error);
