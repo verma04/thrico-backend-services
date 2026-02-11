@@ -1,6 +1,6 @@
 import { log } from "@thrico/logging";
 import { GraphQLError } from "graphql";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import {
   discussionForum,
   discussionForumAuditLogs,
@@ -54,10 +54,14 @@ export class ForumService {
     db,
     entityId,
     userId,
+    cursor,
+    limit = 10,
   }: {
     db: any;
     entityId: string;
     userId: string;
+    cursor?: string;
+    limit?: number;
   }) {
     try {
       if (!entityId || !userId) {
@@ -66,14 +70,27 @@ export class ForumService {
         });
       }
 
-      log.debug("Getting discussions posted by user", { entityId, userId });
+      log.debug("Getting discussions posted by user", {
+        entityId,
+        userId,
+        cursor,
+        limit,
+      });
 
-      const forums = await db.query.discussionForum.findMany({
-        where: (discussionForum: any, { eq, and }: any) =>
-          and(
-            eq(discussionForum.entityId, entityId),
-            eq(discussionForum.userId, userId),
-          ),
+      const whereConditions = [
+        eq(discussionForum.entityId, entityId),
+        eq(discussionForum.userId, userId),
+      ];
+
+      if (cursor) {
+        whereConditions.push(
+          sql`${discussionForum.createdAt} < ${new Date(cursor)}`,
+        );
+      }
+
+      const results = await db.query.discussionForum.findMany({
+        where: and(...whereConditions),
+        limit: limit + 1,
         orderBy: (discussionForum: any, { desc }: any) =>
           desc(discussionForum.createdAt),
         with: {
@@ -84,16 +101,42 @@ export class ForumService {
         },
       });
 
-      forums.forEach((forum: any) => {
+      const hasNextPage = results.length > limit;
+      const nodes = hasNextPage ? results.slice(0, limit) : results;
+
+      nodes.forEach((forum: any) => {
         forum.isOwner = forum.userId === userId;
       });
+
+      const edges = nodes.map((forum: any) => ({
+        cursor: forum.createdAt.toISOString(),
+        node: forum,
+      }));
+
+      const [{ count }] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(discussionForum)
+        .where(
+          and(
+            eq(discussionForum.entityId, entityId),
+            eq(discussionForum.userId, userId),
+          ),
+        );
 
       log.info("User discussions retrieved", {
         entityId,
         userId,
-        count: forums.length,
+        count: edges.length,
       });
-      return forums;
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount: Number(count),
+      };
     } catch (error) {
       log.error("Error in discussionPostedByMe", { error, entityId, userId });
       throw error;
@@ -105,11 +148,15 @@ export class ForumService {
     entityId,
     userId,
     status,
+    cursor,
+    limit = 10,
   }: {
     db: any;
     entityId: string;
     userId: string;
     status: string;
+    cursor?: string;
+    limit?: number;
   }) {
     try {
       if (!entityId || !userId) {
@@ -118,7 +165,25 @@ export class ForumService {
         });
       }
 
-      log.debug("Getting discussion forums", { entityId, userId, status });
+      log.debug("Getting discussion forums", {
+        entityId,
+        userId,
+        status,
+        cursor,
+        limit,
+      });
+
+      const whereConditions = [
+        eq(discussionForum.entityId, entityId),
+        eq(discussionForum.status, "APPROVED"),
+      ];
+
+      if (cursor) {
+        // For Trending/Hot, timestamp cursor might be tricky, but we'll stick to standard createdAt cursor for consistency
+        whereConditions.push(
+          sql`${discussionForum.createdAt} < ${new Date(cursor)}`,
+        );
+      }
 
       let orderBy;
       switch (status) {
@@ -137,12 +202,9 @@ export class ForumService {
           break;
       }
 
-      const forums = await db.query.discussionForum.findMany({
-        where: (discussionForum: any, { eq }: any) =>
-          and(
-            eq(discussionForum.entityId, entityId),
-            eq(discussionForum.status, "APPROVED"),
-          ),
+      const results = await db.query.discussionForum.findMany({
+        where: and(...whereConditions),
+        limit: limit + 1,
         orderBy,
         with: {
           user: true,
@@ -152,16 +214,42 @@ export class ForumService {
         },
       });
 
-      forums.forEach((forum: any) => {
+      const hasNextPage = results.length > limit;
+      const nodes = hasNextPage ? results.slice(0, limit) : results;
+
+      nodes.forEach((forum: any) => {
         forum.isOwner = forum.userId === userId;
       });
+
+      const edges = nodes.map((forum: any) => ({
+        cursor: forum.createdAt.toISOString(),
+        node: forum,
+      }));
+
+      const [{ count }] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(discussionForum)
+        .where(
+          and(
+            eq(discussionForum.entityId, entityId),
+            eq(discussionForum.status, "APPROVED"),
+          ),
+        );
 
       log.info("Discussion forums retrieved", {
         entityId,
         status,
-        count: forums.length,
+        count: edges.length,
       });
-      return forums;
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount: Number(count),
+      };
     } catch (error) {
       log.error("Error in getDiscussionForum", { error, entityId, status });
       throw error;
@@ -246,9 +334,13 @@ export class ForumService {
   static async getDiscussionForumComments({
     db,
     discussionForumId,
+    cursor,
+    limit = 10,
   }: {
     db: any;
     discussionForumId: string;
+    cursor?: string;
+    limit?: number;
   }) {
     try {
       if (!discussionForumId) {
@@ -257,11 +349,25 @@ export class ForumService {
         });
       }
 
-      log.debug("Getting discussion forum comments", { discussionForumId });
+      log.debug("Getting discussion forum comments", {
+        discussionForumId,
+        cursor,
+        limit,
+      });
 
-      const comments = await db.query.discussionForumComment.findMany({
-        where: (discussionForumComment: any, { eq, and }: any) =>
-          and(eq(discussionForumComment.discussionForumId, discussionForumId)),
+      const whereConditions = [
+        eq(discussionForumComment.discussionForumId, discussionForumId),
+      ];
+
+      if (cursor) {
+        whereConditions.push(
+          sql`${discussionForumComment.createdAt} < ${new Date(cursor)}`,
+        );
+      }
+
+      const results = await db.query.discussionForumComment.findMany({
+        where: and(...whereConditions),
+        limit: limit + 1,
         orderBy: (discussionForumComment: any, { desc }: any) =>
           desc(discussionForumComment.createdAt),
         with: {
@@ -269,11 +375,32 @@ export class ForumService {
         },
       });
 
+      const hasNextPage = results.length > limit;
+      const nodes = hasNextPage ? results.slice(0, limit) : results;
+
+      const edges = nodes.map((comment: any) => ({
+        cursor: comment.createdAt.toISOString(),
+        node: comment,
+      }));
+
+      const [{ count }] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(discussionForumComment)
+        .where(eq(discussionForumComment.discussionForumId, discussionForumId));
+
       log.info("Discussion forum comments retrieved", {
         discussionForumId,
-        count: comments.length,
+        count: edges.length,
       });
-      return comments;
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount: Number(count),
+      };
     } catch (error) {
       log.error("Error in getDiscussionForumComments", {
         error,

@@ -15,6 +15,7 @@ import { GamificationEventService } from "../gamification/gamification-event.ser
 import { NotificationService } from "../notification/notification.service";
 import { uploadPdf } from "./upload.utils";
 import { JobNotificationService } from "./job.notification.service";
+import { CloseFriendNotificationService } from "../network/closefriend-notification.service";
 
 export interface PageInfo {
   hasNextPage: boolean;
@@ -615,6 +616,21 @@ export class JobService {
         entityId,
         db,
       });
+
+      // Close Friend Notification
+      // CloseFriendNotificationService.publishNotificationTask({
+      //   creatorId: userId,
+      //   entityId,
+      //   type: "JOB",
+      //   contentId: jobAdded.id,
+      //   title: input.title || "New Job",
+      // }).catch((err: any) => {
+      //   log.error("Failed to trigger close friend job notification", {
+      //     userId,
+      //     jobId: jobAdded.id,
+      //     error: err.message,
+      //   });
+      // });
 
       return jobAdded;
     } catch (error) {

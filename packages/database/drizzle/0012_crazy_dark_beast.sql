@@ -1,1 +1,0 @@
-ALTER TABLE "offers" ADD COLUMN "shares_count" integer DEFAULT 0 NOT NULL;

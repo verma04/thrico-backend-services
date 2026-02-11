@@ -1,8 +1,16 @@
 import { GraphQLError } from "graphql";
 import { log } from "@thrico/logging";
 import { and, eq } from "drizzle-orm";
-import { polls, pollOptions, userFeed, pollResults } from "@thrico/database";
+import {
+  polls,
+  pollOptions,
+  userFeed,
+  pollResults,
+  user,
+  aboutUser,
+} from "@thrico/database";
 import { GamificationEventService } from "../gamification/gamification-event.service";
+import { NotificationService } from "../notification/notification.service";
 
 export class FeedPollService {
   // Add a new poll
@@ -136,7 +144,7 @@ export class FeedPollService {
       let votedOptionId: string | null = null;
       if (poll.results && Array.isArray(poll.results)) {
         const vote = poll.results.find(
-          (r: any) => r.userId === userId && r.votedBy === "USER"
+          (r: any) => r.userId === userId && r.votedBy === "USER",
         );
         if (vote) {
           isVoted = true;
@@ -144,12 +152,15 @@ export class FeedPollService {
         }
       }
 
+      const isOwner = poll.userId === userId;
+
       // We cannot directly add properties to the poll object if it's strictly typed by Drizzle
       // So we return a new object spreading poll and adding our custom fields
       return {
         ...poll,
         isVoted,
         votedOptionId,
+        isOwner,
       };
     } catch (error) {
       log.error("Error getting poll by ID", {
@@ -250,6 +261,42 @@ export class FeedPollService {
         entityId: entity,
       });
 
+      // Send notification to poll owner
+      if (poll.userId && poll.userId !== userId) {
+        const voter = await db.query.user.findFirst({
+          where: eq(user.id, userId),
+        });
+
+        if (voter) {
+          const content = `${voter.firstName} ${voter.lastName} voted on your poll "${poll.question}"`;
+
+          await NotificationService.createNotification({
+            db,
+            userId: poll.userId,
+            senderId: userId,
+            entityId: entity,
+            content,
+            module: "FEED",
+            type: "POLL_VOTE",
+            shouldSendPush: true,
+            pushTitle: "New Poll Vote",
+            pushBody: content,
+            imageUrl: voter.avatar || undefined,
+          }).catch((err: any) => {
+            log.error("Failed to send poll vote notification", {
+              pollId,
+              error: err.message,
+            });
+          });
+
+          log.info("Poll vote notification sent", {
+            pollOwner: poll.userId,
+            voter: userId,
+            pollId,
+          });
+        }
+      }
+
       return {
         pollId,
         optionId,
@@ -303,7 +350,7 @@ export class FeedPollService {
         let votedOptionId: string | null = null;
         if (poll.results && Array.isArray(poll.results)) {
           const vote = poll.results.find(
-            (r: any) => r.userId === userId && r.votedBy === "USER"
+            (r: any) => r.userId === userId && r.votedBy === "USER",
           );
           if (vote) {
             isVoted = true;
@@ -321,6 +368,61 @@ export class FeedPollService {
       return result;
     } catch (error) {
       log.error("Error getting all polls", { error, userId, entityId });
+      throw error;
+    }
+  }
+  // Get poll voters
+  static async getPollVoters({
+    pollId,
+    cursor,
+    limit = 20,
+    db,
+  }: {
+    pollId: string;
+    cursor?: string;
+    limit?: number;
+    db: any;
+  }) {
+    try {
+      const { lt, desc } = await import("drizzle-orm");
+
+      const where = and(
+        eq(pollResults.pollId, pollId),
+        eq(pollResults.votedBy, "USER"),
+        cursor ? lt(pollResults.createdAt, new Date(cursor)) : undefined,
+      );
+
+      const voters = await db
+        .select({
+          id: pollResults.id,
+          votedAt: pollResults.createdAt,
+          user: {
+            id: user.id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            avatar: user.avatar,
+            about: aboutUser,
+          },
+          votedOption: pollOptions,
+        })
+        .from(pollResults)
+        .innerJoin(user, eq(pollResults.userId, user.id))
+        .leftJoin(aboutUser, eq(user.id, aboutUser.userId))
+        .innerJoin(pollOptions, eq(pollResults.pollOptionId, pollOptions.id))
+        .where(where)
+        .orderBy(desc(pollResults.createdAt))
+        .limit(limit);
+
+      return {
+        data: voters,
+        pagination: {
+          nextCursor:
+            voters.length === limit ? voters[voters.length - 1].votedAt : null,
+          hasNextPage: voters.length === limit,
+        },
+      };
+    } catch (error) {
+      log.error("Error getting poll voters", { error, pollId });
       throw error;
     }
   }

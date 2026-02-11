@@ -5,17 +5,21 @@ export const offersResolvers = {
   Query: {
     async getOffers(_: any, { input }: any, context: any) {
       try {
-        const { entityId, db } = await checkAuth(context);
-        const { categoryId, offset = 1, limit = 10, search } = input || {};
+        const { entityId, db, userId, role } = await checkAuth(context);
+        const { categoryId, cursor, limit = 10, search } = input || {};
 
         const result = await OfferService.getApprovedOffers({
           entityId,
           db,
-          page: offset,
+          cursor,
           limit,
           categoryId,
           search,
+          currentUserId: userId,
+          role,
         });
+
+        console.log(result?.edges?.[0]?.node);
 
         return result;
       } catch (error) {
@@ -38,16 +42,17 @@ export const offersResolvers = {
 
     async getOffersByUserId(_: any, { input }: any, context: any) {
       try {
-        const { entityId, db } = await checkAuth(context);
-        const { categoryId, page = 1, limit = 10 } = input || {};
-        const { id } = await checkAuth(context);
+        const { entityId, db, userId, role } = await checkAuth(context);
+        const { cursor, limit = 10 } = input || {};
 
         const result = await OfferService.getOffersByUserId({
           entityId,
           db,
-          page,
+          cursor,
           limit,
-          userId: id,
+          userId,
+          currentUserId: userId,
+          role,
         });
 
         return result;
@@ -56,19 +61,59 @@ export const offersResolvers = {
         throw error;
       }
     },
+
+    async getMyOffers(_: any, { input }: any, context: any) {
+      try {
+        const { entityId, db, userId, role } = await checkAuth(context);
+        const { cursor, limit = 10 } = input || {};
+
+        const result = await OfferService.getOffersByUserId({
+          entityId,
+          db,
+          cursor,
+          limit,
+          userId,
+          currentUserId: userId,
+          role,
+        });
+
+        return result;
+      } catch (error) {
+        console.error("Error in getMyOffers:", error);
+        throw error;
+      }
+    },
+
     async getOfferById(_: any, { offerId }: any, context: any) {
       try {
-        const { entityId, db } = await checkAuth(context);
+        const { entityId, db, userId, role } = await checkAuth(context);
 
         const result = await OfferService.getOfferById({
           offerId,
           entityId,
           db,
+          currentUserId: userId,
+          role,
         });
 
         return result;
       } catch (error) {
         console.error("Error in getOfferById (user):", error);
+        throw error;
+      }
+    },
+
+    async getOfferStats(_: any, { offerId }: any, context: any) {
+      try {
+        const { entityId, db } = await checkAuth(context);
+
+        return await OfferService.getOfferStats({
+          offerId,
+          entityId,
+          db,
+        });
+      } catch (error) {
+        console.error("Error in getOfferStats:", error);
         throw error;
       }
     },
@@ -89,6 +134,25 @@ export const offersResolvers = {
         return newOffer;
       } catch (error) {
         console.error("Error in createOffer (user):", error);
+        throw error;
+      }
+    },
+
+    async editOffer(_: any, { offerId, input }: any, context: any) {
+      try {
+        const { entityId, userId, db } = await checkAuth(context);
+
+        const updatedOffer = await OfferService.updateOffer({
+          offerId,
+          input,
+          userId,
+          entityId,
+          db,
+        });
+
+        return updatedOffer;
+      } catch (error) {
+        console.error("Error in editOffer:", error);
         throw error;
       }
     },
@@ -141,6 +205,22 @@ export const offersResolvers = {
         return updatedOffer;
       } catch (error) {
         console.error("Error in shareOffer (user):", error);
+        throw error;
+      }
+    },
+
+    async deleteOffer(_: any, { offerId }: any, context: any) {
+      try {
+        const { entityId, userId, db } = await checkAuth(context);
+
+        return await OfferService.deleteOffer({
+          offerId,
+          userId,
+          entityId,
+          db,
+        });
+      } catch (error) {
+        console.error("Error in deleteOffer:", error);
         throw error;
       }
     },

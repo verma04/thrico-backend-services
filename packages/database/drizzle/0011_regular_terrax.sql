@@ -1,1 +1,0 @@
-ALTER TYPE "notificationType" ADD VALUE 'RANK_UP';

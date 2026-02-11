@@ -132,6 +132,7 @@ export async function processEvent(
     if (totalAwardedPoints > 0) {
       await LeaderboardService.updateLeaderboards(
         redis,
+        db,
         userId,
         entityId,
         totalAwardedPoints,

@@ -14,7 +14,9 @@
       "@thrico/grpc": ["../../packages/grpc/dist"],
       "@thrico/grpc/*": ["../../packages/grpc/dist/*"],
       "@thrico/logging": ["../../packages/logging/dist"],
-      "@thrico/logging/*": ["../../packages/logging/dist/*"]
+      "@thrico/logging/*": ["../../packages/logging/dist/*"],
+      "@thrico/services": ["../../packages/services/dist"],
+      "@thrico/services/*": ["../../packages/services/dist/*"]
     }
   },
   "include": ["src/**/*"],

@@ -129,6 +129,23 @@ export const networkResolvers = {
         throw error;
       }
     },
+    async getCloseFriends(_: any, { input }: any, context: any) {
+      try {
+        const { id, db, entityId } = await checkAuth(context);
+
+        return await NetworkService.getCloseFriends({
+          db,
+          currentUserId: id,
+          entityId,
+          limit: input?.limit || 10,
+          cursor: input?.cursor,
+          search: input?.search || "",
+        });
+      } catch (error: any) {
+        log.error("Error in getCloseFriends", { error, input });
+        throw error;
+      }
+    },
   },
 
   Mutation: {
@@ -358,6 +375,54 @@ export const networkResolvers = {
             http: { status: 400 },
           },
         });
+      }
+    },
+
+    async addToCloseFriend(_: any, { input }: any, context: any) {
+      try {
+        const { id, db, entityId } = await checkAuth(context);
+
+        return await NetworkService.addToCloseFriends({
+          db,
+          userId: id,
+          friendId: input.id,
+          entityId,
+        });
+      } catch (error: any) {
+        log.error("Error in addToCloseFriend", { error, input });
+        throw new GraphQLError(
+          error.message || "Failed to add to close friend",
+          {
+            extensions: {
+              code: 400,
+              http: { status: 400 },
+            },
+          },
+        );
+      }
+    },
+
+    async removeFromCloseFriend(_: any, { input }: any, context: any) {
+      try {
+        const { id, db, entityId } = await checkAuth(context);
+
+        return await NetworkService.removeFromCloseFriends({
+          db,
+          userId: id,
+          friendId: input.id,
+          entityId,
+        });
+      } catch (error: any) {
+        log.error("Error in removeFromCloseFriend", { error, input });
+        throw new GraphQLError(
+          error.message || "Failed to remove from close friend",
+          {
+            extensions: {
+              code: 400,
+              http: { status: 400 },
+            },
+          },
+        );
       }
     },
   },

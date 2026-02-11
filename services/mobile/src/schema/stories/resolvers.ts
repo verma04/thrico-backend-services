@@ -13,17 +13,16 @@ const storiesResolvers: any = {
         throw error;
       }
     },
-    async getStoriesFromConnections(_: any, __: any, context: any) {
+    async getStoriesFromConnections(_: any, { input }: any, context: any) {
       try {
         const { entityId, db, id } = await checkAuth(context);
-        const groupedStories =
-          await StoryService.getStoriesGroupedByConnections({
-            db,
-            userId: id,
-            entityId,
-          });
-
-        return groupedStories;
+        return await StoryService.getStoriesGroupedByConnections({
+          db,
+          userId: id,
+          entityId,
+          cursor: input?.cursor,
+          limit: input?.limit,
+        });
       } catch (error) {
         console.log(error);
         throw error;

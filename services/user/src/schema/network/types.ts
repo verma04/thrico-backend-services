@@ -14,6 +14,7 @@ export const networkTypes = `#graphql
     mutualFriends: mutualFriends
     isFollowing: Boolean
     numberOfConnections: Int
+    isCloseFriend: Boolean
   }
 
   enum connectionStatus {
@@ -151,6 +152,7 @@ export const networkTypes = `#graphql
     getConnectionRequests(input: paginationInput): connectionRequestResponse
     getConnectionStats: connectionStats
     getBlockedUsers(input: paginationInput): blockedUsersResponse
+    getCloseFriends(input: paginationInput): networkResponse
   }
 
   extend type Mutation {
@@ -164,5 +166,7 @@ export const networkTypes = `#graphql
     unblockUser(input: blockUserInput): reportResponse
     followUser(input: followUserInput): followResponse
     unfollowUser(input: followUserInput): followResponse
+    addToCloseFriend(input: inputId): followResponse
+    removeFromCloseFriend(input: inputId): followResponse
   }
 `;

@@ -227,6 +227,11 @@ const communitiesTypes = `#graphql
     location: JSON
   }
 
+  type PageInfo {
+    hasNextPage: Boolean!
+    endCursor: String
+  }
+
   type paginationInfo {
     currentPage: Int
     totalPages: Int
@@ -234,6 +239,8 @@ const communitiesTypes = `#graphql
     limit: Int
     hasNextPage: Boolean
     hasPreviousPage: Boolean
+    nextCursor: String
+    endCursor: String
   }
 
   type communitiesWithPagination {
@@ -347,6 +354,13 @@ const communitiesTypes = `#graphql
     metadata: ratingMetadata
   }
 
+  type membersPermissions {
+    isCurrentUserAdmin: Boolean
+    currentUserRole: String
+    canInviteMembers: Boolean
+    canManageRoles: Boolean
+    canRemoveMembers: Boolean
+  }
   type ratingsWithPagination {
     ratings: [communityRating]
     pagination: paginationInfo
@@ -435,16 +449,16 @@ const communitiesTypes = `#graphql
   # =============== MEMBER MANAGEMENT TYPES ===============
 
   type communityMemberWithRole {
-    id: ID
-    userId: ID
-    role: String
-    joinedAt: Date
+    id: ID!
+    userId: ID!
+    role: String!
+    joinedAt: Date!
     isActive: Boolean
     lastActivityAt: Date
     user: userBasicInfo
-    isCurrentUser: Boolean
-    canEdit: Boolean
-    canRemove: Boolean
+    isCurrentUser: Boolean!
+    canEdit: Boolean!
+    canRemove: Boolean!
   }
 
   type userBasicInfo {
@@ -460,11 +474,11 @@ const communitiesTypes = `#graphql
   }
 
   type roleStatistics {
-    ADMIN: Int
-    MANAGER: Int
-    MODERATOR: Int
-    USER: Int
-    total: Int
+    ADMIN: Int!
+    MANAGER: Int!
+    MODERATOR: Int!
+    USER: Int!
+    total: Int!
   }
 
   type memberPermissions {
@@ -475,11 +489,17 @@ const communitiesTypes = `#graphql
     canRemoveMembers: Boolean
   }
 
+  type CommunityMemberEdge {
+    cursor: String!
+    node: communityMemberWithRole!
+  }
+
   type membersWithRolesResponse {
-    members: [communityMemberWithRole]
-    roleStatistics: roleStatistics
-    pagination: paginationInfo
-    permissions: memberPermissions
+    edges: [CommunityMemberEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
+    roleStatistics: roleStatistics!
+    permissions: membersPermissions!
   }
 
   type memberRoleUpdateResponse {
@@ -557,7 +577,7 @@ const communitiesTypes = `#graphql
 
   input getCommunityMembersInput {
     groupId: ID!
-    page: Int
+    cursor: String
     limit: Int
     role: String
     searchTerm: String
@@ -678,16 +698,9 @@ const communitiesTypes = `#graphql
     reason: String
   }
 
-  input CommunityFeedCursorInput {
-    cursor: String
-    limit: Int
-    id: ID!
-  }
 
-  input getMyJoinedCommunitiesFeedInput {
-    cursor: String
-    limit: Int
-  }
+
+
 
   input inputGroupFeedPagination {
     offset: Int!
@@ -702,16 +715,7 @@ const communitiesTypes = `#graphql
     hasMore: Boolean
   }
 
-  type CommunityFeedEdge {
-    cursor: String!
-    node: feed!
-  }
 
-  type CommunityFeedConnection {
-    edges: [CommunityFeedEdge!]!
-    pageInfo: PageInfo!
-    totalCount: Int!
-  }
 
   type communitiesFeed {
     feeds: [feed]
@@ -933,12 +937,11 @@ const communitiesTypes = `#graphql
     getPendingJoinRequestsCount(
       input: getPendingJoinRequestsCountInput!
     ): pendingJoinRequestsCountResponse
-
-    getCommunitiesFeedList(input: CommunityFeedCursorInput): CommunityFeedConnection!
-    getPendingFeedCommunities(input: CommunityFeedCursorInput): CommunityFeedConnection!
-    getAllPinnedFeeds(input: CommunityFeedCursorInput): CommunityFeedConnection!
-    getAllFlaggedFeeds(input: CommunityFeedCursorInput): CommunityFeedConnection!
-    getMyJoinedCommunitiesFeed(input: getMyJoinedCommunitiesFeedInput): CommunityFeedConnection!
+    getCommunitiesFeedList(input: FeedCursorInput, id: ID!): FeedConnection!
+    getPendingFeedCommunities(input: FeedCursorInput, id: ID!): FeedConnection!
+    getAllPinnedFeeds(input: FeedCursorInput, id: ID!): FeedConnection!
+    getAllFlaggedFeeds(input: FeedCursorInput, id: ID!): FeedConnection!
+    getMyJoinedCommunitiesFeed(input: FeedCursorInput): FeedConnection!
 
     getCommunityFeedStats(input: inputId): communityFeedStats!
     # Community reporting queries

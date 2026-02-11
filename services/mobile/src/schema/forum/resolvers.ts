@@ -13,10 +13,16 @@ export const forumResolvers = {
       }
     },
 
-    async discussionPostedByMe(_: any, { input }: any, context: any) {
+    async discussionPostedByMe(_: any, { cursor, limit }: any, context: any) {
       try {
         const { db, entityId, userId } = await checkAuth(context);
-        return ForumService.discussionPostedByMe({ db, entityId, userId });
+        return ForumService.discussionPostedByMe({
+          db,
+          entityId,
+          userId,
+          cursor,
+          limit,
+        });
       } catch (error) {
         throw error;
       }
@@ -25,13 +31,14 @@ export const forumResolvers = {
     async getDiscussionForum(_: any, { input }: any, context: any) {
       try {
         const { db, entityId, userId } = await checkAuth(context);
-        const { status } = input;
-        console.log("status", status);
+        const { status, cursor, limit } = input || {};
         return ForumService.getDiscussionForum({
           db,
           entityId,
           userId,
           status,
+          cursor,
+          limit,
         });
       } catch (error) {
         throw error;
@@ -56,10 +63,12 @@ export const forumResolvers = {
     async getDiscussionForumComments(_: any, { input }: any, context: any) {
       try {
         const { db } = await checkAuth(context);
-        const { id } = input;
+        const { id, cursor, limit } = input;
         return ForumService.getDiscussionForumComments({
           db,
           discussionForumId: id,
+          cursor,
+          limit,
         });
       } catch (error) {
         throw error;
@@ -89,7 +98,7 @@ export const forumResolvers = {
 
     async deleteForum(_: any, { input }: any, context: any) {
       try {
-        const { id: userId, entityId, db } = await checkAuth(context);
+        const { userId, entityId, db } = await checkAuth(context);
         const { forumId } = input;
         return ForumService.deleteForum({ db, entityId, userId, forumId });
       } catch (error) {
@@ -99,7 +108,7 @@ export const forumResolvers = {
 
     async editDiscussionForum(_: any, { input }: any, context: any) {
       try {
-        const { id: userId, db, entityId } = await checkAuth(context);
+        const { userId, db, entityId } = await checkAuth(context);
         return ForumService.editDiscussionForum({
           db,
           entityId,
@@ -128,12 +137,12 @@ export const forumResolvers = {
 
     async deleteDiscussionForumComments(_: any, { input }: any, context: any) {
       try {
-        const { db, entityId, id: performedBy } = await checkAuth(context);
+        const { db, entityId, userId } = await checkAuth(context);
         const { discussionForumId, commentId, reason } = input;
         return ForumService.deleteDiscussionForumComments({
           db,
           entityId,
-          performedBy,
+          performedBy: userId,
           discussionForumId,
           commentId,
           reason,

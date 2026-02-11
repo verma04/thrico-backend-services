@@ -31,6 +31,21 @@ export const storiesTypes = `#graphql
     cover: Upload
   }
 
+  input inputGetStoriesFromConnections {
+    cursor: String
+    limit: Int
+  }
+
+  type ConnectionStoriesEdge {
+    cursor: String!
+    node: ConnectionStories!
+  }
+
+  type ConnectionStoriesConnection {
+    edges: [ConnectionStoriesEdge!]!
+    pageInfo: PageInfo!
+  }
+
   input inputUserStoryByID {
     description: String!
     subTitle: String!
@@ -51,7 +66,7 @@ export const storiesTypes = `#graphql
   }
 
   type Query {
-    getStoriesFromConnections: [ConnectionStories!]!
+    getStoriesFromConnections(input: inputGetStoriesFromConnections): ConnectionStoriesConnection!
     getMyStories: [stories!]!
   }
 `;

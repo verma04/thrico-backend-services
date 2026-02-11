@@ -1,16 +1,24 @@
 import { log } from "@thrico/logging";
 import { GraphQLError } from "graphql";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import {
-  feedReactions,
   notifications,
+  communityNotifications,
+  feedNotifications,
+  networkNotifications,
+  jobNotifications,
+  listingNotifications,
+  gamificationNotifications,
   user,
   userFeed,
   userToEntity,
   pushNotificationToCache,
   getNotificationsFromCache,
   markNotificationAsReadInCache,
+  incrementUnreadCount,
+  getUnreadCounts,
   USER_LOGIN_SESSION,
+  resetUnreadCount,
 } from "@thrico/database";
 import { FirebaseService } from "./firebase";
 
@@ -20,13 +28,13 @@ export class NotificationService {
     currentUserId,
     getUnreadCountFn,
     limit = 10,
-    offset = 0,
+    cursor,
   }: {
     db: any;
     currentUserId: string;
     getUnreadCountFn?: (userId: string) => Promise<number>;
     limit?: number;
-    offset?: number;
+    cursor?: string;
   }) {
     try {
       if (!currentUserId) {
@@ -35,43 +43,165 @@ export class NotificationService {
         });
       }
 
-      log.debug("Getting user notifications", { userId: currentUserId });
+      log.debug("Getting user notifications", {
+        userId: currentUserId,
+        cursor,
+      });
 
-      const result = await db
+      // Import lt from drizzle-orm
+      const { lt } = await import("drizzle-orm");
+
+      // Fetch notifications from central registry joined with all modules
+      const rows = await db
         .select({
           id: notifications.id,
-          sender: {
+          module: notifications.module,
+          isRead: notifications.isRead,
+          createdAt: notifications.createdAt,
+          // Module Data
+          community: communityNotifications,
+          feed: feedNotifications,
+          network: networkNotifications,
+          job: jobNotifications,
+          listing: listingNotifications,
+          gamification: gamificationNotifications,
+        })
+        .from(notifications)
+        .leftJoin(
+          communityNotifications,
+          eq(notifications.communityNotificationId, communityNotifications.id),
+        )
+        .leftJoin(
+          feedNotifications,
+          eq(notifications.feedNotificationId, feedNotifications.id),
+        )
+        .leftJoin(
+          networkNotifications,
+          eq(notifications.networkNotificationId, networkNotifications.id),
+        )
+        .leftJoin(
+          jobNotifications,
+          eq(notifications.jobNotificationId, jobNotifications.id),
+        )
+        .leftJoin(
+          listingNotifications,
+          eq(notifications.listingNotificationId, listingNotifications.id),
+        )
+        .leftJoin(
+          gamificationNotifications,
+          eq(
+            notifications.gamificationNotificationId,
+            gamificationNotifications.id,
+          ),
+        )
+        .where(
+          and(
+            eq(notifications.userId, currentUserId),
+            cursor ? lt(notifications.createdAt, new Date(cursor)) : undefined,
+          ),
+        )
+        .orderBy(desc(notifications.createdAt))
+        .limit(limit);
+
+      // Collect IDs for batch fetching related data
+      const senderIds = new Set<string>();
+      const feedIds = new Set<string>();
+
+      rows.forEach((row: any) => {
+        let senderId;
+        if (row.community) senderId = row.community.senderId;
+        else if (row.feed) {
+          senderId = row.feed.senderId;
+          if (row.feed.feedId) feedIds.add(row.feed.feedId);
+        } else if (row.network) senderId = row.network.senderId;
+        else if (row.job) senderId = row.job.senderId;
+        else if (row.listing) senderId = row.listing.senderId;
+
+        if (senderId) senderIds.add(senderId);
+      });
+
+      // Fetch related data
+      let senderMap = new Map();
+      if (senderIds.size > 0) {
+        const senders = await db
+          .select({
             senderId: userToEntity.id,
             firstName: user.firstName,
             lastName: user.lastName,
             avatar: user.avatar,
-          },
-          feed: userFeed,
-          content: notifications.content,
-          notificationType: notifications.notificationType,
-          isRead: notifications.isRead,
-          createdAt: notifications.createdAt,
-          like: sql<Array<object>>`ARRAY(
-            SELECT ${user}
-            FROM ${feedReactions}
-            LEFT JOIN ${userToEntity} ON ${feedReactions.userId} = ${userToEntity.id}
-            LEFT JOIN ${user} ON ${userToEntity.userId} = ${user.id}
-            WHERE ${feedReactions.feedId} = ${userFeed.id} AND ${feedReactions.userId} != ${currentUserId}
-          )`,
-          totalLikes: sql<Array<string>>`ARRAY(
-            SELECT ${feedReactions.id}
-            FROM ${feedReactions}
-            WHERE ${feedReactions.feedId} = ${userFeed.id}
-          )`,
-        })
-        .from(notifications)
-        .leftJoin(userToEntity, eq(notifications.sender, userToEntity.id))
-        .leftJoin(user, eq(userToEntity.userId, user.id))
-        .leftJoin(userFeed, eq(notifications.feed, userFeed.id))
-        .where(eq(notifications.user, currentUserId))
-        .orderBy(desc(notifications.createdAt))
-        .limit(limit)
-        .offset(offset);
+          })
+          .from(userToEntity)
+          .leftJoin(user, eq(userToEntity.userId, user.id))
+          .where(inArray(userToEntity.id, Array.from(senderIds)));
+        senderMap = new Map(senders.map((s: any) => [s.senderId, s]));
+      }
+
+      let feedMap = new Map();
+      if (feedIds.size > 0) {
+        const feeds = await db
+          .select()
+          .from(userFeed)
+          .where(inArray(userFeed.id, Array.from(feedIds)));
+        feedMap = new Map(feeds.map((f: any) => [f.id, f]));
+      }
+
+      // Map results to unified structure
+      const result = rows.map((row: any) => {
+        let content = "";
+        let type = "";
+        let senderId = null;
+        let feedData = null;
+        let additionalData = {};
+
+        if (row.community) {
+          content = row.community.content;
+          type = row.community.type;
+          senderId = row.community.senderId;
+          additionalData = { communityId: row.community.communityId };
+        } else if (row.feed) {
+          content = row.feed.content;
+          type = row.feed.type;
+          senderId = row.feed.senderId;
+          if (row.feed.feedId) feedData = feedMap.get(row.feed.feedId);
+        } else if (row.network) {
+          content = row.network.content;
+          type = row.network.type;
+          senderId = row.network.senderId;
+        } else if (row.job) {
+          content = row.job.content;
+          type = row.job.type;
+          senderId = row.job.senderId;
+          additionalData = { jobId: row.job.jobId };
+        } else if (row.listing) {
+          content = row.listing.content;
+          type = row.listing.type;
+          senderId = row.listing.senderId;
+          additionalData = { listingId: row.listing.listingId };
+        } else if (row.gamification) {
+          content = row.gamification.content;
+          type = row.gamification.type;
+          additionalData = {
+            points: row.gamification.points,
+            badgeName: row.gamification.badgeName,
+            badgeImageUrl: row.gamification.badgeImageUrl,
+            rankName: row.gamification.rankName,
+          };
+        }
+
+        const sender = senderId ? senderMap.get(senderId) : null;
+
+        return {
+          id: row.id,
+          sender: sender || null,
+          feed: feedData || null,
+          content,
+          type,
+          module: row.module,
+          isRead: row.isRead,
+          createdAt: row.createdAt,
+          ...additionalData,
+        };
+      });
 
       let unreadCount = 0;
       if (getUnreadCountFn) {
@@ -86,12 +216,44 @@ export class NotificationService {
 
       return {
         unread: unreadCount,
-        result: result,
+        result,
+        nextCursor:
+          result.length === limit ? result[result.length - 1].createdAt : null,
       };
     } catch (error) {
       log.error("Error in getUserNotifications", {
         error,
         userId: currentUserId,
+      });
+      throw error;
+    }
+  }
+
+  static async markAllNotificationsAsRead({
+    userId,
+    entityId,
+    module,
+  }: {
+    userId: string;
+    entityId: string;
+    module: string;
+  }) {
+    try {
+      if (!userId || !entityId || !module) {
+        throw new GraphQLError("User ID, Entity ID and Module are required.", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+
+      await resetUnreadCount(module, userId, entityId);
+
+      return { success: true };
+    } catch (error) {
+      log.error("Error in markAllNotificationsAsRead", {
+        error,
+        userId,
+        entityId,
+        module,
       });
       throw error;
     }
@@ -117,11 +279,11 @@ export class NotificationService {
 
       const [updated] = await db
         .update(notifications)
-        .set({ isRead: "true" })
+        .set({ isRead: true })
         .where(
           and(
             eq(notifications.id, notificationId),
-            eq(notifications.user, userId),
+            eq(notifications.userId, userId),
           ),
         )
         .returning();
@@ -129,10 +291,10 @@ export class NotificationService {
       if (updated) {
         // Sync with Redis cache
         await markNotificationAsReadInCache(
-          updated.entity,
+          updated.entityId,
           userId,
           notificationId,
-        ).catch((err) => {
+        ).catch((err: any) => {
           log.error("Failed to mark notification as read in cache", {
             notificationId,
             error: err.message,
@@ -160,44 +322,40 @@ export class NotificationService {
     notificationId: string;
     userId: string;
   }) {
-    try {
-      if (!notificationId || !userId) {
-        throw new GraphQLError("Notification ID and User ID are required.", {
-          extensions: { code: "BAD_USER_INPUT" },
-        });
-      }
-
-      log.debug("Deleting notification", { notificationId, userId });
-
-      const [deleted] = await db
-        .delete(notifications)
-        .where(
-          and(
-            eq(notifications.id, notificationId),
-            eq(notifications.user, userId),
-          ),
-        )
-        .returning();
-
-      if (!deleted) {
-        throw new GraphQLError(
-          "Notification not found or you don't have permission to delete it.",
-          {
-            extensions: { code: "FORBIDDEN" },
-          },
-        );
-      }
-
-      log.info("Notification deleted", { notificationId, userId });
-      return deleted;
-    } catch (error) {
-      log.error("Error in deleteNotification", {
-        error,
-        notificationId,
-        userId,
-      });
-      throw error;
-    }
+    // try {
+    //   if (!notificationId || !userId) {
+    //     throw new GraphQLError("Notification ID and User ID are required.", {
+    //       extensions: { code: "BAD_USER_INPUT" },
+    //     });
+    //   }
+    //   log.debug("Deleting notification", { notificationId, userId });
+    //   const [deleted] = await db
+    //     .delete(notifications)
+    //     .where(
+    //       and(
+    //         eq(notifications.id, notificationId),
+    //         eq(notifications.user, userId),
+    //       ),
+    //     )
+    //     .returning();
+    //   if (!deleted) {
+    //     throw new GraphQLError(
+    //       "Notification not found or you don't have permission to delete it.",
+    //       {
+    //         extensions: { code: "FORBIDDEN" },
+    //       },
+    //     );
+    //   }
+    //   log.info("Notification deleted", { notificationId, userId });
+    //   return deleted;
+    // } catch (error) {
+    //   log.error("Error in deleteNotification", {
+    //     error,
+    //     notificationId,
+    //     userId,
+    //   });
+    //   throw error;
+    // }
   }
 
   static async createNotification({
@@ -206,37 +364,59 @@ export class NotificationService {
     senderId,
     entityId,
     content,
-    notificationType,
+    module,
+    type,
     feedId,
+    communityId,
+    jobId,
+    listingId,
+    imageUrl,
+    points,
+    badgeName,
+    badgeImageUrl,
+    rankName,
+    actors,
+    count,
     shouldSendPush,
     pushTitle,
     pushBody,
-    communityId,
-    commNotifType,
-    imageUrl,
-    listingId,
-    jobId,
+    contentId,
+    isIncrementUnreadCount = true,
   }: {
     db: any;
     userId: string;
     senderId?: string;
     entityId: string;
     content: string;
-    notificationType: string;
+    module:
+      | "COMMUNITY"
+      | "FEED"
+      | "NETWORK"
+      | "JOB"
+      | "LISTING"
+      | "GAMIFICATION";
+    type: string;
     feedId?: string;
+    communityId?: string;
+    jobId?: string;
+    listingId?: string;
+    imageUrl?: string;
+    points?: number;
+    badgeName?: string;
+    badgeImageUrl?: string;
+    rankName?: string;
+    actors?: string[];
+    count?: number;
     shouldSendPush?: boolean;
     pushTitle?: string;
     pushBody?: string;
-    communityId?: string;
-    commNotifType?: any; // Using any for now to avoid circular dependency or import issues if not careful
-    imageUrl?: string;
-    listingId?: string;
-    jobId?: string;
+    contentId?: string;
+    isIncrementUnreadCount?: boolean;
   }) {
     try {
-      if (!userId || !content || !notificationType || !entityId) {
+      if (!userId || !content || !type || !entityId || !module) {
         throw new GraphQLError(
-          "User ID, entity ID, content, and notification type are required.",
+          "User ID, entity ID, content, type, and module are required.",
           {
             extensions: { code: "BAD_USER_INPUT" },
           },
@@ -246,53 +426,172 @@ export class NotificationService {
       log.debug("Creating notification", {
         userId,
         entityId,
-        notificationType,
+        module,
+        type,
       });
 
-      const [notification] = await db
-        .insert(notifications)
+      // Import module-specific tables
+      const {
+        communityNotifications,
+        feedNotifications,
+        networkNotifications,
+        jobNotifications,
+        listingNotifications,
+        gamificationNotifications,
+        notifications: centralNotifications,
+      } = await import("@thrico/database");
+
+      let moduleNotificationId: string;
+
+      // Create notification in module-specific table
+      switch (module) {
+        case "COMMUNITY":
+          console.log(contentId, "sdsddsds");
+          if (!communityId || !contentId) {
+            throw new GraphQLError(
+              "Community ID required for community notifications",
+            );
+          }
+          const [communityNotif] = await db
+            .insert(communityNotifications)
+            .values({
+              type,
+              userId,
+              senderId,
+              entityId,
+              communityId: communityId || contentId,
+              content,
+              imageUrl,
+              isRead: false,
+            })
+            .returning();
+          moduleNotificationId = communityNotif.id;
+          break;
+
+        case "FEED":
+          // if (feedId) {
+          //   throw new GraphQLError("Feed ID required for feed notifications");
+          // }
+          const [feedNotif] = await db
+            .insert(feedNotifications)
+            .values({
+              type,
+              userId,
+              senderId: senderId! || contentId!,
+              entityId,
+              feedId,
+              content,
+              actors,
+              count: count || 1,
+              isRead: false,
+            })
+            .returning();
+          moduleNotificationId = feedNotif.id;
+          break;
+
+        case "NETWORK":
+          const [networkNotif] = await db
+            .insert(networkNotifications)
+            .values({
+              type,
+              userId,
+              senderId: senderId!,
+              entityId,
+              content,
+              isRead: false,
+            })
+            .returning();
+          moduleNotificationId = networkNotif.id;
+          break;
+
+        case "JOB":
+          if (!jobId) {
+            throw new GraphQLError("Job ID required for job notifications");
+          }
+          const [jobNotif] = await db
+            .insert(jobNotifications)
+            .values({
+              type,
+              userId,
+              senderId,
+              entityId,
+              jobId: jobId || contentId,
+              content,
+              isRead: false,
+            })
+            .returning();
+          moduleNotificationId = jobNotif.id;
+          break;
+
+        case "LISTING":
+          if (!listingId) {
+            throw new GraphQLError(
+              "Listing ID required for listing notifications",
+            );
+          }
+          const [listingNotif] = await db
+            .insert(listingNotifications)
+            .values({
+              type,
+              userId,
+              senderId,
+              entityId,
+              listingId: listingId || contentId,
+              content,
+              isRead: false,
+            })
+            .returning();
+          moduleNotificationId = listingNotif.id;
+          break;
+
+        case "GAMIFICATION":
+          const [gamificationNotif] = await db
+            .insert(gamificationNotifications)
+            .values({
+              type,
+              userId,
+              entityId,
+              content,
+              points,
+              badgeName,
+              badgeImageUrl,
+              rankName,
+              isRead: false,
+            })
+            .returning();
+          moduleNotificationId = gamificationNotif.id;
+          break;
+
+        default:
+          throw new GraphQLError(`Unknown notification module: ${module}`);
+      }
+
+      // Create entry in central notifications registry
+      const [centralNotification] = await db
+        .insert(centralNotifications)
         .values({
-          user: userId,
-          sender: senderId,
-          entity: entityId,
-          content,
-          notificationType,
-          feed: feedId,
-          isRead: "false",
+          module,
+          userId,
+          entityId,
+          isRead: false,
+          // Link to module-specific notification
+          [`${module.toLowerCase()}NotificationId`]: moduleNotificationId,
         })
         .returning();
 
-      // If it's a community notification, also insert into the separate table
-      if (communityId && commNotifType) {
-        const { communityMetadataNotification } =
-          await import("@thrico/database");
-        await db.insert(communityMetadataNotification).values({
-          user: userId,
-          community: communityId,
-          type: commNotifType,
-          notification: notification.id,
-          content,
-        });
+      log.info("Notification created in module and central registry", {
+        centralNotificationId: centralNotification.id,
+        moduleNotificationId,
+        userId,
+        module,
+        type,
+      });
+
+      // Increment unread count in Redis
+      if (isIncrementUnreadCount) {
+        await incrementUnreadCount(module, userId, entityId);
       }
 
-      // // Cache in Redis (which now also publishes for SSE)
-      // await pushNotificationToCache(entityId, userId, notification);
-
-      console.log({
-        userId,
-        entityId,
-        title: pushTitle || "New Notification",
-        body: pushBody || content,
-        payload: {
-          notificationId: notification.id,
-          notificationType,
-          communityId: communityId,
-          commNotifType: commNotifType,
-          imageUrl: imageUrl,
-          listingId: listingId,
-          jobId: jobId,
-        },
-      });
       // Trigger Push if requested
       if (shouldSendPush) {
         this.sendPushNotification({
@@ -301,13 +600,11 @@ export class NotificationService {
           title: pushTitle || "New Notification",
           body: pushBody || content,
           payload: {
-            notificationId: notification.id,
-            notificationType,
-            communityId: communityId,
-            commNotifType: commNotifType,
+            notificationId: centralNotification.id,
+            module,
+            type,
+            id: contentId || communityId || jobId || listingId || feedId,
             image: imageUrl,
-            listingId: listingId,
-            jobId: jobId,
           },
         }).catch((err: any) => {
           log.error("Failed to send push as part of notification creation", {
@@ -317,20 +614,14 @@ export class NotificationService {
         });
       }
 
-      log.info("Notification created, cached, and potentially pushed", {
-        notificationId: notification.id,
-        userId,
-        entityId,
-        notificationType,
-        shouldSendPush,
-      });
-      return notification;
+      return centralNotification;
     } catch (error) {
       log.error("Error in createNotification", {
         error,
         userId,
         entityId,
-        notificationType,
+        module,
+        type,
       });
       throw error;
     }
@@ -480,22 +771,22 @@ export class NotificationService {
         });
       }
 
-      const { inArray } = await import("drizzle-orm");
+      // const { inArray } = await import("drizzle-orm");
 
-      const [result] = await db
-        .select({
-          count: sql<number>`count(${notifications.id})::int`,
-        })
-        .from(notifications)
-        .where(
-          and(
-            eq(notifications.user, userId),
-            inArray(notifications.notificationType, notificationTypes as any),
-            eq(notifications.isRead, "false"),
-          ),
-        );
+      // const [result] = await db
+      //   .select({
+      //     count: sql<number>`count(${notifications.id})::int`,
+      //   })
+      //   .from(notifications)
+      //   .where(
+      //     and(
+      //       eq(notifications.user, userId),
+      //       inArray(notifications.notificationType, notificationTypes as any),
+      //       eq(notifications.isRead, "false"),
+      //     ),
+      //   );
 
-      return result?.count || 0;
+      // return result?.count || 0;
     } catch (error) {
       log.error("Error in countUnreadNotifications", {
         error,
@@ -506,208 +797,26 @@ export class NotificationService {
     }
   }
 
-  static async getFeedNotifications({
-    db,
+  static async getUnreadNotificationCounts({
     userId,
-    cursor,
-    limit = 10,
+    entityId,
   }: {
-    db: any;
     userId: string;
-    cursor?: string;
-    limit?: number;
+    entityId: string;
   }) {
     try {
-      const { lt, inArray } = await import("drizzle-orm");
-      const { feedMetadataNotification } = await import("@thrico/database");
-
-      log.debug("Getting feed notifications", { userId, cursor, limit });
-
-      const feedTypes = ["FEED_COMMENT", "FEED_LIKE"];
-
-      const query = db
-        .select({
-          id: notifications.id,
-          notificationType: notifications.notificationType,
-          content: notifications.content,
-          isRead: notifications.isRead,
-          createdAt: notifications.createdAt,
-          sender: {
-            id: user.id,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            avatar: user.avatar,
-          },
-          feed: userFeed,
-          metadata: feedMetadataNotification,
-        })
-        .from(notifications)
-        .leftJoin(user, eq(notifications.sender, user.id))
-
-        .leftJoin(userFeed, eq(notifications.feed, userFeed.id))
-        .leftJoin(
-          feedMetadataNotification,
-          eq(notifications.id, feedMetadataNotification.notification),
-        )
-        .where(
-          and(
-            eq(notifications.user, userId),
-            inArray(notifications.notificationType, feedTypes as any),
-            cursor ? lt(notifications.createdAt, new Date(cursor)) : undefined,
-          ),
-        )
-        .orderBy(desc(notifications.createdAt))
-        .limit(limit);
-
-      const result = await query;
-
-      return {
-        result,
-        nextCursor:
-          result.length === limit ? result[result.length - 1].createdAt : null,
-      };
+      if (!userId || !entityId) {
+        throw new GraphQLError("User ID and Entity ID are required.", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+      return await getUnreadCounts(userId, entityId);
     } catch (error) {
-      log.error("Error in getFeedNotifications", { error, userId });
-      throw error;
-    }
-  }
-
-  static async getCommunityNotifications({
-    db,
-    userId,
-    cursor,
-    limit = 10,
-  }: {
-    db: any;
-    userId: string;
-    cursor?: string;
-    limit?: number;
-  }) {
-    try {
-      const { lt, inArray } = await import("drizzle-orm");
-      const { communityMetadataNotification, groups } =
-        await import("@thrico/database");
-
-      log.debug("Getting community notifications", { userId, cursor, limit });
-
-      const communityTypes = [
-        "COMMUNITIES",
-        "COMMUNITY_CREATED",
-        "COMMUNITY_JOIN_REQUEST",
-        "COMMUNITY_RATING",
-        "COMMUNITY_ROLE_UPDATED",
-        "COMMUNITY_JOIN_APPROVED",
-      ];
-
-      const query = db
-        .select({
-          id: notifications.id,
-          notificationType: notifications.notificationType,
-          content: notifications.content,
-          isRead: notifications.isRead,
-          createdAt: notifications.createdAt,
-          sender: {
-            id: userToEntity.id,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            avatar: user.avatar,
-          },
-          community: {
-            id: groups.id,
-            title: groups.title,
-            slug: groups.slug,
-            cover: groups.cover,
-          },
-          metadata: communityMetadataNotification,
-        })
-        .from(notifications)
-        .leftJoin(userToEntity, eq(notifications.sender, userToEntity.id))
-        .leftJoin(user, eq(userToEntity.userId, user.id))
-        .leftJoin(
-          communityMetadataNotification,
-          eq(notifications.id, communityMetadataNotification.notification),
-        )
-        .leftJoin(
-          groups,
-          eq(communityMetadataNotification.community, groups.id),
-        )
-        .where(
-          and(
-            eq(notifications.user, userId),
-            inArray(notifications.notificationType, communityTypes as any),
-            cursor ? lt(notifications.createdAt, new Date(cursor)) : undefined,
-          ),
-        )
-        .orderBy(desc(notifications.createdAt))
-        .limit(limit);
-
-      const result = await query;
-
-      return {
-        result,
-        nextCursor:
-          result.length === limit ? result[result.length - 1].createdAt : null,
-      };
-    } catch (error) {
-      log.error("Error in getCommunityNotifications", { error, userId });
-      throw error;
-    }
-  }
-
-  static async getNetworkNotifications({
-    db,
-    userId,
-    cursor,
-    limit = 10,
-  }: {
-    db: any;
-    userId: string;
-    cursor?: string;
-    limit?: number;
-  }) {
-    try {
-      const { lt, inArray } = await import("drizzle-orm");
-
-      log.debug("Getting network notifications", { userId, cursor, limit });
-
-      const networkTypes = ["CONNECTION_REQUEST", "CONNECTION_ACCEPTED"];
-
-      const query = db
-        .select({
-          id: notifications.id,
-          notificationType: notifications.notificationType,
-          content: notifications.content,
-          isRead: notifications.isRead,
-          createdAt: notifications.createdAt,
-          sender: {
-            id: userToEntity.id,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            avatar: user.avatar,
-          },
-        })
-        .from(notifications)
-        .leftJoin(userToEntity, eq(notifications.sender, userToEntity.id))
-        .leftJoin(user, eq(userToEntity.userId, user.id))
-        .where(
-          and(
-            eq(notifications.user, userId),
-            inArray(notifications.notificationType, networkTypes as any),
-            cursor ? lt(notifications.createdAt, new Date(cursor)) : undefined,
-          ),
-        )
-        .orderBy(desc(notifications.createdAt))
-        .limit(limit);
-
-      const result = await query;
-
-      return {
-        result,
-        nextCursor:
-          result.length === limit ? result[result.length - 1].createdAt : null,
-      };
-    } catch (error) {
-      log.error("Error in getNetworkNotifications", { error, userId });
+      log.error("Error in getUnreadNotificationCounts", {
+        error,
+        userId,
+        entityId,
+      });
       throw error;
     }
   }

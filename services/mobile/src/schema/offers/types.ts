@@ -24,6 +24,10 @@ export const offersTypes = gql`
     user: entityUser
     userId: ID
     isActive: Boolean!
+    canReport: Boolean!
+    canDelete: Boolean!
+    canEdit: Boolean!
+    isOwner: Boolean!
     createdAt: Date!
     updatedAt: Date!
   }
@@ -53,27 +57,59 @@ export const offersTypes = gql`
 
   input GetOffersInput {
     categoryId: ID
-    offset: Int!
-    limit: Int!
+    cursor: String
+    limit: Int
     search: String
   }
 
-  type OffersResponse {
-    offers: [Offer!]!
+  type OfferEdge {
+    cursor: String!
+    node: Offer!
+  }
+
+  type OfferConnection {
+    edges: [OfferEdge!]!
+    pageInfo: PageInfo!
     totalCount: Int!
   }
 
+  type OfferStats {
+    viewsCount: Int!
+    claimsCount: Int!
+    sharesCount: Int!
+  }
+
+  input UpdateOfferInput {
+    title: String
+    description: String
+    image: Upload
+    discount: String
+    categoryId: ID
+    validityStart: String
+    validityEnd: String
+    location: JSON
+    company: JSON
+    timeline: JSON
+    termsAndConditions: String
+    website: String
+    isActive: Boolean
+  }
+
   extend type Query {
-    getOffers(input: GetOffersInput): OffersResponse!
-    getOffersByUserId(input: GetOffersInput): OffersResponse!
+    getOffers(input: GetOffersInput): OfferConnection!
+    getOffersByUserId(input: GetOffersInput): OfferConnection!
+    getMyOffers(input: GetOffersInput): OfferConnection!
     getOfferById(offerId: ID!): Offer!
     getOfferCategories: [OfferCategory!]!
+    getOfferStats(offerId: ID!): OfferStats!
   }
 
   extend type Mutation {
     createOffer(input: CreateOfferInput!): Offer!
+    editOffer(offerId: ID!, input: UpdateOfferInput!): Offer!
     claimOffer(offerId: ID!): Offer!
     trackOfferVisual(offerId: ID!): Boolean!
     shareOffer(offerId: ID!): Offer!
+    deleteOffer(offerId: ID!): Boolean!
   }
 `;

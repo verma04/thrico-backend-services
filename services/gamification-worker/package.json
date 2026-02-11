@@ -10,10 +10,10 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@thrico/database": "*",
-    "@thrico/logging": "*",
-    "@thrico/services": "^1.0.0",
-    "@thrico/shared": "*",
+    "@thrico/database": "workspace:*",
+    "@thrico/logging": "workspace:*",
+    "@thrico/services": "workspace:*",
+    "@thrico/shared": "workspace:*",
     "amqp-connection-manager": "^5.0.0",
     "amqplib": "^0.10.9",
     "dotenv": "^16.4.5",

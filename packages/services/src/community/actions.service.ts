@@ -25,6 +25,7 @@ import { BaseCommunityService } from "./base.service";
 import { CommunityQueryService } from "./query.service";
 import { GamificationEventService } from "../gamification/gamification-event.service";
 import { CommunityNotificationPublisher } from "./notification-publisher";
+import { NotificationService } from "../notification/notification.service";
 interface CommunityMemberPermissions {
   canEdit: boolean;
   canDelete: boolean;
@@ -674,27 +675,52 @@ export class CommunityActionsService {
     });
   }
 
-  private static async sendApprovalNotification(
+  private static async notifyManagersOfNewFeed(
     db: any,
     params: {
-      userId: string;
+      posterId: string;
       groupId: string;
       entityId: string;
-      requiresApproval: boolean;
+      status: string;
+      groupTitle: string;
     },
   ) {
-    if (!params.requiresApproval) return;
-
-    await BaseCommunityService.sendCommunityNotification({
-      db,
-      userId: params.userId,
-      groupId: params.groupId,
-      entityId: params.entityId,
-      type: "ADMIN_EVENT",
-      title: "New Post Requires Approval",
-      message: "A new post is waiting for approval in the community.",
-      actionUrl: `/community/${params.groupId}/pending-posts`,
+    const managers = await db.query.groupMember.findMany({
+      where: and(
+        eq(groupMember.groupId, params.groupId),
+        inArray(groupMember.role, ["ADMIN", "MANAGER"]),
+        eq(groupMember.memberStatusEnum, "ACCEPTED"),
+      ),
     });
+
+    const isPending = params.status === "PENDING";
+    const commNotifType = isPending
+      ? "POST_PENDING_COMMUNITY"
+      : "POST_CREATED_COMMUNITY";
+    const title = isPending
+      ? "New Post Requires Approval"
+      : "New Post in Community";
+    const message = isPending
+      ? `A new post in "${params.groupTitle}" requires your approval.`
+      : `A new post has been published in "${params.groupTitle}".`;
+
+    await Promise.all(
+      managers.map((manager: any) =>
+        NotificationService.createNotification({
+          db,
+          userId: manager.userId,
+          senderId: params.posterId,
+          entityId: params.entityId,
+          content: message,
+          module: "COMMUNITY",
+          type: commNotifType,
+          shouldSendPush: true,
+          pushTitle: title,
+          pushBody: message,
+          communityId: params.groupId,
+        }),
+      ),
+    );
   }
 
   // Invite members (email)
@@ -917,11 +943,12 @@ export class CommunityActionsService {
           .where(eq(groups.id, communityId));
       }
 
-      await this.sendApprovalNotification(db, {
-        userId,
+      await this.notifyManagersOfNewFeed(db, {
+        posterId: userId,
         groupId: communityId,
         entityId,
-        requiresApproval,
+        status,
+        groupTitle: community.title || "Community",
       });
 
       const permissions = this.calculatePermissions(true, member.role, true);

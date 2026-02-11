@@ -15,6 +15,7 @@ export const networkTypes = `#graphql
     mutualFriends: mutualFriends
     isFollowing: Boolean
     numberOfConnections: Int
+    isCloseFriend: Boolean
   }
 
   enum connectionStatus {
@@ -35,6 +36,7 @@ export const networkTypes = `#graphql
     avatar: String
     designation: String
     mutualFriends: mutualFriends
+    isCloseFriend: Boolean
   }
 
   type about {
@@ -188,6 +190,7 @@ export const networkTypes = `#graphql
     getConnectionRequests(input: NetworkCursorInput): ConnectionRequestConnection!
     getBlockedUsers(input: NetworkCursorInput): BlockedUserConnection!
     getConnectionStats: connectionStats
+    getCloseFriends(input: NetworkCursorInput): NetworkUserConnection!
   }
 
   extend type Mutation {
@@ -201,6 +204,8 @@ export const networkTypes = `#graphql
     unblockUser(input: blockUserInput): reportResponse
     followUser(input: followUserInput): followResponse
     unfollowUser(input: followUserInput): followResponse
+    addToCloseFriend(input: inputId): followResponse
+    removeFromCloseFriend(input: inputId): followResponse
   }
 
   enum BirthdayFilter {

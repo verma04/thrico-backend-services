@@ -1,1 +1,0 @@
-ALTER TABLE "userNotifications" ADD COLUMN "community_id" uuid;

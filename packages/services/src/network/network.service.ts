@@ -11,7 +11,9 @@ import {
   userReports,
   blockedUsers,
   userFollows,
+  closeFriends,
   AppDatabase,
+  incrementUnreadCount,
 } from "@thrico/database";
 import { GamificationEventService } from "../gamification/gamification-event.service";
 import { NotificationService } from "../notification/notification.service";
@@ -245,6 +247,12 @@ export class NetworkService {
                 )
               )
             )`.as("mutual_friends_count"),
+            isCloseFriend: sql<boolean>`EXISTS (
+              SELECT 1 FROM "closeFriends" cf
+              WHERE cf.user_id = ${currentUserId}
+              AND cf.friend_id = ${userToEntity.id}
+              AND cf.entity_id = ${entityId}
+            )`.as("is_close_friend"),
           })
           .from(userToEntity)
           .leftJoin(
@@ -284,6 +292,7 @@ export class NetworkService {
           and(
             ne(userStatus.id, currentUserId),
             eq(userStatus.entityId, entityId),
+            ne(userStatus.status, "CONNECTED"),
             searchCondition,
           ),
         )
@@ -350,8 +359,22 @@ export class NetworkService {
             entityId: userToEntity.entityId,
             firstName: user.firstName,
             lastName: user.lastName,
+            status: this.getConnectionStatusQuery(currentUserId),
           })
           .from(userToEntity)
+          .leftJoin(
+            connectionsRequest,
+            or(
+              and(
+                eq(userToEntity.id, connectionsRequest.receiver),
+                eq(connectionsRequest.sender, currentUserId),
+              ),
+              and(
+                eq(userToEntity.id, connectionsRequest.sender),
+                eq(connectionsRequest.receiver, currentUserId),
+              ),
+            ),
+          )
           .leftJoin(blockedUsers, this.getBlockedUsersCondition(currentUserId))
           .innerJoin(user, eq(userToEntity.userId, user.id))
           .where(sql`${blockedUsers.id} IS NULL`),
@@ -359,12 +382,13 @@ export class NetworkService {
 
       const [totalCountResult] = await db
         .with(countQuery)
-        .select({ value: count(countQuery.id) })
+        .select({ value: sql<number>`count(*)` })
         .from(countQuery)
         .where(
           and(
             ne(countQuery.id, currentUserId),
             eq(countQuery.entityId, entityId),
+            ne(countQuery.status, "CONNECTED"),
             search
               ? sql`(
             LOWER(${countQuery.firstName}) LIKE LOWER(${`%${search}%`}) OR
@@ -494,10 +518,23 @@ export class NetworkService {
 
       log.info("User profile retrieved", { currentUserId, profileId: id });
 
+      const [closeFriendStatus] = await db
+        .select()
+        .from(closeFriends)
+        .where(
+          and(
+            eq(closeFriends.userId, currentUserId),
+            eq(closeFriends.friendId, id),
+            eq(closeFriends.entityId, entityId),
+          ),
+        )
+        .limit(1);
+
       return {
         ...condition,
         status: query[0] ? query[0].status : "NO_CONNECTION",
         isFollowing: !!followStatus,
+        isCloseFriend: !!closeFriendStatus,
         mutualFriends: {
           count: mutualFriends.length,
           friends: mutualFriends,
@@ -603,10 +640,23 @@ export class NetworkService {
 
       log.info("User profile retrieved", { currentUserId, profileId: id });
 
+      const [closeFriendStatus] = await db
+        .select()
+        .from(closeFriends)
+        .where(
+          and(
+            eq(closeFriends.userId, currentUserId),
+            eq(closeFriends.friendId, id),
+            eq(closeFriends.entityId, entityId),
+          ),
+        )
+        .limit(1);
+
       return {
         ...condition,
         status: query[0] ? query[0].status : "NO_CONNECTION",
         isFollowing: !!followStatus,
+        isCloseFriend: !!closeFriendStatus,
         mutualFriends: {
           count: mutualFriends.length,
           friends: mutualFriends,
@@ -789,8 +839,9 @@ export class NetworkService {
         senderId: sender, // userToEntity.id
         entityId: entity,
         content: `${senderName} wants to connect with you.`,
-        notificationType: "CONNECTION_REQUEST",
-        imageUrl: senderRecord.user.avatar,
+        module: "NETWORK",
+        type: "CONNECTION_REQUEST",
+        isIncrementUnreadCount: false,
       });
 
       // C. Push Notification (uses global userId)
@@ -805,6 +856,8 @@ export class NetworkService {
           image: senderRecord.user.avatar,
         },
       });
+
+      await incrementUnreadCount("NETWORK", receiverRecord.userId, entity);
 
       return {
         id: id,
@@ -938,8 +991,9 @@ export class NetworkService {
           senderId: receiver, // Acceptor (userToEntity.id)
           entityId: entity,
           content: `${receiverName} accepted your connection request.`,
-          notificationType: "CONNECTION_ACCEPTED",
-          imageUrl: receiverRecord.user.avatar,
+          module: "NETWORK",
+          type: "CONNECTION_ACCEPTED",
+          isIncrementUnreadCount: true,
         });
 
         // C. Push Notification (uses global userId)
@@ -954,7 +1008,7 @@ export class NetworkService {
             image: receiverRecord.user.avatar,
           },
         });
-
+        await incrementUnreadCount("NETWORK", senderRecord.userId, entity);
         return { id: id, status: "CONNECTED" };
       } else {
         throw new GraphQLError("Failed to accept connection.", {
@@ -1125,6 +1179,24 @@ export class NetworkService {
                 eq(userFollows.followerId, targetUserId),
                 eq(userFollows.followingId, currentUserId),
                 eq(userFollows.entityId, entity),
+              ),
+            ),
+          );
+
+        await tx
+          .delete(closeFriends)
+          .where(
+            and(
+              eq(closeFriends.entityId, entity),
+              or(
+                and(
+                  eq(closeFriends.userId, currentUserId),
+                  eq(closeFriends.friendId, targetUserId),
+                ),
+                and(
+                  eq(closeFriends.userId, targetUserId),
+                  eq(closeFriends.friendId, currentUserId),
+                ),
               ),
             ),
           );
@@ -1481,6 +1553,24 @@ export class NetworkService {
           );
 
         await tx
+          .delete(closeFriends)
+          .where(
+            and(
+              eq(closeFriends.entityId, entityId),
+              or(
+                and(
+                  eq(closeFriends.userId, blockerId),
+                  eq(closeFriends.friendId, blockedUserId),
+                ),
+                and(
+                  eq(closeFriends.userId, blockedUserId),
+                  eq(closeFriends.friendId, blockerId),
+                ),
+              ),
+            ),
+          );
+
+        await tx
           .delete(userFollows)
           .where(
             and(
@@ -1819,6 +1909,12 @@ export class NetworkService {
           designation: aboutUser.headline,
           dob: userProfile.DOB,
           userId: user.id,
+          isCloseFriend: sql<boolean>`EXISTS (
+              SELECT 1 FROM "closeFriends" cf
+              WHERE cf.user_id = ${currentUserId}
+              AND cf.friend_id = ${userToEntity.id}
+              AND cf.entity_id = ${entityId}
+            )`.as("is_close_friend"),
           isOnline:
             sql`CASE WHEN ${userToEntity.lastActive} + interval '10 minutes' > now() THEN true ELSE false END`.as(
               "is_online",
@@ -2047,6 +2143,12 @@ export class NetworkService {
             ),
           connectedAt: connections.createdAt,
           status: sql<string>`'CONNECTED'`.as("status"),
+          isCloseFriend: sql<boolean>`EXISTS (
+              SELECT 1 FROM "closeFriends" cf
+              WHERE cf.user_id = ${currentUserId}
+              AND cf.friend_id = ${userToEntity.id}
+              AND cf.entity_id = ${entityId}
+            )`.as("is_close_friend"),
         })
         .from(connections)
         .innerJoin(
@@ -2248,6 +2350,12 @@ export class NetworkService {
           lastName: user.lastName,
           avatar: user.avatar,
           designation: aboutUser.headline,
+          isCloseFriend: sql<boolean>`EXISTS (
+              SELECT 1 FROM "closeFriends" cf
+              WHERE cf.user_id = ${currentUserId}
+              AND cf.friend_id = ${connectionsRequest.sender}
+              AND cf.entity_id = ${entityId}
+            )`.as("is_close_friend"),
         })
         .from(connectionsRequest)
         .innerJoin(userToEntity, eq(connectionsRequest.sender, userToEntity.id))
@@ -2837,6 +2945,246 @@ export class NetworkService {
         followingId,
         entityId,
       });
+      throw error;
+    }
+  }
+
+  public static async addToCloseFriends({
+    db,
+    userId,
+    friendId,
+    entityId,
+  }: {
+    db: any;
+    userId: string;
+    friendId: string;
+    entityId: string;
+  }) {
+    try {
+      if (!userId || !friendId || !entityId) {
+        throw new GraphQLError(
+          "User ID, Friend ID, and Entity ID are required.",
+          {
+            extensions: { code: "BAD_USER_INPUT" },
+          },
+        );
+      }
+
+      const [user1Record, user2Record] = await Promise.all([
+        db.query.userToEntity.findFirst({
+          where: eq(userToEntity.id, userId),
+          with: { user: true },
+        }),
+        db.query.userToEntity.findFirst({
+          where: eq(userToEntity.id, friendId),
+        }),
+      ]);
+
+      if (!user1Record || !user2Record) {
+        throw new GraphQLError("User not found.", {
+          extensions: { code: "NOT_FOUND" },
+        });
+      }
+
+      await db.insert(closeFriends).values({
+        userId: userId,
+        friendId: friendId,
+        entityId: entityId,
+      });
+
+      log.info("Added to close friends", { userId, friendId, entityId });
+      return { success: true, message: "Added to close friends" };
+    } catch (error) {
+      log.error("Error in addToCloseFriends", {
+        error,
+        userId,
+        friendId,
+        entityId,
+      });
+      throw error;
+    }
+  }
+
+  public static async removeFromCloseFriends({
+    db,
+    userId,
+    friendId,
+    entityId,
+  }: {
+    db: any;
+    userId: string;
+    friendId: string;
+    entityId: string;
+  }) {
+    try {
+      if (!userId || !friendId || !entityId) {
+        throw new GraphQLError(
+          "User ID, Friend ID, and Entity ID are required.",
+          {
+            extensions: { code: "BAD_USER_INPUT" },
+          },
+        );
+      }
+
+      const [user1Record, user2Record] = await Promise.all([
+        db.query.userToEntity.findFirst({
+          where: eq(userToEntity.id, userId),
+        }),
+        db.query.userToEntity.findFirst({
+          where: eq(userToEntity.id, friendId),
+        }),
+      ]);
+
+      if (!user1Record || !user2Record) {
+        throw new GraphQLError("User not found.", {
+          extensions: { code: "NOT_FOUND" },
+        });
+      }
+
+      const user1 = user1Record.userId;
+      const user2 = user2Record.userId;
+
+      await db
+        .delete(closeFriends)
+        .where(
+          and(
+            eq(closeFriends.userId, userId),
+            eq(closeFriends.friendId, friendId),
+            eq(closeFriends.entityId, entityId),
+          ),
+        );
+
+      log.info("Removed from close friends", { userId, friendId, entityId });
+      return { success: true, message: "Removed from close friends" };
+    } catch (error) {
+      log.error("Error in removeFromCloseFriends", {
+        error,
+        userId,
+        friendId,
+        entityId,
+      });
+      throw error;
+    }
+  }
+
+  public static async getCloseFriends({
+    db,
+    currentUserId,
+    entityId,
+    cursor,
+    limit = 10,
+    search = "",
+  }: {
+    db: any;
+    currentUserId: string;
+    entityId: string;
+    limit?: number;
+    cursor?: string | null;
+    search?: string;
+  }) {
+    try {
+      if (!currentUserId || !entityId) {
+        throw new GraphQLError("User ID and Entity ID are required.", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+
+      const userRecord = await db.query.userToEntity.findFirst({
+        where: eq(userToEntity.id, currentUserId),
+      });
+
+      if (!userRecord) {
+        throw new GraphQLError("User not found.", {
+          extensions: { code: "NOT_FOUND" },
+        });
+      }
+
+      const globalUserId = userRecord.userId;
+
+      const calculatedOffset = cursor
+        ? parseInt(
+            Buffer.from(cursor, "base64").toString("ascii").split(":")[1],
+          )
+        : 0;
+
+      const closeFriendsQuery = db.$with("close_friends_cte").as(
+        db
+          .select({
+            id: userToEntity.id,
+            entityId: userToEntity.entityId,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            avatar: user.avatar,
+            cover: user.cover,
+            designation: aboutUser.headline,
+            isOnline:
+              sql`CASE WHEN ${userToEntity.lastActive} + interval '10 minutes' > now() THEN true ELSE false END`.as(
+                "is_online",
+              ),
+            isCloseFriend: true,
+          })
+          .from(closeFriends)
+          .innerJoin(
+            userToEntity,
+            and(
+              eq(userToEntity.id, closeFriends.friendId),
+              eq(userToEntity.entityId, entityId),
+            ),
+          )
+          .innerJoin(user, eq(userToEntity.userId, user.id))
+          .innerJoin(aboutUser, eq(userToEntity.userId, aboutUser.userId))
+          .where(
+            and(
+              eq(closeFriends.userId, currentUserId),
+              eq(closeFriends.entityId, entityId),
+            ),
+          ),
+      );
+
+      const searchCondition = search
+        ? sql`(
+            LOWER(${closeFriendsQuery.firstName}) LIKE LOWER(${`%${search}%`}) OR
+            LOWER(${closeFriendsQuery.lastName}) LIKE LOWER(${`%${search}%`}) OR
+            LOWER(CONCAT(${closeFriendsQuery.firstName}, ' ', ${
+              closeFriendsQuery.lastName
+            })) LIKE LOWER(${`%${search}%`})
+          )`
+        : sql`true`;
+
+      const data = await db
+        .with(closeFriendsQuery)
+        .select()
+        .from(closeFriendsQuery)
+        .where(searchCondition)
+        .limit(limit + 1)
+        .offset(calculatedOffset);
+
+      const hasNextPage = data.length > limit;
+      const nodes = hasNextPage ? data.slice(0, limit) : data;
+
+      const edges = nodes.map((node: any, index: number) => ({
+        cursor: Buffer.from(`offset:${calculatedOffset + index + 1}`).toString(
+          "base64",
+        ),
+        node,
+      }));
+
+      const [totalCountResult] = await db
+        .with(closeFriendsQuery)
+        .select({ value: count() })
+        .from(closeFriendsQuery)
+        .where(searchCondition);
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount: totalCountResult?.value || 0,
+      };
+    } catch (error) {
+      log.error("Error in getCloseFriends", { error, currentUserId, entityId });
       throw error;
     }
   }

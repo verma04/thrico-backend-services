@@ -20,6 +20,7 @@ import {
   celebration,
   offers,
   userToEntity,
+  communityFeed,
 } from "@thrico/database";
 import { log } from "@thrico/logging";
 import type { FeedQueryParams } from "./types";
@@ -174,12 +175,33 @@ export class FeedQueryService {
             title: groups.title,
             cover: groups.cover,
           },
+          job: {
+            id: jobs.id,
+            title: jobs.title,
+            company: jobs.company,
+            description: jobs.description,
+            location: jobs.location,
+            jobType: jobs.jobType,
+            workplaceType: jobs.workplaceType,
+          },
+          listing: {
+            id: marketPlace.id,
+            title: marketPlace.title,
+            description: marketPlace.description,
+            price: marketPlace.price,
+            currency: marketPlace.currency,
+            location: marketPlace.location,
+            category: marketPlace.category,
+            createdAt: marketPlace.createdAt,
+          },
         })
         .from(userFeed)
         .leftJoin(user, eq(userFeed.userId, user.id))
         .leftJoin(groups, eq(userFeed.groupId, groups.id))
         .leftJoin(offers, eq(userFeed.offerId, offers.id))
         .leftJoin(aboutUser, eq(user.id, aboutUser.userId))
+        .leftJoin(marketPlace, eq(userFeed.marketPlaceId, marketPlace.id))
+        .leftJoin(jobs, eq(userFeed.jobId, jobs.id))
         .where(and(...conditions))
         .orderBy(
           desc(userFeed.isPinned),
@@ -275,6 +297,11 @@ export class FeedQueryService {
             category: marketPlace.category,
             createdAt: marketPlace.createdAt,
           },
+
+          poll: {
+            id: polls.id,
+            title: polls.title,
+          },
         })
         .from(userFeed)
         .leftJoin(user, eq(userFeed.userId, user.id))
@@ -283,6 +310,7 @@ export class FeedQueryService {
         .leftJoin(aboutUser, eq(user.id, aboutUser.userId))
         .leftJoin(marketPlace, eq(userFeed.marketPlaceId, marketPlace.id))
         .leftJoin(jobs, eq(userFeed.jobId, jobs.id))
+        .leftJoin(polls, eq(userFeed.pollId, polls.id))
         .where(eq(userFeed.id, feedId))
         .limit(1);
 
@@ -326,6 +354,7 @@ export class FeedQueryService {
       const result = await db
         .select({
           ...fields,
+          communityfeedId: communityFeed.id,
           group: {
             id: groups.id,
             title: groups.title,
@@ -337,6 +366,7 @@ export class FeedQueryService {
         .leftJoin(groups, eq(userFeed.groupId, groups.id))
         .leftJoin(offers, eq(userFeed.offerId, offers.id))
         .leftJoin(aboutUser, eq(user.id, aboutUser.userId))
+        .leftJoin(communityFeed, eq(userFeed.id, communityFeed.userFeedId))
         .where(and(...conditions))
         .orderBy(desc(userFeed.createdAt))
         .limit(limit + 1);

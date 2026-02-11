@@ -12,6 +12,7 @@ import slugify from "slugify";
 import { GraphQLError } from "graphql";
 import { log } from "@thrico/logging";
 import { GamificationEventService } from "../gamification/gamification-event.service";
+import { CloseFriendNotificationService } from "../network/closefriend-notification.service";
 
 export class EventsService {
   constructor(private db: any) {}
@@ -64,8 +65,8 @@ export class EventsService {
       //   embedding = await this.generateEmbedding(textForEmbedding);
       // }
 
-      await this.db.transaction(async (tx: any) => {
-        await tx
+      const [newEvent] = await this.db.transaction(async (tx: any) => {
+        return await tx
           .insert(events)
           .values({
             ...input,
@@ -78,6 +79,22 @@ export class EventsService {
           })
           .returning();
       });
+
+      if (newEvent) {
+        // CloseFriendNotificationService.publishNotificationTask({
+        //   creatorId: id,
+        //   entityId,
+        //   type: "EVENT",
+        //   contentId: newEvent.id,
+        //   title: newEvent.title || "New Event",
+        // }).catch((err: any) => {
+        //   log.error("Failed to trigger close friend event notification", {
+        //     userId: id,
+        //     eventId: newEvent.id,
+        //     error: err.message,
+        //   });
+        // });
+      }
 
       // Gamification trigger
       await GamificationEventService.triggerEvent({
@@ -158,7 +175,7 @@ export class EventsService {
       }));
       scored.sort((a: any, b: any) => b.trendingScore - a.trendingScore);
       const trendingIds = new Set(
-        scored.slice(0, trendingCount).map((e: any) => e.id)
+        scored.slice(0, trendingCount).map((e: any) => e.id),
       );
       const final = eventsList.map((e: any) => ({
         ...e,
@@ -210,7 +227,7 @@ export class EventsService {
         where: and(
           eq(eventsWishList.eventId, eventId),
           eq(eventsWishList.userId, userId),
-          eq(eventsWishList.entityId, entityId)
+          eq(eventsWishList.entityId, entityId),
         ),
       });
 
@@ -241,8 +258,8 @@ export class EventsService {
           .where(
             and(
               eq(eventsWishList.eventId, eventId),
-              eq(eventsWishList.userId, userId)
-            )
+              eq(eventsWishList.userId, userId),
+            ),
           );
         return {
           status: false,
@@ -291,7 +308,7 @@ export class EventsService {
       const isWishList = await this.db.query.eventsWishList.findFirst({
         where: and(
           eq(eventsWishList.eventId, eventId),
-          eq(eventsWishList.userId, currentUserId)
+          eq(eventsWishList.userId, currentUserId),
         ),
       });
 

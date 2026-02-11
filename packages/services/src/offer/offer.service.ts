@@ -9,6 +9,7 @@ import {
 } from "@thrico/database";
 import { upload } from "../upload";
 import { GamificationEventService } from "../gamification/gamification-event.service";
+import { CloseFriendNotificationService } from "../network/closefriend-notification.service";
 
 export class OfferService {
   static async createOffer({
@@ -75,6 +76,21 @@ export class OfferService {
         title: input.title,
       });
 
+      // Close Friend Notification
+      // CloseFriendNotificationService.publishNotificationTask({
+      //   creatorId: userId,
+      //   entityId,
+      //   type: "OFFER",
+      //   contentId: newOffer.id,
+      //   title: input.title || "New Offer",
+      // }).catch((err: any) => {
+      //   log.error("Failed to trigger close friend offer notification", {
+      //     userId,
+      //     offerId: newOffer.id,
+      //     error: err.message,
+      //   });
+      // });
+
       return newOffer;
     } catch (error) {
       log.error("Error in createOfferService", { error, userId, entityId });
@@ -82,27 +98,59 @@ export class OfferService {
     }
   }
 
+  public static attachPermissions(
+    offer: any,
+    currentUserId?: string,
+    role?: string,
+  ) {
+    if (!currentUserId) {
+      return {
+        ...offer,
+        isOwner: false,
+        canEdit: false,
+        canDelete: false,
+        canReport: false,
+      };
+    }
+
+    return {
+      ...offer,
+      isOwner: offer.userId === currentUserId,
+      canEdit:
+        offer.userId === currentUserId ||
+        role === "ADMIN" ||
+        role === "MANAGER",
+      canDelete:
+        offer.userId === currentUserId ||
+        role === "ADMIN" ||
+        role === "MANAGER",
+      canReport: offer.userId !== currentUserId,
+    };
+  }
+
   static async getApprovedOffers({
     entityId,
     db,
-    page,
-    limit,
+    cursor,
+    limit = 10,
     categoryId,
     search,
+    currentUserId,
+    role,
   }: {
     entityId: string;
     db: any;
-    page: number;
-    limit: number;
+    cursor?: string;
+    limit?: number;
     categoryId?: string;
     search?: string;
+    currentUserId?: string;
+    role?: string;
   }) {
     try {
-      const offset = page * limit;
-
       log.debug("Getting approved offers", {
         entityId,
-        page,
+        cursor,
         limit,
         categoryId,
       });
@@ -123,10 +171,13 @@ export class OfferService {
         );
       }
 
+      if (cursor) {
+        whereConditions.push(sql`${offers.createdAt} < ${new Date(cursor)}`);
+      }
+
       const results = await db.query.offers.findMany({
         where: and(...whereConditions),
-        limit,
-        offset,
+        limit: limit + 1,
         orderBy: [desc(offers.createdAt)],
         with: {
           category: true,
@@ -134,25 +185,52 @@ export class OfferService {
         },
       });
 
-      const processedResults = results.map((offer: any) => ({
-        ...offer,
-        user: offer.creator,
-        addedBy: offer.creator
-          ? `${offer.creator.firstName} ${offer.creator.lastName}`
-          : "User",
-      }));
+      const hasNextPage = results.length > limit;
+      const nodes = hasNextPage ? results.slice(0, limit) : results;
+
+      const processedResults = nodes.map((offer: any) => {
+        const result = {
+          ...offer,
+          user: offer.creator,
+          addedBy: offer.creator
+            ? `${offer.creator.firstName} ${offer.creator.lastName}`
+            : "User",
+        };
+        return this.attachPermissions(result, currentUserId, role);
+      });
 
       const [{ count }] = await db
         .select({ count: sql<number>`count(*)` })
         .from(offers)
-        .where(and(...whereConditions));
+        .where(
+          and(
+            eq(offers.entityId, entityId),
+            eq(offers.status, "APPROVED"),
+            eq(offers.isActive, true),
+            categoryId ? eq(offers.categoryId, categoryId) : sql`TRUE`,
+          ),
+        );
+
+      const edges = processedResults.map((offer: any) => ({
+        cursor: offer.createdAt.toISOString(),
+        node: offer,
+      }));
 
       return {
-        offers: processedResults,
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
         totalCount: Number(count),
       };
     } catch (error) {
-      log.error("Error in getApprovedOffers", { error, entityId, page, limit });
+      log.error("Error in getApprovedOffers", {
+        error,
+        entityId,
+        cursor,
+        limit,
+      });
       throw error;
     }
   }
@@ -309,22 +387,24 @@ export class OfferService {
     userId,
     entityId,
     db,
-    page,
-    limit,
+    cursor,
+    limit = 10,
+    currentUserId,
+    role,
   }: {
     userId: string;
     entityId: string;
     db: any;
-    page: number;
-    limit: number;
+    cursor?: string;
+    limit?: number;
+    currentUserId?: string;
+    role?: string;
   }) {
     try {
-      const offset = (page - 1) * limit;
-
       log.debug("Getting offers by user id", {
         userId,
         entityId,
-        page,
+        cursor,
         limit,
       });
 
@@ -334,10 +414,13 @@ export class OfferService {
         eq(offers.isActive, true),
       ];
 
+      if (cursor) {
+        whereConditions.push(sql`${offers.createdAt} < ${new Date(cursor)}`);
+      }
+
       const results = await db.query.offers.findMany({
         where: and(...whereConditions),
-        limit,
-        offset,
+        limit: limit + 1,
         orderBy: [desc(offers.createdAt)],
         with: {
           category: true,
@@ -345,21 +428,42 @@ export class OfferService {
         },
       });
 
-      const processedResults = results.map((offer: any) => ({
-        ...offer,
-        user: offer.creator,
-        addedBy: offer.creator
-          ? `${offer.creator.firstName} ${offer.creator.lastName}`
-          : "User",
-      }));
+      const hasNextPage = results.length > limit;
+      const nodes = hasNextPage ? results.slice(0, limit) : results;
+
+      const processedResults = nodes.map((offer: any) => {
+        const result = {
+          ...offer,
+          user: offer.creator,
+          addedBy: offer.creator
+            ? `${offer.creator.firstName} ${offer.creator.lastName}`
+            : "User",
+        };
+        return this.attachPermissions(result, currentUserId, role);
+      });
 
       const [{ count }] = await db
         .select({ count: sql<number>`count(*)` })
         .from(offers)
-        .where(and(...whereConditions));
+        .where(
+          and(
+            eq(offers.entityId, entityId),
+            eq(offers.userId, userId),
+            eq(offers.isActive, true),
+          ),
+        );
+
+      const edges = processedResults.map((offer: any) => ({
+        cursor: offer.createdAt.toISOString(),
+        node: offer,
+      }));
 
       return {
-        offers: processedResults,
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
         totalCount: Number(count),
       };
     } catch (error) {
@@ -367,7 +471,7 @@ export class OfferService {
         error,
         userId,
         entityId,
-        page,
+        cursor,
         limit,
       });
       throw error;
@@ -378,10 +482,14 @@ export class OfferService {
     offerId,
     entityId,
     db,
+    currentUserId,
+    role,
   }: {
     offerId: string;
     entityId: string;
     db: any;
+    currentUserId?: string;
+    role?: string;
   }) {
     try {
       log.debug("Getting offer by id", { offerId, entityId });
@@ -400,15 +508,164 @@ export class OfferService {
         });
       }
 
-      return {
+      const resultWithDetails = {
         ...result,
         user: result.creator,
         addedBy: result.creator
           ? `${result.creator.firstName} ${result.creator.lastName}`
           : "User",
       };
+
+      return this.attachPermissions(resultWithDetails, currentUserId, role);
     } catch (error) {
       log.error("Error in getOfferById", { error, offerId, entityId });
+      throw error;
+    }
+  }
+
+  static async updateOffer({
+    offerId,
+    input,
+    userId,
+    entityId,
+    db,
+  }: {
+    offerId: string;
+    input: any;
+    userId: string;
+    entityId: string;
+    db: AppDatabase;
+  }) {
+    try {
+      log.debug("Updating offer", { offerId, userId, entityId });
+
+      const existingOffer = await db.query.offers.findFirst({
+        where: and(eq(offers.id, offerId), eq(offers.entityId, entityId)),
+      });
+
+      if (!existingOffer) {
+        throw new GraphQLError("Offer not found", {
+          extensions: { code: "NOT_FOUND" },
+        });
+      }
+
+      if (existingOffer.userId !== userId) {
+        throw new GraphQLError("Not authorized to update this offer", {
+          extensions: { code: "FORBIDDEN" },
+        });
+      }
+
+      let imageUrl = input.image;
+      if (input.image && typeof input.image !== "string") {
+        imageUrl = await upload(input.image);
+      }
+
+      const updateData: any = {
+        ...input,
+        updatedAt: new Date(),
+      };
+
+      if (imageUrl) {
+        updateData.image = imageUrl;
+      }
+
+      if (input.validityStart) {
+        updateData.validityStart = new Date(input.validityStart);
+      }
+      if (input.validityEnd) {
+        updateData.validityEnd = new Date(input.validityEnd);
+      }
+
+      const [updatedOffer] = await db
+        .update(offers)
+        .set(updateData)
+        .where(eq(offers.id, offerId))
+        .returning();
+
+      log.info("Offer updated successfully", { offerId, userId });
+      return updatedOffer;
+    } catch (error) {
+      log.error("Error in updateOfferService", { error, offerId, userId });
+      throw error;
+    }
+  }
+
+  static async deleteOffer({
+    offerId,
+    userId,
+    entityId,
+    db,
+  }: {
+    offerId: string;
+    userId: string;
+    entityId: string;
+    db: any;
+  }) {
+    try {
+      log.debug("Deleting offer", { offerId, userId, entityId });
+
+      const existingOffer = await db.query.offers.findFirst({
+        where: and(eq(offers.id, offerId), eq(offers.entityId, entityId)),
+      });
+
+      if (!existingOffer) {
+        throw new GraphQLError("Offer not found", {
+          extensions: { code: "NOT_FOUND" },
+        });
+      }
+
+      if (existingOffer.userId !== userId) {
+        throw new GraphQLError("Not authorized to delete this offer", {
+          extensions: { code: "FORBIDDEN" },
+        });
+      }
+
+      await db
+        .update(offers)
+        .set({
+          isActive: false,
+          updatedAt: new Date(),
+        })
+        .where(eq(offers.id, offerId));
+
+      log.info("Offer deleted successfully", { offerId, userId });
+      return true;
+    } catch (error) {
+      log.error("Error in deleteOffer", { error, offerId, userId });
+      throw error;
+    }
+  }
+
+  static async getOfferStats({
+    offerId,
+    entityId,
+    db,
+  }: {
+    offerId: string;
+    entityId: string;
+    db: AppDatabase;
+  }) {
+    try {
+      log.debug("Getting offer stats", { offerId, entityId });
+
+      const result = await db.query.offers.findFirst({
+        where: and(eq(offers.id, offerId), eq(offers.entityId, entityId)),
+        columns: {
+          viewsCount: true,
+          claimsCount: true,
+          sharesCount: true,
+        },
+      });
+
+      if (!result) {
+        throw new GraphQLError("Offer not found", {
+          extensions: { code: "NOT_FOUND" },
+        });
+      }
+
+      return result;
+    } catch (error) {
+      log.error("Error in getOfferStats", { error, offerId, entityId });
       throw error;
     }
   }

@@ -23,7 +23,8 @@ export class JobNotificationService {
           userId: jobData.postedBy,
           senderId: userId,
           entityId: jobData.entityId,
-          notificationType: "JOB_APPLICATION",
+          module: "JOB",
+          type: "JOB_APPLICATION",
           content: `${name} applied for your job "${jobData.title}".`,
           shouldSendPush: true,
           pushTitle: "New Job Application",
@@ -43,7 +44,8 @@ export class JobNotificationService {
         userId,
         senderId: jobData.postedBy || undefined, // Sent by job poster or system
         entityId: jobData.entityId,
-        notificationType: "JOB_APPLIED",
+        module: "JOB",
+        type: "JOB_APPLIED",
         content: `You have successfully applied for "${jobData.title}".`,
         shouldSendPush: true,
         pushTitle: "Application Submitted",
@@ -83,7 +85,8 @@ export class JobNotificationService {
         db,
         userId,
         entityId,
-        notificationType: "JOB_POSTED",
+        module: "JOB",
+        type: "JOB_POSTED",
         content: `Your job "${jobTitle}" has been posted successfully.`,
         shouldSendPush: true,
         pushTitle: "Job Posted",
@@ -107,6 +110,115 @@ export class JobNotificationService {
         jobId,
         userId,
       });
+    }
+  }
+
+  static async notifyJobLike({
+    db,
+    userId,
+    senderId,
+    entityId,
+    jobId,
+    jobTitle,
+    likerName,
+  }: {
+    db: any;
+    userId: string;
+    senderId: string;
+    entityId: string;
+    jobId: string;
+    jobTitle: string;
+    likerName: string;
+  }) {
+    try {
+      await NotificationService.createNotification({
+        db,
+        userId,
+        senderId,
+        entityId,
+        module: "JOB",
+        type: "JOB_LIKE",
+        content: `${likerName} liked your job posting "${jobTitle}".`,
+        shouldSendPush: true,
+        pushTitle: "Job Liked",
+        pushBody: `${likerName} liked your job "${jobTitle}"`,
+        jobId,
+      }).catch((err) => {
+        log.error("Failed to send job like notification", {
+          userId,
+          jobId,
+          error: err.message,
+        });
+      });
+
+      log.info("Job like notification sent", { userId, jobId });
+    } catch (error: any) {
+      log.error("Error in notifyJobLike", {
+        error: error.message,
+        jobId,
+        userId,
+      });
+    }
+  }
+
+  static async getJobNotifications({
+    db,
+    userId,
+    cursor,
+    limit = 10,
+  }: {
+    db: any;
+    userId: string;
+    cursor?: string;
+    limit?: number;
+  }) {
+    try {
+      const { lt, desc, and, eq } = await import("drizzle-orm");
+      const { jobNotifications, user, userToEntity, jobs } =
+        await import("@thrico/database");
+
+      log.debug("Getting job notifications", { userId, cursor, limit });
+
+      const query = db
+        .select({
+          id: jobNotifications.id,
+          type: jobNotifications.type,
+          content: jobNotifications.content,
+          isRead: jobNotifications.isRead,
+          createdAt: jobNotifications.createdAt,
+          sender: {
+            id: userToEntity.id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            avatar: user.avatar,
+          },
+          job: jobs,
+        })
+        .from(jobNotifications)
+        .leftJoin(userToEntity, eq(jobNotifications.senderId, userToEntity.id))
+        .leftJoin(user, eq(userToEntity.userId, user.id))
+        .leftJoin(jobs, eq(jobNotifications.jobId, jobs.id))
+        .where(
+          and(
+            eq(jobNotifications.userId, userId),
+            cursor
+              ? lt(jobNotifications.createdAt, new Date(cursor))
+              : undefined,
+          ),
+        )
+        .orderBy(desc(jobNotifications.createdAt))
+        .limit(limit);
+
+      const result = await query;
+
+      return {
+        result,
+        nextCursor:
+          result.length === limit ? result[result.length - 1].createdAt : null,
+      };
+    } catch (error) {
+      log.error("Error in getJobNotifications", { error, userId });
+      throw error;
     }
   }
 }

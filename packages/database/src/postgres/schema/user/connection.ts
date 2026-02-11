@@ -8,6 +8,7 @@ import {
   unique,
   uniqueIndex,
   uuid,
+  boolean,
 } from "drizzle-orm/pg-core";
 import { user, userToEntity } from "./member/user";
 import { entity } from "../tenant";
@@ -28,8 +29,9 @@ export const connections = pgTable(
     user2: uuid("user2_id").notNull(),
     entity: uuid("entity_id").notNull(),
     connectionStatusEnum: connectionStatusEnum(
-      "connectionStatusEnum"
+      "connectionStatusEnum",
     ).notNull(),
+    isCloseFriend: boolean("is_close_friend").default(false),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
   },
@@ -37,7 +39,7 @@ export const connections = pgTable(
     return {
       unq: unique().on(table.user1, table.user2, table.entity),
     };
-  }
+  },
 );
 
 export const connectionsRelations = relations(connections, ({ one, many }) => ({
@@ -65,7 +67,7 @@ export const connectionsRequest = pgTable(
     receiver: uuid("receiver_id").notNull(),
     entity: uuid("entity_id").notNull(),
     connectionStatusEnum: connectionStatusEnum(
-      "connectionStatusEnum"
+      "connectionStatusEnum",
     ).notNull(),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
@@ -74,7 +76,7 @@ export const connectionsRequest = pgTable(
     return {
       unq: unique().on(table.sender, table.receiver, table.entity),
     };
-  }
+  },
 );
 
 export const connectionRequestRelations = relations(
@@ -92,7 +94,7 @@ export const connectionRequestRelations = relations(
       fields: [connectionsRequest.entity],
       references: [entity.id],
     }),
-  })
+  }),
 );
 
 export const userReports = pgTable(
@@ -112,7 +114,7 @@ export const userReports = pgTable(
     return {
       unq: unique().on(table.reporterId, table.reportedUserId, table.entityId),
     };
-  }
+  },
 );
 
 export const userReportsRelations = relations(userReports, ({ one }) => ({
@@ -145,7 +147,7 @@ export const blockedUsers = pgTable(
     return {
       unq: unique().on(table.blockerId, table.blockedUserId, table.entityId),
     };
-  }
+  },
 );
 
 export const blockedUsersRelations = relations(blockedUsers, ({ one }) => ({
@@ -178,7 +180,7 @@ export const userFollows = pgTable(
     return {
       unq: unique().on(table.followerId, table.followingId, table.entityId),
     };
-  }
+  },
 );
 
 export const userFollowsRelations = relations(userFollows, ({ one }) => ({
@@ -194,6 +196,39 @@ export const userFollowsRelations = relations(userFollows, ({ one }) => ({
   }),
   entity: one(entity, {
     fields: [userFollows.entityId],
+    references: [entity.id],
+  }),
+}));
+
+export const closeFriends = pgTable(
+  "closeFriends",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull(),
+    friendId: uuid("friend_id").notNull(),
+    entityId: uuid("entity_id").notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => {
+    return {
+      unq: unique().on(table.userId, table.friendId, table.entityId),
+    };
+  },
+);
+
+export const closeFriendsRelations = relations(closeFriends, ({ one }) => ({
+  user: one(userToEntity, {
+    relationName: "close_friend_user",
+    fields: [closeFriends.userId],
+    references: [userToEntity.id],
+  }),
+  friend: one(userToEntity, {
+    relationName: "close_friend_friend",
+    fields: [closeFriends.friendId],
+    references: [userToEntity.id],
+  }),
+  entity: one(entity, {
+    fields: [closeFriends.entityId],
     references: [entity.id],
   }),
 }));

@@ -187,6 +187,7 @@ export const feedTypes = `#graphql
     source: String
     media: [String]
     group: group
+
     privacy: feedPrivacy
     job: jobFeed
     offer: Offer
@@ -206,6 +207,7 @@ export const feedTypes = `#graphql
     permissions: feedPermissions
     communityFeedData: communityFeedData
     surveyId: ID  
+    communityfeedId: ID
     }
 
   type communityFeedData {
@@ -228,7 +230,7 @@ export const feedTypes = `#graphql
     # checkUserOnline: status # Commented out to avoid conflict if it exists
     getUserActivityFeed(input: inputId!): [feed]
     getMyFeed(input: FeedCursorInput): FeedConnection!
-    # getCommunitiesFeedList(input: FeedCursorInput, id: ID!): FeedConnection!
+
     getFeedStats(input: GetFeedStatsInput!): FeedStats!
     getFeedReactions(input: GetFeedReactionsInput!): [FeedReaction!]!
     getFeedActivityByUserId(userId: ID!, input: FeedCursorInput): FeedConnection!

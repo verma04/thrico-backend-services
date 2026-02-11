@@ -24,18 +24,7 @@ import uploadVideo from "./uploadVideo";
 import { NotificationService } from "../notification/notification.service";
 import { NotificationAggregatorService } from "../notification/notification-aggregator.service";
 import { ModerationPublisher } from "../utils/moderation-publisher";
-
-const uploadVideoPlaceholder = async (video: any) => {
-  log.warn(
-    "uploadVideo is a placeholder. Please implement actual video upload logic.",
-  );
-  return null as {
-    filename: string;
-    url: string;
-    size: number;
-    mimetype: string;
-  } | null;
-};
+import { CloseFriendNotificationService } from "../network/closefriend-notification.service";
 
 export class FeedMutationService {
   // Add new feed
@@ -248,6 +237,22 @@ export class FeedMutationService {
           contentId: feed.id,
           contentType: "POST",
           text: input?.description || "",
+        });
+
+        // Close Friend Notification
+        CloseFriendNotificationService.publishNotificationTask({
+          creatorId: userId,
+          entityId,
+          module: "FEED",
+          type: "FEED_POST",
+          contentId: feed.id,
+          title: input?.description || input?.poll?.title || "New post",
+        }).catch((err: any) => {
+          log.error("Failed to trigger close friend feed notification", {
+            userId,
+            feedId: feed.id,
+            error: err.message,
+          });
         });
       }
 
@@ -817,37 +822,12 @@ export class FeedMutationService {
             senderId: currentUserId,
             entityId: entity,
             content,
-            notificationType: "FEED_REPOST",
-            feedId: input.feedId,
-            shouldSendPush: false, // We'll send push manually
-            imageUrl: reposter.avatar || undefined,
-          });
-
-          // Store metadata
-          const { feedMetadataNotification } = await import("@thrico/database");
-          await db.insert(feedMetadataNotification).values({
-            user: originalFeed.userId,
-            feed: input.feedId,
+            module: "FEED",
             type: "FEED_REPOST",
-            notification: notification.id,
-            content,
-            actors: [currentUserId],
-            count: 1,
-          });
-
-          // Send push notification
-          await NotificationService.sendPushNotification({
-            userId: originalFeed.userId,
-            entityId: entity,
-            title: "New Repost",
-            body: content,
-            payload: {
-              notificationType: "FEED_REPOST",
-              feedId: input.feedId,
-              notificationId: notification.id,
-              count: 1,
-              imageUrl: reposter.avatar || undefined,
-            },
+            feedId: input.feedId,
+            shouldSendPush: true,
+            pushTitle: "New Repost",
+            pushBody: content,
           });
 
           log.info("Repost notification sent", {
@@ -856,6 +836,23 @@ export class FeedMutationService {
             feedId: input.feedId,
           });
         }
+      }
+
+      if (feed) {
+        // Close Friend Notification for Repost
+        // CloseFriendNotificationService.publishNotificationTask({
+        //   creatorId: currentUserId,
+        //   entityId: entity,
+        //   type: "FEED",
+        //   contentId: feed.id,
+        //   title: input?.description || "Reposted a post",
+        // }).catch((err: any) => {
+        //   log.error("Failed to trigger close friend repost notification", {
+        //     userId: currentUserId,
+        //     feedId: feed.id,
+        //     error: err.message,
+        //   });
+        // });
       }
 
       return feed;

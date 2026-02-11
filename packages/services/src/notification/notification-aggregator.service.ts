@@ -1,11 +1,6 @@
 import { REDIS_KEYS } from "@thrico/shared";
 import { log } from "@thrico/logging";
-import {
-  redis,
-  userToEntity,
-  user,
-  feedMetadataNotification,
-} from "@thrico/database";
+import { redis, userToEntity, user } from "@thrico/database";
 import { eq, inArray } from "drizzle-orm";
 import { NotificationService } from "./notification.service";
 
@@ -251,7 +246,8 @@ export class NotificationAggregatorService {
         senderId: actorIds[0],
         entityId,
         content,
-        notificationType: type,
+        module: "FEED",
+        type: type,
         feedId,
         shouldSendPush: false, // We'll send push manually below
         imageUrl: actors[0].avatar || undefined,
@@ -261,16 +257,7 @@ export class NotificationAggregatorService {
         notificationId: notification.id,
       });
 
-      // Store feed notification metadata with actor list
-      await db.insert(feedMetadataNotification).values({
-        user: recipientId,
-        feed: feedId,
-        type,
-        notification: notification.id,
-        content,
-        actors: actorIds,
-        count: actorIds.length,
-      });
+      // feedMetadataNotification removed as it's no longer used in new schema
 
       log.info("✅ Metadata inserted");
 

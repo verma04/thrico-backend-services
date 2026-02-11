@@ -1,6 +1,6 @@
 import { log } from "@thrico/logging";
 import { GraphQLError } from "graphql";
-import { and, eq, gt, inArray, or, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, or, sql, desc } from "drizzle-orm";
 import {
   stories,
   connections,
@@ -10,6 +10,10 @@ import {
 } from "@thrico/database";
 import { upload } from "../upload";
 import { GamificationEventService } from "../gamification/gamification-event.service";
+import {
+  CloseFriendNotificationService,
+  Module,
+} from "../network/closefriend-notification.service";
 
 export class StoryService {
   static async createStory({
@@ -72,6 +76,22 @@ export class StoryService {
 
       log.info("Story created", { userId, storyId: story.id, entityId });
 
+      // Close Friend Notification
+      CloseFriendNotificationService.publishNotificationTask({
+        creatorId: userId,
+        module: "FEED",
+        entityId,
+        type: "STORY",
+        contentId: userId,
+        title: caption || "New Story",
+      }).catch((err: any) => {
+        log.error("Failed to trigger close friend story notification", {
+          userId,
+          storyId: story.id,
+          error: err.message,
+        });
+      });
+
       // Gamification trigger
       await GamificationEventService.triggerEvent({
         triggerId: "tr-story-create",
@@ -91,10 +111,14 @@ export class StoryService {
     db,
     userId,
     entityId,
+    cursor,
+    limit = 10,
   }: {
     db: any;
     userId: string;
     entityId: string;
+    cursor?: string | null;
+    limit?: number;
   }) {
     try {
       if (!userId || !entityId) {
@@ -103,20 +127,35 @@ export class StoryService {
         });
       }
 
-      log.debug("Getting stories grouped by connections", { userId, entityId });
+      log.debug("Getting stories grouped by connections", {
+        userId,
+        entityId,
+        cursor,
+        limit,
+      });
 
-      const connectionsRows = await db
+      const now = new Date();
+
+      // 1. Get friend IDs (bidirectional connections)
+      const friendIdsSubquery = db
         .select({
-          connectionId: connections.id,
-          connectionUserId: sql<string>`
-            CASE 
-              WHEN ${connections.user1} = ${userId} THEN ${connections.user2}
-              ELSE ${connections.user1}
-            END
-          `.as("connectionUserId"),
-          connectedAt: connections.createdAt,
+          friendId: user.id,
         })
         .from(connections)
+        .innerJoin(
+          userToEntity,
+          or(
+            and(
+              eq(connections.user1, userId),
+              eq(connections.user2, userToEntity.id),
+            ),
+            and(
+              eq(connections.user2, userId),
+              eq(connections.user1, userToEntity.id),
+            ),
+          ),
+        )
+        .innerJoin(user, eq(userToEntity.userId, user.id))
         .where(
           and(
             eq(connections.entity, entityId),
@@ -125,115 +164,90 @@ export class StoryService {
           ),
         );
 
-      const connectionUserIds = connectionsRows.map(
-        (row: any) => row.connectionUserId,
-      );
-      log.debug("Found connections", {
-        userId,
-        count: connectionUserIds.length,
-      });
-
-      if (connectionUserIds.length === 0) {
-        log.info("No connections found", { userId, entityId });
-        return [];
-      }
-
-      console.log(connectionUserIds);
-
-      const now = new Date();
-      const rows = await db
+      // 2. Query to get users with their stories
+      const baseQuery = db
         .select({
-          id: userToEntity.id,
+          id: user.id,
           firstName: user.firstName,
           lastName: user.lastName,
           avatar: user.avatar,
-          cover: user.cover,
-          designation: aboutUser.headline,
-          isOnline: sql`
-            CASE WHEN ${userToEntity.lastActive} + interval '10 minutes' > now() 
-            THEN true ELSE false END
-          `.as("is_online"),
-          connectedAt: connections.createdAt,
-          status: sql<string>`'CONNECTED'`.as("status"),
-          storyId: stories.id,
-          image: stories.image,
-          caption: stories.caption,
-          textOverlays: stories.textOverlays,
-          createdAt: stories.createdAt,
-          expiresAt: stories.expiresAt,
-          isActive: stories.isActive,
+          headline: aboutUser.headline,
+          lastStoryCreatedAt: sql<Date>`MAX(${stories.createdAt})`.as(
+            "last_story_created_at",
+          ),
+          stories: sql<any[]>`JSON_AGG(
+            JSON_BUILD_OBJECT(
+              'id', ${stories.id},
+              'image', ${stories.image},
+              'caption', ${stories.caption},
+              'textOverlays', ${stories.textOverlays},
+              'createdAt', ${stories.createdAt},
+              'expiresAt', ${stories.expiresAt}
+            ) ORDER BY ${stories.createdAt} ASC
+          )`.as("user_stories"),
         })
-        .from(userToEntity)
-        .innerJoin(user, eq(userToEntity.userId, user.id))
-        .leftJoin(aboutUser, eq(userToEntity.userId, aboutUser.userId))
-        .innerJoin(
-          connections,
-          or(
-            and(
-              eq(connections.user1, userId),
-              eq(connections.user2, userToEntity.userId),
-            ),
-            and(
-              eq(connections.user2, userId),
-              eq(connections.user1, userToEntity.userId),
-            ),
-          ),
-        )
-        .leftJoin(
-          stories,
-          and(
-            eq(stories.userId, userToEntity.userId),
-            gt(stories.expiresAt, now),
-            eq(stories.isActive, true),
-          ),
-        )
+        .from(stories)
+        .innerJoin(user, eq(stories.userId, user.id))
+        .innerJoin(aboutUser, eq(user.id, aboutUser.userId))
         .where(
           and(
-            eq(userToEntity.entityId, entityId),
-            inArray(userToEntity.userId, connectionUserIds),
+            inArray(stories.userId, friendIdsSubquery),
+            eq(stories.entity, entityId),
+            eq(stories.isActive, true),
+            gt(stories.expiresAt, now),
           ),
         )
-        .orderBy(userToEntity.id, stories.createdAt);
+        .groupBy(
+          user.id,
+          user.firstName,
+          user.lastName,
+          user.avatar,
+          aboutUser.headline,
+        );
 
-      const grouped: Record<string, any> = {};
-      for (const row of rows) {
-        if (!grouped[row.id]) {
-          grouped[row.id] = {
-            user: {
-              id: row.id,
-              firstName: row.firstName,
-              lastName: row.lastName,
-              avatar: row.avatar,
-              cover: row.cover,
-              designation: row.designation,
-              isOnline: row.isOnline,
-              connectedAt: row.connectedAt,
-              status: row.status,
+      // 3. Apply cursor and ordering
+      let query = baseQuery.orderBy(desc(sql`last_story_created_at`));
+
+      // if (cursor) {
+      //   const cursorDate = new Date(cursor);
+      //   query = query.having(sql`MAX(${stories.createdAt}) < ${cursorDate}`);
+      // }
+
+      const results = await query.limit(limit + 1);
+
+      console.log(results);
+
+      // const hasNextPage = results.length > limit;
+      // const data = hasNextPage ? results.slice(0, limit) : results;
+
+      const edges = results.map((item: any) => ({
+        cursor: item.lastStoryCreatedAt.toISOString(),
+        node: {
+          user: {
+            id: item.id,
+            firstName: item.firstName,
+            lastName: item.lastName,
+            avatar: item.avatar,
+            about: {
+              headline: item.headline,
             },
-            stories: [],
-          };
-        }
-        if (row.storyId) {
-          grouped[row.id].stories.push({
-            id: row.storyId,
-            image: row.image,
-            caption: row.caption,
-            textOverlays: row.textOverlays,
-            createdAt: row.createdAt,
-            expiresAt: row.expiresAt,
-            isActive: row.isActive,
-          });
-        }
-      }
+          },
+          stories: item.stories,
+        },
+      }));
 
-      const result = Object.values(grouped).filter(
-        (item) => item.stories.length > 0,
-      );
       log.info("Stories grouped by connections retrieved", {
         userId,
-        groupCount: result.length,
+        count: results.length,
       });
-      return result;
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage: false,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+      };
     } catch (error) {
       log.error("Error in getStoriesGroupedByConnections", {
         error,

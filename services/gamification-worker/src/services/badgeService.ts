@@ -1,7 +1,7 @@
 import { userBadges } from "@thrico/database";
 import { and, eq } from "drizzle-orm";
 import { log } from "@thrico/logging";
-import { NotificationService } from "./notificationService";
+import { GamificationNotificationService } from "@thrico/services";
 import { AppDatabase } from "@thrico/database";
 
 export class BadgeService {
@@ -45,18 +45,14 @@ export class BadgeService {
             userId: gUser.user,
             badgeName: badge.name,
           });
-          await NotificationService.sendGamificationNotification(
-            db, // Pass the DB connection (could be tx if compatible, but let's pass db for read mostly)
-            gUser.user, // The auth user ID
-            gUser.entityId,
-            {
-              type: "BADGE_EARNED",
-              title: "Badge Earned!",
-              message: `You earned the ${badge.name} badge!`,
-              badge: badge,
-            },
-            gUser.id,
-          );
+          await GamificationNotificationService.notifyBadgeUnlocked({
+            db,
+            userId: gUser.user,
+            entityId: gUser.entityId,
+            badgeName: badge.name,
+            badgeDescription: badge.description,
+            badgeImageUrl: badge.icon,
+          });
         }
       } else if (!userBadge.isCompleted) {
         const newProgress = userBadge.progress + 1;
@@ -82,18 +78,14 @@ export class BadgeService {
             userId: gUser.user,
             badgeName: badge.name,
           });
-          await NotificationService.sendGamificationNotification(
+          await GamificationNotificationService.notifyBadgeUnlocked({
             db,
-            gUser.user,
-            gUser.entityId,
-            {
-              type: "BADGE_EARNED",
-              title: "Badge Earned!",
-              message: `You earned the ${badge.name} badge!`,
-              badge: badge,
-            },
-            gUser.id,
-          );
+            userId: gUser.user,
+            entityId: gUser.entityId,
+            badgeName: badge.name,
+            badgeDescription: badge.description,
+            badgeImageUrl: badge.icon,
+          });
         }
       }
     }

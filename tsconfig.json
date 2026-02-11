@@ -23,7 +23,9 @@
       "@thrico/grpc": ["./packages/grpc/src"],
       "@thrico/grpc/*": ["./packages/grpc/src/*"],
       "@thrico/logging": ["./packages/logging/src"],
-      "@thrico/logging/*": ["./packages/logging/src/*"]
+      "@thrico/logging/*": ["./packages/logging/src/*"],
+      "@thrico/services": ["./packages/services/src"],
+      "@thrico/services/*": ["./packages/services/src/*"]
     }
   },
   "exclude": ["node_modules", "dist", "**/*.test.ts"]

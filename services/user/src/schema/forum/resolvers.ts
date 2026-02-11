@@ -13,10 +13,16 @@ export const forumResolvers = {
       }
     },
 
-    async discussionPostedByMe(_: any, { input }: any, context: any) {
+    async discussionPostedByMe(_: any, { cursor, limit }: any, context: any) {
       try {
         const { db, entityId, userId } = await checkAuth(context);
-        return ForumService.discussionPostedByMe({ db, entityId, userId });
+        return ForumService.discussionPostedByMe({
+          db,
+          entityId,
+          userId,
+          cursor,
+          limit,
+        });
       } catch (error) {
         throw error;
       }
@@ -25,13 +31,14 @@ export const forumResolvers = {
     async getDiscussionForum(_: any, { input }: any, context: any) {
       try {
         const { db, entityId, userId } = await checkAuth(context);
-        const { status } = input;
-        console.log("status", status);
+        const { status, cursor, limit } = input || {};
         return ForumService.getDiscussionForum({
           db,
           entityId,
           userId,
           status,
+          cursor,
+          limit,
         });
       } catch (error) {
         throw error;
@@ -56,10 +63,12 @@ export const forumResolvers = {
     async getDiscussionForumComments(_: any, { input }: any, context: any) {
       try {
         const { db } = await checkAuth(context);
-        const { id } = input;
+        const { id, cursor, limit } = input;
         return ForumService.getDiscussionForumComments({
           db,
           discussionForumId: id,
+          cursor,
+          limit,
         });
       } catch (error) {
         throw error;

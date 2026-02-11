@@ -1,0 +1,27 @@
+{
+  "name": "notification-worker",
+  "version": "1.0.0",
+  "description": "Thrico Notification Worker - Processes asynchronous notification tasks",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "nodemon --exec tsx src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@thrico/database": "workspace:*",
+    "@thrico/logging": "workspace:*",
+    "@thrico/services": "workspace:*",
+    "@thrico/shared": "workspace:*",
+    "amqp-connection-manager": "^5.0.0",
+    "amqplib": "^0.10.9",
+    "dotenv": "^16.4.5",
+    "firebase-admin": "^13.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0",
+    "tsx": "^4.7.1",
+    "typescript": "^5.3.3"
+  }
+}

@@ -203,8 +203,20 @@ export class AuthService {
 
       const themeData = themeResult.toJSON()[0] || null;
 
-      // Clear old session if sessionId is provided
+      // Get old session details if sessionId is provided
+      let oldSessionDetails: any = null;
       if (currentSessionId) {
+        try {
+          const sessionResult = await USER_LOGIN_SESSION.query("id")
+            .eq(currentSessionId)
+            .exec();
+          if (sessionResult.count > 0) {
+            oldSessionDetails = sessionResult[0].toJSON();
+          }
+        } catch (e) {
+          log.warn("Failed to fetch old session details", { error: e });
+        }
+
         try {
           await USER_LOGIN_SESSION.delete({ id: currentSessionId });
           log.debug("Old session cleared during switchAccount", {
@@ -221,20 +233,34 @@ export class AuthService {
 
       const sessionId = `session-${Date.now()}`;
 
-      // Use helper or Model directly
-      let loginSession = await LoginSessionModel.create({
+      const deviceId = oldSessionDetails?.device_id;
+      const deviceToken = oldSessionDetails?.deviceToken;
+      const deviceName = oldSessionDetails?.deviceName;
+
+      console.log({
+        oldSessionDetails,
         id: sessionId,
         userId: entity.id,
-        device_id: input.device_id,
-        deviceToken: input.deviceToken,
-        deviceName: input.deviceName,
+        device_id: deviceId,
+        deviceToken: deviceToken,
+        deviceName: deviceName,
+        activeEntityId: input.entityId,
+        token: uuidv4(),
+      });
+      // Use helper or Model directly
+      await USER_LOGIN_SESSION.create({
+        id: sessionId,
+        userId: entity.id,
+        device_id: deviceId,
+        deviceToken: deviceToken,
+        deviceName: deviceName,
         activeEntityId: input.entityId,
         token: uuidv4(),
       });
 
-      // Generate JWT token using injected function
+      //  Generate JWT token using injected function
       const token = await generateJwtTokenFn({
-        sessionId: loginSession.id || loginSession.toJSON().id,
+        sessionId: sessionId,
         entityId: input.entityId,
         userId: entity.userId,
         id: entity.id,
@@ -578,7 +604,6 @@ export class AuthService {
         country: input.country,
       });
 
-      console.log("generate", generate, input);
       this.updateSession({
         sessionId: sessionID,
         input: {

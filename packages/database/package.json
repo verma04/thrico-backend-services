@@ -19,8 +19,8 @@
     "ioredis": "^5.3.2",
     "postgres": "^3.4.3",
     "uuid": "^9.0.1",
-    "@thrico/shared": "*",
-    "@thrico/logging": "*"
+    "@thrico/shared": "workspace:*",
+    "@thrico/logging": "workspace:*"
   },
   "devDependencies": {
     "@types/uuid": "^9.0.7",

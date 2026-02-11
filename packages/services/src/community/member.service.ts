@@ -1,6 +1,6 @@
 import { log } from "@thrico/logging";
 import { GraphQLError } from "graphql";
-import { eq, and, sql, desc, count, inArray, asc } from "drizzle-orm";
+import { and, count, desc, eq, inArray, lt, or, sql, asc } from "drizzle-orm";
 import {
   AppDatabase,
   communityActivityLog,
@@ -42,7 +42,7 @@ export class CommunityMemberService {
     currentUserId,
     entityId,
     db,
-    page = 1,
+    cursor,
     limit = 20,
     role,
     searchTerm,
@@ -52,7 +52,7 @@ export class CommunityMemberService {
     currentUserId: string;
     entityId: string;
     db: AppDatabase;
-    page?: number;
+    cursor?: string;
     limit?: number;
     role?: "ADMIN" | "MANAGER" | "MODERATOR" | "USER";
     searchTerm?: string;
@@ -71,7 +71,7 @@ export class CommunityMemberService {
       log.debug("Getting community members with roles", {
         groupId,
         currentUserId,
-        page,
+        cursor,
         limit,
         role,
       });
@@ -130,7 +130,7 @@ export class CommunityMemberService {
         );
       }
 
-      const offset = (page - 1) * limit;
+      const { userToEntity } = await import("@thrico/database");
 
       const members = await db
         .select({
@@ -139,11 +139,15 @@ export class CommunityMemberService {
           role: groupMember.role,
           joinedAt: groupMember.createdAt,
           user: {
-            id: user?.id,
-            firstName: user?.firstName,
-            lastName: user?.lastName,
-            avatar: user?.avatar,
+            id: user.id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            avatar: user.avatar,
+            email: user.email,
+            isActive: user.isActive,
+            fullName: sql<string>`CONCAT(${user.firstName}, ' ', ${user.lastName})`,
           },
+          lastActivityAt: userToEntity.lastActive,
           isCurrentUser: sql<boolean>`${groupMember.userId} = ${currentUserId}`,
           canEdit: sql<boolean>`${
             isCurrentUserAdmin ||
@@ -160,9 +164,16 @@ export class CommunityMemberService {
         })
         .from(groupMember)
         .innerJoin(user, eq(user.id, groupMember.userId))
+        .leftJoin(
+          userToEntity,
+          and(
+            eq(userToEntity.userId, user.id),
+            eq(userToEntity.entityId, entityId),
+          ),
+        )
         .where(and(...searchConditions))
-        .limit(limit)
-        .offset(offset);
+        .orderBy(desc(groupMember.createdAt))
+        .limit(limit);
 
       const roleStats = await db
         .select({
@@ -190,24 +201,32 @@ export class CommunityMemberService {
         roleStatistics[stat.role] = stat.count;
       });
 
-      const totalPages = Math.ceil(totalCount.value / limit);
-
       log.info("Community members retrieved", {
         groupId,
         count: members.length,
         total: totalCount.value,
       });
 
+      const nextCursor =
+        members.length === limit
+          ? members[members.length - 1].joinedAt?.toISOString()
+          : null;
+
+      const edges = members.map((m) => ({
+        cursor: m.joinedAt?.toISOString() || "",
+        node: m,
+      }));
+
       return {
-        members,
-        roleStatistics,
-        pagination: {
-          currentPage: page,
-          totalPages,
-          totalCount: totalCount.value,
-          limit,
-          hasNextPage: page < totalPages,
-          hasPreviousPage: page > 1,
+        edges,
+        totalCount: totalCount.value,
+        pageInfo: {
+          endCursor: nextCursor,
+          hasNextPage: !!nextCursor,
+        },
+        roleStatistics: {
+          ...roleStatistics,
+          total: totalCount.value,
         },
         permissions: {
           isCurrentUserAdmin,

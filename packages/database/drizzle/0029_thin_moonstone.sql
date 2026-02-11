@@ -1,1 +1,0 @@
-ALTER TABLE "communityMetadataNotifications" ADD COLUMN "imageUrl" text;

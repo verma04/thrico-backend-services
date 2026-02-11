@@ -13,6 +13,7 @@ export const pollTypes = `#graphql
     isVoted: Boolean
     votedOptionId: ID
     user: user
+    isOwner: Boolean
   }
 
   enum resultVisibility {
@@ -46,11 +47,6 @@ export const pollTypes = `#graphql
     pollId: String
   }
 
-  type Query {
-    getPollByIdForUser(input: inputGetPollByIdForUser!): polls
-    getAllPolls(input: inputGetAllPolls): [polls]
-  }
-
   input inputGetAllPolls {
     offset: Int
     limit: Int
@@ -60,6 +56,36 @@ export const pollTypes = `#graphql
     pollId: String!
     optionId: String!
   }
+
+  type PollVoter {
+    id: ID
+    user: user
+    votedOption: options
+    votedAt: Date
+  }
+
+  type Pagination {
+    nextCursor: String
+    hasNextPage: Boolean
+  }
+
+  type PollVotersResponse {
+    data: [PollVoter]
+    pagination: Pagination
+  }
+
+  input inputGetPollVoters {
+    pollId: String!
+    cursor: String
+    limit: Int
+  }
+
+  type Query {
+    getPollByIdForUser(input: inputGetPollByIdForUser!): polls
+    getAllPolls(input: inputGetAllPolls): [polls]
+    getPollVoters(input: inputGetPollVoters!): PollVotersResponse
+  }
+
   type Mutation {
     voteOnPoll(input: inputVoteOnPoll): polls
   }

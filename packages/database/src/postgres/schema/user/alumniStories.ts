@@ -18,7 +18,7 @@ export const userStoryCategoryRelations = relations(
       fields: [userStoryCategory.entity],
       references: [entity.id],
     }),
-  })
+  }),
 );
 export const userStory = pgTable("userStory", {
   id: uuid("id").defaultRandom().primaryKey(),

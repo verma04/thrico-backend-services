@@ -1,5 +1,6 @@
 import { GraphQLError } from "graphql";
-import jwt from "jsonwebtoken";
+import * as jwt from "jsonwebtoken";
+import { log } from "@thrico/logging";
 import { decryptToken } from "../crypto/jwt.crypto";
 import { getDb } from "@thrico/database";
 import { ENV, DatabaseRegion } from "@thrico/shared";
@@ -15,7 +16,12 @@ export interface middlewareUser {
   [key: string]: any;
 }
 
+const authCache = new WeakMap<any, any>();
+
 const checkAuth = async (context: any): Promise<any> => {
+  if (context && authCache.has(context)) {
+    return authCache.get(context);
+  }
   if (!context.headers?.authorization) {
     throw new GraphQLError("Permission Denied", {
       extensions: {
@@ -35,12 +41,32 @@ const checkAuth = async (context: any): Promise<any> => {
           token,
           process.env.JWT_TOKEN ||
             process.env.JWT_SECRET ||
-            String(ENV.JWT_SECRET)
+            String(ENV.JWT_SECRET),
         ) as middlewareUser;
 
         const db = getDb(userToken.country);
-        return { ...userToken, db };
+
+        if (!userToken.sessionId) {
+          log.error("Authentication failed: Session ID missing in token", {
+            userId: userToken.userId,
+            country: userToken.country,
+          });
+          throw new GraphQLError("Permission Denied: Session ID missing", {
+            extensions: {
+              code: 403,
+              http: { status: 403 },
+            },
+          });
+        }
+
+        // console.log("userToken", userToken);
+        const result = { ...userToken, db };
+        if (context) {
+          authCache.set(context, result);
+        }
+        return result;
       } catch (err) {
+        if (err instanceof GraphQLError) throw err;
         throw new GraphQLError("Invalid/Expired token", {
           extensions: {
             code: 403,

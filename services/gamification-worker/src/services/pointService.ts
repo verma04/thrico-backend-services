@@ -11,7 +11,7 @@ import {
 import { and, eq, lte, desc, sql } from "drizzle-orm";
 import { Redis } from "ioredis";
 import { log } from "@thrico/logging";
-import { NotificationService } from "./notificationService";
+import { GamificationNotificationService } from "@thrico/services";
 
 export class PointService {
   static async awardPoints(
@@ -228,18 +228,13 @@ export class PointService {
 
     // Send notification if points were awarded
     if (totalAwardedPoints > 0) {
-      await NotificationService.sendGamificationNotification(
-        tx, // Pass transaction context
-        gUser.user,
-        gUser.entityId,
-        {
-          type: "POINTS_EARNED",
-          title: "Points Earned!",
-          message: `You earned ${totalAwardedPoints} points!`,
-          points: totalAwardedPoints,
-        },
-        gUser.id,
-      );
+      await GamificationNotificationService.notifyPointsEarned({
+        db: tx,
+        userId: gUser.user,
+        entityId: gUser.entityId,
+        points: totalAwardedPoints,
+        reason: "completing actions",
+      });
     }
 
     return { totalAwardedPoints, finalTotalPoints };
@@ -278,18 +273,12 @@ export class PointService {
         rank: nextRank.name,
       });
 
-      await NotificationService.sendGamificationNotification(
+      await GamificationNotificationService.notifyRankUp({
         db,
-        gUser.user,
+        userId: gUser.user,
         entityId,
-        {
-          type: "RANK_UP",
-          title: "Rank Up!",
-          message: `You've been promoted to ${nextRank.name}!`,
-          rank: nextRank,
-        },
-        gUser.id,
-      );
+        newRank: nextRank.name,
+      });
     }
   }
 
@@ -330,18 +319,14 @@ export class PointService {
           badgeName: badge.name,
         });
 
-        await NotificationService.sendGamificationNotification(
+        await GamificationNotificationService.notifyBadgeUnlocked({
           db,
-          gUser.user,
+          userId: gUser.user,
           entityId,
-          {
-            type: "BADGE_EARNED",
-            title: "Badge Earned!",
-            message: `You earned the ${badge.name} badge!`,
-            badge: badge,
-          },
-          gUser.id,
-        );
+          badgeName: badge.name,
+          badgeDescription: badge.description,
+          badgeImageUrl: badge.icon,
+        });
       }
     }
   }

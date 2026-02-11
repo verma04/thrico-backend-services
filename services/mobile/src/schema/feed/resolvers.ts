@@ -9,7 +9,6 @@ import {
   aboutUser,
   groups,
   offers,
-  feedMetadataNotification,
 } from "@thrico/database"; // Changed import to @thrico/database
 import { and, asc, desc, eq, or, sql } from "drizzle-orm";
 import { GraphQLError } from "graphql";
@@ -21,13 +20,14 @@ import {
   FeedPollService,
   CommunityActionsService,
   NotificationService,
+  OfferService,
 } from "@thrico/services";
 import { log } from "@thrico/logging";
 
 const feedResolvers: any = {
   Query: {
     async getAllOffer(_: any, { input }: any, context: any) {
-      const { db, entityId } = await checkAuth(context);
+      const { db, entityId, userId, role } = await checkAuth(context);
       // input.status can be "all", "active", or "inactive"
       let whereClause = undefined;
 
@@ -42,7 +42,9 @@ const feedResolvers: any = {
         .where(whereClause)
         .orderBy(desc(offers.createdAt));
 
-      return result;
+      return result.map((offer: any) =>
+        OfferService.attachPermissions(offer, userId, role),
+      );
     },
     async getFeed(_: any, { input }: any, context: any) {
       let userId: string = "";
@@ -201,23 +203,23 @@ const feedResolvers: any = {
       }
     },
 
-    async getCommunitiesFeedList(_: any, { input }: any, context: any) {
+    async getCommunitiesFeedList(_: any, { input, id }: any, context: any) {
       let userId: string = "";
       try {
         const { userId: uid, db, entityId } = await checkAuth(context);
         userId = uid;
         const { cursor, limit } = input || {};
 
-        // const data = await CommunityActionsService.getCommunityFeeds({
-        //   communityId: input?.id,
-        //   currentUserId: userId,
-        //   limit,
-        //   cursor,
-        //   entityId: entityId,
-        //   db,
-        // });
+        const data = await FeedQueryService.getCommunitiesFeedList({
+          id,
+          currentUserId: userId,
+          limit,
+          cursor,
+          entity: entityId,
+          db,
+        });
 
-        // return data;
+        return data;
       } catch (error) {
         log.error("Error in getCommunitiesFeedList", { error, userId, input });
         throw error;
@@ -321,10 +323,14 @@ const feedResolvers: any = {
       try {
         const data = await checkAuth(context);
 
-        return FeedPollService.getPollByIdForUser({
+        const poll = await FeedPollService.getPollByIdForUser({
           input,
           ...data,
         });
+
+        console.log(poll);
+
+        return poll;
       } catch (error) {
         log.error("Error in getPollByIdForUser", { error, input });
         throw error;
@@ -399,6 +405,21 @@ const feedResolvers: any = {
         });
       } catch (error) {
         log.error("Error in getAllPolls", { error, userId, input });
+        throw error;
+      }
+    },
+    async getPollVoters(_: any, { input }: any, context: any) {
+      try {
+        const { db } = await checkAuth(context);
+
+        return await FeedPollService.getPollVoters({
+          pollId: input.pollId,
+          cursor: input.cursor,
+          limit: input.limit,
+          db,
+        });
+      } catch (error) {
+        log.error("Error in getPollVoters", { error, input });
         throw error;
       }
     },

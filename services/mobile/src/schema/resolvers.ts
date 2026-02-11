@@ -146,11 +146,12 @@ export const resolvers = {
     async chooseAccount(_: any, { input }: any, context: any) {
       try {
         const db = getDatabase();
-        return AuthService.chooseAccount({
+        const data = await AuthService.chooseAccount({
           input,
           db,
           generateJwtTokenFn: generateJwtToken,
         });
+        return data;
       } catch (error) {
         log.error("Error in chooseAccount", { error, userId: input?.userId });
         throw error;
@@ -178,6 +179,7 @@ export const resolvers = {
       try {
         const { db, userId, sessionId } =
           context.user || (await checkAuth(context));
+
         return AuthService.switchAccount({
           db,
           userId,

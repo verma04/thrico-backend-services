@@ -15,7 +15,10 @@ export {
 } from "./notification/firebase";
 export { MentorshipService } from "./mentorship/mentorship.service";
 export { NetworkService } from "./network/network.service";
+export { CloseFriendNotificationService } from "./network/closefriend-notification.service";
+export { NetworkNotificationService } from "./network/network-notification.service";
 export { JobService } from "./job/job.service";
+export { JobNotificationService } from "./job/job.notification.service";
 
 export { ForumService } from "./forum/forum.service";
 export { UserService } from "./user/user.service";
@@ -35,12 +38,14 @@ export { CommunityMediaService } from "./community/media.service";
 export { CommunityActionsService } from "./community/actions.service";
 export { CommunityAnalyticsService } from "./community/analytics.service";
 export { CommunityNotificationPublisher } from "./community/notification-publisher";
+export { CommunityNotificationService } from "./community/community-notification.service";
 export { CommunityService } from "./community/community.service";
 export { ListingNotificationPublisher } from "./listing/listing-notification-publisher";
 export { FeedQueryService } from "./feed/feed-query.service";
 export { FeedMutationService } from "./feed/feed-mutation.service";
 export { FeedPollService } from "./feed/feed-poll.service";
 export { FeedStatsService } from "./feed/feed-stats.service";
+export { FeedNotificationService } from "./feed/feed-notification.service";
 export { EventsService } from "./events/events.service";
 export { EventSpeakerService } from "./events/event-speaker.service";
 export { EventTeamService } from "./events/event-team.service";
@@ -50,6 +55,7 @@ export { OfferService } from "./offer/offer.service";
 
 export { GamificationQueryService } from "./gamification/gamification-query.service";
 export { GamificationEventService } from "./gamification/gamification-event.service";
+export { GamificationNotificationService } from "./gamification/gamification-notification.service";
 export { default as generateSlug } from "./generateSlug";
 export * from "./utils/common.utils";
 export { upload } from "./upload";

@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { ENV, ErrorCode } from "../constants";
 import { JWTPayload, AuthTokens, ApiError } from "../types";
 
@@ -16,7 +16,7 @@ export async function hashPassword(password: string): Promise<string> {
  */
 export async function verifyPassword(
   password: string,
-  hash: string
+  hash: string,
 ): Promise<boolean> {
   return bcrypt.compare(password, hash);
 }
@@ -34,7 +34,7 @@ export function generateTokens(payload: JWTPayload): AuthTokens {
   const refreshToken = jwt.sign(
     { userId: payload.userId },
     String(ENV.JWT_REFRESH_SECRET),
-    { expiresIn: String(ENV.JWT_REFRESH_EXPIRES_IN) }
+    { expiresIn: String(ENV.JWT_REFRESH_EXPIRES_IN) },
   );
 
   // Calculate expiry in seconds
@@ -82,7 +82,7 @@ export function verifyRefreshToken(token: string): { userId: string } {
 export function createError(
   code: ErrorCode,
   message: string,
-  details?: any
+  details?: any,
 ): ApiError {
   return {
     code,
@@ -147,7 +147,7 @@ export function formatGraphQLError(error: any): ApiError {
   return createError(
     ErrorCode.INTERNAL_SERVER_ERROR,
     error.message || "An unexpected error occurred",
-    ENV.NODE_ENV === "development" ? error : undefined
+    ENV.NODE_ENV === "development" ? error : undefined,
   );
 }
 
@@ -157,7 +157,7 @@ export function formatGraphQLError(error: any): ApiError {
 export function calculatePaginationMeta(
   totalItems: number,
   page: number,
-  limit: number
+  limit: number,
 ) {
   const totalPages = Math.ceil(totalItems / limit);
 

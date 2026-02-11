@@ -27,18 +27,20 @@ import { log } from "@thrico/logging";
 const feedResolvers: any = {
   Query: {
     async getAllOffer(_: any, { input }: any, context: any) {
-      const { db, entityId } = await checkAuth(context);
-      const { page = 1, limit = 50, categoryId } = input || {};
+      const { db, entityId, userId, role } = await checkAuth(context);
+      const { cursor, limit = 50, categoryId } = input || {};
 
       const result = await OfferService.getApprovedOffers({
         entityId,
         db,
-        page,
+        cursor,
         limit,
         categoryId,
+        currentUserId: userId,
+        role,
       });
 
-      return result.offers;
+      return result.edges.map((edge: any) => edge.node);
     },
     async getFeed(_: any, { input }: any, context: any) {
       let userId: string = "";

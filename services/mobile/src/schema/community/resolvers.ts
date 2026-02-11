@@ -452,27 +452,6 @@ const communitiesResolvers: any = {
       }
     },
 
-    async getCommunitiesFeedList(_: any, { input }: any, context: any) {
-      try {
-        const { userId, db, entityId } = await checkAuth(context);
-        const { cursor, limit } = input;
-
-        const data = await CommunityActionsService.getCommunityFeeds({
-          communityId: input?.id,
-          currentUserId: userId,
-          limit,
-          cursor,
-          entityId: entityId,
-          db,
-        });
-
-        return data;
-      } catch (error) {
-        logger.error(`Error in getCommunitiesFeedList: ${error}`);
-        throw error;
-      }
-    },
-
     async getPendingFeedCommunities(_: any, { input }: any, context: any) {
       try {
         const { userId, db, entityId } = await checkAuth(context);
@@ -1162,7 +1141,7 @@ const communityMemberResolvers: any = {
           currentUserId,
           entityId,
           db,
-          page: input.page || 1,
+          cursor: input.cursor,
           limit: input.limit || 20,
           role: input.role,
           searchTerm: input.searchTerm,

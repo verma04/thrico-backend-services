@@ -216,3 +216,95 @@ export async function clearNotificationCache(
     });
   }
 }
+/**
+ * Increment unread notification count for a specific module
+ * Key format: notif:{module}:unread:{userId}:{entityId}
+ */
+export async function incrementUnreadCount(
+  module: string,
+  userId: string,
+  entityId: string,
+): Promise<void> {
+  try {
+    const key = `notif:${module}:unread:${userId}:${entityId}`;
+    const client = redis.client;
+    await client.incr(key);
+    log.debug("Unread count incremented", { key, module, userId });
+  } catch (error) {
+    log.error("Error incrementing unread count", {
+      module,
+      userId,
+      entityId,
+      error,
+    });
+  }
+}
+
+/**
+ * Get unread notification counts for all modules
+ * Key format: notif:{module}:unread:{userId}:{entityId}
+ */
+export async function getUnreadCounts(
+  userId: string,
+  entityId: string,
+): Promise<Record<string, number>> {
+  try {
+    const modules = [
+      "COMMUNITY",
+      "FEED",
+      "NETWORK",
+      "JOB",
+      "LISTING",
+      "GAMIFICATION",
+    ];
+    const client = redis.client;
+    const pipeline = client.pipeline();
+
+    modules.forEach((module) => {
+      const key = `notif:${module}:unread:${userId}:${entityId}`;
+      pipeline.get(key);
+    });
+
+    const results = await pipeline.exec();
+    const counts: Record<string, number> = {};
+
+    modules.forEach((module, index) => {
+      const isError = results?.[index]?.[0];
+      const value = results?.[index]?.[1];
+      counts[module] = isError ? 0 : parseInt((value as string) || "0", 10);
+    });
+
+    return counts;
+  } catch (error) {
+    log.error("Error getting unread notification counts", {
+      error,
+      userId,
+      entityId,
+      module: "ALL", // Context that we failed for all modules
+    });
+    return {};
+  }
+}
+
+/**
+ * Reset unread notification count for a specific module to 0
+ */
+export async function resetUnreadCount(
+  module: string,
+  userId: string,
+  entityId: string,
+): Promise<void> {
+  try {
+    const key = `notif:${module}:unread:${userId}:${entityId}`;
+    const client = redis.client;
+    await client.set(key, 0);
+    log.debug("Unread count reset to 0", { key, module, userId });
+  } catch (error) {
+    log.error("Error resetting unread count", {
+      module,
+      userId,
+      entityId,
+      error,
+    });
+  }
+}

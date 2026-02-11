@@ -6,12 +6,12 @@ export const offersResolvers = {
     async getOffers(_: any, { input }: any, context: any) {
       try {
         const { entityId, db } = await checkAuth(context);
-        const { categoryId, page = 1, limit = 10 } = input || {};
+        const { categoryId, cursor, limit = 10 } = input || {};
 
         const result = await OfferService.getApprovedOffers({
           entityId,
           db,
-          page,
+          cursor,
           limit,
           categoryId,
         });

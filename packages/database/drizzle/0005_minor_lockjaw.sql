@@ -1,0 +1,1 @@
+ALTER TABLE "feedNotifications" ALTER COLUMN "feed_id" DROP NOT NULL;

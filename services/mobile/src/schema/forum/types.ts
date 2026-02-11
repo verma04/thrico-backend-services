@@ -19,6 +19,10 @@ export const forumTypes = `#graphql
     updatedAt: Date
     slug: Date
   }
+  input inputId {
+    id:ID!
+    
+  }
   type discussionForumComment {
     id: ID
     content: String
@@ -124,16 +128,47 @@ export const forumTypes = `#graphql
     discussionForumId: ID!
   }
 
+  type DiscussionForumEdge {
+    cursor: String!
+    node: discussionForum!
+  }
+
+  type DiscussionForumConnection {
+    edges: [DiscussionForumEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
+  }
+
+  type DiscussionForumCommentEdge {
+    cursor: String!
+    node: discussionForumComment!
+  }
+
+  type DiscussionForumCommentConnection {
+    edges: [DiscussionForumCommentEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
+  }
+
   input inputGetDiscussionForum {
     status: discussionForumStatus
+    cursor: String
+    limit: Int
   }
+
+  input GetForumCommentsInput {
+    id: ID!
+    cursor: String
+    limit: Int
+  }
+
   type Query {
     getDiscussionForumCategory: [discussionForumCategory]
-    getDiscussionForum(input: inputGetDiscussionForum): [discussionForum]
-    getDiscussionForumComments(input: inputId): [discussionForumComment]
+    getDiscussionForum(input: inputGetDiscussionForum): DiscussionForumConnection!
+    getDiscussionForumComments(input: GetForumCommentsInput!): DiscussionForumCommentConnection!
     getDiscussionForumDetailsByID(
       input: inputGetDiscussionForumDetailsByID
     ): discussionForum
-    discussionPostedByMe: [discussionForum]
+    discussionPostedByMe(cursor: String, limit: Int): DiscussionForumConnection!
   }
 `;
