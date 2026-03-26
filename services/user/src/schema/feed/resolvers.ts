@@ -1,20 +1,15 @@
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import {
-  feedComment,
   feedReactions,
-  feedWishList,
   user,
   userFeed,
-  userToEntity,
   aboutUser,
   groups,
-  offers,
-} from "@thrico/database"; // Changed import to @thrico/database
-import { and, asc, desc, eq, or, sql } from "drizzle-orm";
+} from "@thrico/database";
+import { eq, desc, sql, and } from "drizzle-orm";
 import { GraphQLError } from "graphql";
 
 import {
-  GamificationEventService,
   FeedQueryService,
   FeedMutationService,
   FeedStatsService,
@@ -27,30 +22,28 @@ import { log } from "@thrico/logging";
 const feedResolvers: any = {
   Query: {
     async getAllOffer(_: any, { input }: any, context: any) {
-      const { db, entityId, userId, role } = await checkAuth(context);
-      const { cursor, limit = 50, categoryId } = input || {};
+      try {
+        const { db, entityId, userId } = await checkAuth(context);
+        const { cursor, limit = 50, categoryId } = input || {};
 
-      const result = await OfferService.getApprovedOffers({
-        entityId,
-        db,
-        cursor,
-        limit,
-        categoryId,
-        currentUserId: userId,
-        role,
-      });
+        const result = await OfferService.getApprovedOffers({
+          entityId,
+          db,
+          cursor,
+          limit,
+          categoryId,
+          currentUserId: userId,
+        });
 
-      return result.edges.map((edge: any) => edge.node);
+        return result.edges.map((edge: any) => edge.node);
+      } catch (error) {
+        log.error("Error in getAllOffer", { error });
+        throw error;
+      }
     },
     async getFeed(_: any, { input }: any, context: any) {
-      let userId: string = "";
-      let entityId: string = "";
-      let db: any;
-      let id: string = "";
-
       try {
-        const { db, id, userId: uid, entityId } = await checkAuth(context);
-        userId = uid;
+        const { db, userId, entityId } = await checkAuth(context);
 
         const currentUserId = userId;
         const { cursor, limit } = input || {};
@@ -65,16 +58,14 @@ const feedResolvers: any = {
 
         return result;
       } catch (error) {
-        log.error("Error in getFeed", { error, userId, entityId, input });
+        log.error("Error in getFeed", { error, input });
         throw error;
       }
     },
 
     async getMyFeed(_: any, { input }: any, context: any) {
-      let userId: string = "";
       try {
-        const { db, id, userId: uid, entityId } = await checkAuth(context);
-        userId = uid;
+        const { db, userId, entityId } = await checkAuth(context);
 
         const currentUserId = userId;
         const { cursor, limit } = input || {};
@@ -88,7 +79,7 @@ const feedResolvers: any = {
         });
         return result;
       } catch (error) {
-        log.error("Error in getMyFeed", { error, userId, input });
+        log.error("Error in getMyFeed", { error, input });
         throw error;
       }
     },
@@ -105,7 +96,7 @@ const feedResolvers: any = {
 
         return result;
       } catch (error) {
-        console.log(error);
+        log.error("Error in getMarketPlaceFeed", { error });
         throw error;
       }
     },
@@ -123,7 +114,7 @@ const feedResolvers: any = {
 
         return result;
       } catch (error) {
-        console.log(error);
+        log.error("Error in getUserEventsFeed", { error });
         throw error;
       }
     },
@@ -136,7 +127,7 @@ const feedResolvers: any = {
 
         return result;
       } catch (error) {
-        console.log(error);
+        log.error("Error in getJobFeed", { error });
         throw error;
       }
     },
@@ -151,7 +142,7 @@ const feedResolvers: any = {
         });
         return result;
       } catch (error) {
-        console.log(error);
+        log.error("Error in getCommunitiesFeed", { error });
         throw error;
       }
     },
@@ -170,59 +161,77 @@ const feedResolvers: any = {
             createdAt: userFeed.createdAt,
             totalComment: userFeed.totalComment,
             totalReactions: userFeed.totalReactions,
+            videoUrl: userFeed.videoUrl,
+            thumbnailUrl: userFeed.thumbnailUrl,
+            momentId: userFeed.momentId,
             user: { ...user, about: aboutUser },
             isLiked: sql<boolean>`EXISTS (
-            SELECT 1 FROM ${feedReactions} 
-            WHERE ${feedReactions.feedId} = ${userFeed.id} 
+            SELECT 1 FROM ${feedReactions}
+            WHERE ${feedReactions.feedId} = ${userFeed.id}
             AND ${feedReactions.userId} = ${currentUserId}
           )`,
             isWishList: sql<boolean>`EXISTS (
-            SELECT 1 FROM ${feedWishList} 
-            WHERE ${feedWishList.feedId} = ${userFeed.id} 
-            AND ${feedWishList.userId} = ${currentUserId}
+            SELECT 1 FROM feed_wish_list
+            WHERE feed_wish_list.feed_id = ${userFeed.id}
+            AND feed_wish_list.user_id = ${currentUserId}
           )`,
             isOwner: sql<boolean>`${userFeed.userId} = ${currentUserId}`,
           })
           .from(userFeed)
-          .innerJoin(userToEntity, eq(userFeed.userId, userToEntity.id))
-          .innerJoin(user, eq(userToEntity.userId, user.id))
-          .innerJoin(aboutUser, eq(user.id, aboutUser.userId))
-
+          .innerJoin(user, eq(userFeed.userId, user.id))
+          .leftJoin(aboutUser, eq(user.id, aboutUser.userId))
           .orderBy(desc(userFeed.createdAt))
           .limit(50);
 
         return result;
       } catch (error) {
-        log.error("Error in getPersonalizedFeed", { error, user });
+        log.error("Error in getPersonalizedFeed", { error });
         throw error;
       }
     },
 
     async getUserActivityFeed(_: any, { input }: any, context: any) {
-      let userId: string = "";
       try {
-        const auth = await checkAuth(context);
-        userId = auth.userId;
-        const { db } = auth;
+        const { db, userId } = await checkAuth(context);
 
         const currentUserId = userId;
         const result = await FeedQueryService.getUserActivityFeed({
           currentUserId,
-          userId: input.userId || currentUserId, // Assuming input has userId or use current
+          userId: input.id || currentUserId,
           db,
         });
         return result;
       } catch (error) {
-        log.error("Error in getUserActivityFeed", { error, userId, input });
+        log.error("Error in getUserActivityFeed", { error, input });
+        throw error;
+      }
+    },
+
+    async getFeedActivityByUserId(_: any, { userId, input }: any, context: any) {
+      try {
+        const { db, userId: currentUserId, entityId } = await checkAuth(context);
+
+        const { cursor, limit } = input || {};
+
+        const result = await FeedQueryService.getFeedActivityByUserId({
+          currentUserId,
+          userId,
+          db,
+          cursor,
+          limit,
+          entity: entityId,
+        });
+
+        return result;
+      } catch (error) {
+        log.error("Error in getFeedActivityByUserId", { error, userId, input });
         throw error;
       }
     },
 
     async getFeedComment(_: any, { input }: any, context: any) {
-      let userId: string = "";
       try {
-        const { db, userId: uid } = await checkAuth(context);
-        userId = uid;
+        const { db, userId } = await checkAuth(context);
 
         const { feedId, cursor, limit } = input;
 
@@ -236,16 +245,14 @@ const feedResolvers: any = {
 
         return result;
       } catch (error) {
-        log.error("Error in getFeedComment", { error, userId, input });
+        log.error("Error in getFeedComment", { error, input });
         throw error;
       }
     },
 
     async getFeedDetailsById(_: any, { input }: any, context: any) {
-      let userId: string = "";
       try {
-        const { db, userId: uid } = await checkAuth(context);
-        userId = uid;
+        const { db, userId } = await checkAuth(context);
 
         return await FeedQueryService.getFeedDetailsById({
           feedId: input.id,
@@ -253,23 +260,7 @@ const feedResolvers: any = {
           db,
         });
       } catch (error) {
-        log.error("Error in getFeedDetailsById", { error, userId, input });
-        throw error;
-      }
-    },
-
-    async getPollByIdForUser(_: any, { input }: any, context: any) {
-      try {
-        const data = await checkAuth(context);
-
-        return FeedPollService.getPollByIdForUser({
-          input,
-          db: data.db,
-          userId: data.userId,
-          entity: data.entityId,
-        });
-      } catch (error) {
-        console.log(error);
+        log.error("Error in getFeedDetailsById", { error, input });
         throw error;
       }
     },
@@ -289,80 +280,51 @@ const feedResolvers: any = {
 
         return result;
       } catch (error) {
-        console.log(error);
+        log.error("Error in getFeedStats", { error, input });
         throw error;
       }
     },
     async getFeedReactions(_: any, { input }: any, context: any) {
       try {
-        const { userId, db } = await checkAuth(context);
-        const { feedId, offset = 0, limit = 20 } = input;
+        const { db } = await checkAuth(context);
+        const { feedId, cursor, limit } = input;
 
-        const reactions = await db
-          .select({
-            id: feedReactions.id,
-            createdAt: feedReactions.createdAt,
-            user: {
-              id: user.id,
-              firstName: user.firstName,
-              lastName: user.lastName,
-              avatar: user.avatar,
-              about: sql`json_build_object('userId', ${aboutUser.userId}, 'bio', ${aboutUser.about})`,
-            },
-          })
-          .from(feedReactions)
-          .innerJoin(user, eq(feedReactions.userId, user.id))
-          .leftJoin(aboutUser, eq(user.id, aboutUser.userId))
-          .where(eq(feedReactions.feedId, feedId))
-          .orderBy(desc(feedReactions.createdAt))
-          .limit(limit)
-          .offset(offset);
-
-        return reactions;
-      } catch (error) {
-        console.log(error);
-        throw error;
-      }
-    },
-    async getAllPolls(_: any, { input }: any, context: any) {
-      let userId: string = "";
-      try {
-        const auth = await checkAuth(context);
-        userId = auth.userId;
-        const { db } = auth;
-        const { offset, limit } = input ?? {};
-
-        // Placeholder for Poll Service
-        return FeedPollService.getAllPolls({
-          db,
-          userId,
-          offset,
+        return await FeedQueryService.getFeedReactions({
+          feedId,
+          cursor,
           limit,
-          entityId: auth.entityId,
+          db,
         });
       } catch (error) {
-        log.error("Error in getAllPolls", { error, userId, input });
+        log.error("Error in getFeedReactions", { error, input });
         throw error;
       }
     },
   },
   Mutation: {
     async addFeed(_: any, { input }: any, context: any) {
-      const { userId, db, entityId } = await checkAuth(context);
       try {
-        return FeedMutationService.addFeed({ input, userId, db, entityId });
+        const { userId, db, entityId } = await checkAuth(context);
+        const set = await FeedMutationService.addFeed({
+          input,
+          userId,
+          db,
+          entityId,
+        });
+
+        return set;
       } catch (error) {
-        log.error("Error in addFeed", { error, userId, input });
+        log.error("Error in addFeed", { error, input });
         throw error;
       }
     },
 
     async addFeedCommunities(_: any, { input }: any, context: any) {
       try {
-        const { id, db, entityId, userId } = await checkAuth(context);
+        const { db, entityId, userId } = await checkAuth(context);
 
         const checkGroup = await db.query.groups.findFirst({
-          where: eq(groups.id, input.groupId),
+          where: eq(groups.id, input.groupId || input.groupID),
         });
         if (!checkGroup) {
           throw new Error("Action Not Allowed");
@@ -371,22 +333,22 @@ const feedResolvers: any = {
         const feed = await CommunityActionsService.createCommunityFeed({
           userId: userId,
           entityId: entityId,
-          communityId: input.groupId,
+          communityId: input.groupId || input.groupID,
           db,
           input: input,
         });
 
         return feed;
       } catch (error) {
-        log.error("Error in addFeedCommunities", { error, user, input });
+        log.error("Error in addFeedCommunities", { error, input });
         throw error;
       }
     },
 
     async addComment(_: any, { input }: any, context: any) {
-      const { userId, db, entityId } = await checkAuth(context);
-      const currentUserId = userId;
       try {
+        const { userId, db, entityId } = await checkAuth(context);
+        const currentUserId = userId;
         const result = await FeedMutationService.addComment({
           currentUserId,
           input,
@@ -395,17 +357,17 @@ const feedResolvers: any = {
         });
         return result;
       } catch (error) {
-        log.error("Error in addComment", { error, userId, input });
+        log.error("Error in addComment", { error, input });
         throw error;
       }
     },
 
     async wishListFeed(_: any, { input }: any, context: any) {
-      const { userId, db, entityId } = await checkAuth(context);
-
-      const currentUserId = userId;
-
       try {
+        const { userId, db, entityId } = await checkAuth(context);
+
+        const currentUserId = userId;
+
         const like = await FeedMutationService.wishListFeed({
           currentUserId,
           input,
@@ -414,34 +376,34 @@ const feedResolvers: any = {
         });
         return like;
       } catch (error) {
-        log.error("Error in wishListFeed", { error, userId, input });
+        log.error("Error in wishListFeed", { error, input });
         throw error;
       }
     },
 
     async likeFeed(_: any, { input }: any, context: any) {
-      const { userId, db, entityId } = await checkAuth(context);
-
-      const currentUserId = userId;
-
       try {
+        const { userId, db, entityId } = await checkAuth(context);
+
+        const currentUserId = userId;
         const like = await FeedMutationService.likeFeed({
           currentUserId,
           input,
           entity: entityId,
           db,
+          type: input?.type,
         });
         return like;
       } catch (error) {
-        log.error("Error in likeFeed", { error, userId, input });
+        log.error("Error in likeFeed", { error, input });
         throw error;
       }
     },
 
     async deleteFeed(_: any, { input }: any, context: any) {
-      const { userId, db } = await checkAuth(context);
-
       try {
+        const { userId, db } = await checkAuth(context);
+
         await FeedMutationService.deleteFeed({
           feedId: input.id,
           currentUserId: userId,
@@ -452,14 +414,14 @@ const feedResolvers: any = {
           id: input.id,
         };
       } catch (error) {
-        log.error("Error in deleteFeed", { error, userId, input });
+        log.error("Error in deleteFeed", { error, input });
         throw error;
       }
     },
     async deleteCommentFeed(_: any, { input }: any, context: any) {
-      const { userId, db } = await checkAuth(context);
-
       try {
+        const { userId, db } = await checkAuth(context);
+
         await FeedMutationService.deleteCommentFeed({
           feedId: input.feedId,
           commentId: input.commentId,
@@ -468,91 +430,39 @@ const feedResolvers: any = {
         });
         return { id: input.commentId };
       } catch (error) {
-        log.error("Error in deleteCommentFeed", { error, userId, input });
+        log.error("Error in deleteCommentFeed", { error, input });
         throw error;
       }
     },
 
     async repostFeedWithThought(_: any, { input }: any, context: any) {
-      const { userId, db, entityId } = await checkAuth(context);
-
-      const checkFeed = await db.query.userFeed.findFirst({
-        where: eq(userFeed.id, input.feedId),
-      });
       try {
-        const feed = await db.transaction(async (tx: any) => {
-          const newFeed = await tx
-            .insert(userFeed)
-            .values({
-              userId: userId,
-              entity: entityId,
-              description: input?.description,
-              source: "rePost",
-              privacy: input.privacy,
-              repostId: input.feedId,
-            })
-            .returning({ id: userFeed.id });
+        const { userId, db, entityId } = await checkAuth(context);
 
-          if (checkFeed) {
-            await db
-              .update(userFeed)
-              .set({ totalReShare: checkFeed.totalReShare + 1 })
-              .where(eq(userFeed.id, input.feedId));
-          }
-
-          const feed = await tx.query.userFeed.findFirst({
-            where: eq(userFeed.id, newFeed[0].id),
-            with: {
-              comment: true,
-              reactions: true,
-
-              user: {
-                with: {
-                  about: true,
-                },
-              },
-            },
-          });
-          return feed;
+        const feed = await FeedMutationService.repostFeed({
+          currentUserId: userId,
+          input: {
+            feedId: input.feedId,
+            description: input.description,
+            privacy: input.privacy,
+          },
+          entity: entityId,
+          db,
         });
-
-        // Gamification Trigger for Job Share
-        if (checkFeed && checkFeed.jobId) {
-          await GamificationEventService.triggerEvent({
-            triggerId: "tr-job-share",
-            moduleId: "jobs",
-            userId,
-            entityId,
-          });
-        }
 
         return {
           ...feed,
           isOwner: true,
         };
       } catch (error) {
-        log.error("Error in repostFeedWithThought", { error, userId, input });
+        log.error("Error in repostFeedWithThought", { error, input });
         throw error;
       }
     },
 
-    async voteOnPoll(_: any, { input }: any, context: any) {
-      const data = await checkAuth(context);
-      try {
-        return await FeedPollService.voteOnPoll({
-          db: data.db,
-          userId: data.userId,
-          entity: data.entityId,
-          input,
-        });
-      } catch (error) {
-        log.error("Error in voteOnPoll", { error, userId: data.userId, input });
-        throw error;
-      }
-    },
     async pinFeed(_: any, { input }: any, context: any) {
-      const { userId, db } = await checkAuth(context);
       try {
+        const { userId, db } = await checkAuth(context);
         return await FeedMutationService.pinFeed({
           feedId: input.feedId,
           isPinned: input.isPinned,
@@ -560,13 +470,13 @@ const feedResolvers: any = {
           db,
         });
       } catch (error) {
-        log.error("Error in pinFeed", { error, userId, input });
+        log.error("Error in pinFeed", { error, input });
         throw error;
       }
     },
     async editFeedComment(_: any, { input }: any, context: any) {
-      const { userId, db, entityId } = await checkAuth(context);
       try {
+        const { userId, db, entityId } = await checkAuth(context);
         return await FeedMutationService.editFeedComment({
           currentUserId: userId,
           commentId: input.commentId,
@@ -575,7 +485,22 @@ const feedResolvers: any = {
           entity: entityId,
         });
       } catch (error) {
-        log.error("Error in editFeedComment", { error, userId, input });
+        log.error("Error in editFeedComment", { error, input });
+        throw error;
+      }
+    },
+    async editFeed(_: any, { input }: any, context: any) {
+      try {
+        const { userId, db, entityId } = await checkAuth(context);
+        return await FeedMutationService.editFeed({
+          feedId: input.id,
+          currentUserId: userId,
+          entityId,
+          input,
+          db,
+        });
+      } catch (error) {
+        log.error("Error in editFeed", { error, input });
         throw error;
       }
     },

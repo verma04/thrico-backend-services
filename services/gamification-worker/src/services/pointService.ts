@@ -39,6 +39,9 @@ export class PointService {
     let totalAwardedPoints = 0;
     let finalTotalPoints = gUser.totalPoints;
 
+    // List of point history IDs for currency tracking
+    const pointHistoryIds: string[] = [];
+
     for (const rule of rules) {
       if (!rule.isActive) {
         continue;
@@ -205,12 +208,19 @@ export class PointService {
           pointsEarned: rule.points,
         });
 
-        await tx.insert(userPointsHistory).values({
-          userId: gUser.id,
-          pointRuleId: rule.id,
-          pointsEarned: rule.points,
-          metadata: event.metadata,
-        });
+        const [historyRecord] = await tx
+          .insert(userPointsHistory)
+          .values({
+            userId: gUser.id,
+            pointRuleId: rule.id,
+            pointsEarned: rule.points,
+            metadata: event.metadata,
+          })
+          .returning({ id: userPointsHistory.id });
+
+        if (historyRecord?.id) {
+          pointHistoryIds.push(historyRecord.id);
+        }
 
         // Set Cooldown
         await redis.set(ruleCooldownKey, "1", "EX", 5);
@@ -237,7 +247,7 @@ export class PointService {
       });
     }
 
-    return { totalAwardedPoints, finalTotalPoints };
+    return { totalAwardedPoints, finalTotalPoints, pointHistoryIds };
   }
 
   static async checkRankProgression(

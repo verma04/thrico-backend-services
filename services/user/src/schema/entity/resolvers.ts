@@ -352,34 +352,6 @@ const entityResolvers: any = {
             });
       }
     },
-
-    async getUser(_: any, __: any, context: any): Promise<any> {
-      try {
-        const { db, id } = await checkAuth(context);
-
-        const user = await db.query.userToEntity.findFirst({
-          where: eq(userToEntity.id, id),
-        });
-
-        if (!user) {
-          throw new GraphQLError("User not found", {
-            extensions: { code: "NOT_FOUND", http: { status: 404 } },
-          });
-        }
-
-        return user;
-      } catch (error) {
-        console.error("getUser error:", error);
-        throw error instanceof GraphQLError
-          ? error
-          : new GraphQLError("Failed to fetch user", {
-              extensions: {
-                code: "INTERNAL_SERVER_ERROR",
-                http: { status: 500 },
-              },
-            });
-      }
-    },
   },
 
   Mutation: {

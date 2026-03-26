@@ -9,8 +9,10 @@
     "dev": "tsc --watch",
     "clean": "rm -rf dist *.tsbuildinfo",
     "migrate": "tsx src/postgres/migrate.ts",
+    "setup-vector": "tsx src/postgres/setup-vector.ts",
     "generate": "drizzle-kit generate:pg --config=../../drizzle.config.ts",
-    "studio": "drizzle-kit studio --config=../../drizzle.config.ts"
+    "studio": "drizzle-kit studio --config=../../drizzle.config.ts",
+    "seed:currency": "tsx src/postgres/seed/currency.seed.ts"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.478.0",

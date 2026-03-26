@@ -15,6 +15,7 @@
     "dev:grpc": "npm run dev -w services/grpc-service",
     "dev:gamification": "npm run dev -w services/gamification-worker",
     "dev:push": "npm run dev -w services/firebase-push",
+    "dev:cron": "npm run dev -w services/cron-jobs",
     "build": "pnpm -r build",
     "migrate": "npm run migrate -w packages/database",
     "test": "npm run test --workspaces",

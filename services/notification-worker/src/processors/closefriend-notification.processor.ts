@@ -8,6 +8,7 @@ import {
   communityNotifications,
   jobNotifications,
   listingNotifications,
+  momentNotifications,
 } from "@thrico/database";
 import { log } from "@thrico/logging";
 import { NotificationService } from "@thrico/services";
@@ -19,7 +20,7 @@ export interface CloseFriendNotificationTask {
   contentId: string;
   title: string;
   timestamp: string;
-  module: "FEED" | "COMMUNITY" | "JOB" | "LISTING";
+  module: "FEED" | "COMMUNITY" | "JOB" | "LISTING" | "MOMENT";
 }
 
 interface Subscriber {
@@ -146,6 +147,18 @@ export class CloseFriendNotificationProcessor {
               ),
             );
           existingNotificationUserIds = existing.map((e: any) => e.userId);
+        } else if (module === "MOMENT") {
+          const existing = await db
+            .select({ userId: momentNotifications.userId })
+            .from(momentNotifications)
+            .where(
+              and(
+                eq(momentNotifications.momentId, contentId),
+                eq(momentNotifications.type, type as any),
+                inArray(momentNotifications.userId, subscriberIds),
+              ),
+            );
+          existingNotificationUserIds = existing.map((e: any) => e.userId);
         }
       } catch (checkErr) {
         log.warn("Failed to check for duplicate close friend notifications", {
@@ -193,6 +206,7 @@ export class CloseFriendNotificationProcessor {
           pushBody,
           imageUrl: creator?.avatar || undefined,
           contentId: contentId,
+          momentId: module === "MOMENT" ? contentId : undefined,
         }).catch((err: Error) => {
           log.error(
             "Failed to send close friend subscriber notification from worker",

@@ -1,5 +1,5 @@
 import { PAGE, user } from "@thrico/database";
-import { JobService, upload } from "@thrico/services";
+import { JobService, StorageService } from "@thrico/services";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 
 const jobsResolvers: any = {
@@ -236,9 +236,17 @@ const jobsResolvers: any = {
 
     async addJobCompany(_: any, { input }: any, context: any) {
       try {
+        const { db, entityId, userId } = await checkAuth(context);
         let logo;
         if (input?.logo) {
-          logo = await upload(input.logo);
+          logo = await StorageService.uploadFile(
+            input.logo,
+            entityId,
+            "JOB",
+            userId,
+            db,
+            { processImage: true },
+          );
         }
         // Implement company creation logic if needed
         return {
@@ -260,7 +268,7 @@ const jobsResolvers: any = {
           email,
           resume,
           db,
-          userId: jobId,
+          userId: userId,
         });
         return {
           succuss: true,

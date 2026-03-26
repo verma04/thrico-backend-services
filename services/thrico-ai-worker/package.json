@@ -1,0 +1,29 @@
+{
+  "name": "thrico-ai-worker",
+  "version": "1.0.0",
+  "description": "AI worker for processing moment embeddings and analysis",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "nodemon --exec tsx src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@thrico/database": "workspace:*",
+    "@thrico/logging": "workspace:*",
+    "@thrico/shared": "workspace:*",
+    "@thrico/services": "workspace:*",
+    "amqp-connection-manager": "^5.0.0",
+    "amqplib": "^0.10.9",
+    "dotenv": "^17.2.3",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.6",
+    "@types/uuid": "^9.0.7",
+    "nodemon": "^3.1.11",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}

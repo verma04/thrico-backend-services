@@ -23,6 +23,7 @@ const planTypes = `#graphql
     yearlyPrice: Float
     adminUsers: Int
     numberOfUsers: Int
+    numberOfEmailsPerMonth: Int
     isPopular: Boolean
     benefits: [String]
     packageId: ID!
@@ -36,6 +37,19 @@ const planTypes = `#graphql
     icon: String!
   }
 
+  type Addon {
+    addonId: String!
+    type: String!
+    name: String!
+    quantity: Int!
+    unitPrice: Float!
+    totalPrice: Float!
+    isActive: Boolean!
+    addedAt: String
+    removedAt: String
+    effectiveFrom: String
+  }
+ 
   # Example usage in a type (add where needed)
   # type SomeType {
   #   items: [NameIcon!]
@@ -97,6 +111,7 @@ const planTypes = `#graphql
     getCountryPackage: [package]
     getPlanOverview: PlanOverview
     getAllEntityInvoice: [Invoice]
+    getUpdateToYearlySummary: UpdateToYearlySummary!
   }
 
   type PlanOverview {
@@ -110,6 +125,7 @@ const planTypes = `#graphql
     userUsage: StringUsageLimit!
     subscriptionType: String!
     package: package
+    addons: [Addon]
   }
 
   # Nested Input Types
@@ -217,16 +233,52 @@ const planTypes = `#graphql
   input UpdateToYearlyInput {
     packageId: ID!
   }
+
+ 
+
+  type UpdateToYearlySummary {
+    basePrice: Float
+    addonsPrice: Float
+    taxAmount: Float
+    totalAmount: Float
+    taxName: String
+    taxPercentage: Float
+    addons: [Addon]
+    planName: String
+    billingCycle: String
+  }
+
   input UpgradePlanInput {
     packageId: ID!
     billingCycle: String! # e.g., "monthly", "yearly"
+  }
+
+  type UpdateToYearlyResponse {
+    subscriptionId: String
+    packageId: String
+    planName: String
+    planType: String
+    billingCycle: String
+    price: Float
+    startDate: String
+    endDate: String
+    status: Boolean
+    billingId: String
+    billStatus: String
+    billAmount: Float
+    razorpayOrder: Order
+    addons: [Addon]
+    taxAmount: Float
+    totalAmount: Float
+    taxName: String
+    taxPercentage: Float
   }
   type Mutation {
     getUpgradePlanSummary(input: UpgradePlanSummaryInput!): UpgradePlanSummary!
     updateTrialToPackage(input: UpdateTrialToPackageInput!): Order!
     verifyRazorpayPayment(input: RazorpayPaymentInput!): subscription!
     createCustomRequest(input: CreateCustomRequestInput!): CustomRequest!
-    updateToYearly(input: UpdateToYearlyInput!): Order!
+    updateToYearly: UpdateToYearlyResponse!
     upgradePlan(input: UpgradePlanInput!): Order!
   }
   type success {

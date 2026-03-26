@@ -179,7 +179,7 @@ export const entitySettings = pgTable("entitySettings", {
   // Forums (Discussion Forums)
   allowDiscussionForum: boolean("allowNewDiscussionForum").default(true),
   autoApproveDiscussionForum: boolean("autoApproveDiscussionForum").default(
-    true
+    true,
   ),
   termAndConditionsForums: jsonb("termAndDiscussionForums"),
   faqForums: jsonb("faqForums"),
@@ -248,6 +248,10 @@ export const entitySettings = pgTable("entitySettings", {
 
   termAndConditionsGamification: jsonb("termAndConditionsGamification"),
   faqGamification: jsonb("faqGamification"),
+
+  // Rewards
+  termAndConditionsRewards: jsonb("termAndConditionsRewards"),
+  faqRewards: jsonb("faqRewards"),
 });
 
 export const entitySettingsRelations = relations(entitySettings, ({ one }) => ({
@@ -285,5 +289,5 @@ export const entitySettingsUsersRelations = relations(
       fields: [entitySettingsUser.entity],
       references: [entity.id],
     }),
-  })
+  }),
 );

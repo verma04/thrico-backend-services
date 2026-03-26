@@ -313,4 +313,111 @@ export class UserService {
       throw error;
     }
   }
+  static async requestAccountDeletion({
+    userId,
+    db,
+  }: {
+    userId: string;
+    db: any;
+  }) {
+    try {
+      if (!userId) {
+        throw new GraphQLError("User ID is required.", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+
+      log.debug("Requesting account deletion", { userId });
+
+      await db
+        .update(user)
+        .set({
+          isDeletionPending: true,
+          deletionRequestedAt: new Date(),
+        })
+        .where(eq(user.id, userId));
+
+      log.info("Account deletion requested", { userId });
+      return true;
+    } catch (error) {
+      log.error("Error in requestAccountDeletion", { error, userId });
+      throw error;
+    }
+  }
+
+  static async restoreAccount({ userId, db }: { userId: string; db: any }) {
+    try {
+      if (!userId) {
+        throw new GraphQLError("User ID is required.", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+
+      log.debug("Restoring account", { userId });
+
+      await db
+        .update(user)
+        .set({
+          isDeletionPending: false,
+          deletionRequestedAt: null,
+        })
+        .where(eq(user.id, userId));
+
+      log.info("Account restored", { userId });
+      return true;
+    } catch (error) {
+      log.error("Error in restoreAccount", { error, userId });
+      throw error;
+    }
+  }
+
+  static async deactivateAccount({ userId, db }: { userId: string; db: any }) {
+    try {
+      if (!userId) {
+        throw new GraphQLError("User ID is required.", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+
+      log.debug("Deactivating account", { userId });
+
+      await db
+        .update(user)
+        .set({
+          isActive: false,
+        })
+        .where(eq(user.id, userId));
+
+      log.info("Account deactivated", { userId });
+      return true;
+    } catch (error) {
+      log.error("Error in deactivateAccount", { error, userId });
+      throw error;
+    }
+  }
+
+  static async reactivateAccount({ userId, db }: { userId: string; db: any }) {
+    try {
+      if (!userId) {
+        throw new GraphQLError("User ID is required.", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+
+      log.debug("Reactivating account", { userId });
+
+      await db
+        .update(user)
+        .set({
+          isActive: true,
+        })
+        .where(eq(user.id, userId));
+
+      log.info("Account reactivated", { userId });
+      return true;
+    } catch (error) {
+      log.error("Error in reactivateAccount", { error, userId });
+      throw error;
+    }
+  }
 }

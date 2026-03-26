@@ -29,6 +29,9 @@ export const typeDefs = `#graphql
   type chooseAccount {
     token: String
     theme: entityTheme
+    isDeletionPending: Boolean
+    deletionRequestedAt: Date
+    isActive: Boolean
   }
   type token {
     token: String
@@ -95,36 +98,63 @@ export const typeDefs = `#graphql
     cover: String
     location: JSON
     profile: profile
+    isActive: Boolean
+    isDeletionPending: Boolean
+    deletionRequestedAt: Date
+    status: String
   }
   type aboutUser {
     headline: String
     bio: String
   }
 
-  type modules {
-    name: String
-    icon: String
-    showInMobileNavigation: Boolean
-    isPopular: Boolean
-    showInMobileNavigationSortNumber: Int
-    enabled: Boolean
+
+  input CheckUserEntityInput {
+    id: ID!
+    cursor: String
+    limit: Int
+    searchTerm: String
   }
-  type checkSubscription {
-    status: Boolean
-    modules: [modules]
+
+  type CheckUserEntityResponse {
+    entities: [entity]
+    pageInfo: PageInfo
+  }
+
+  type PageInfo {
+    hasNextPage: Boolean!
+    endCursor: String
   }
 
   type Query {
     health: String
     getUser: entityUser
     checkOtpId(input: inputId): otp
-    checkUserEntity(input: inputId): [entity]
-    checkUserEntitySignup(input: inputId): [entity]
+    checkUserEntity(input: CheckUserEntityInput): CheckUserEntityResponse
+    checkUserEntitySignup(input: CheckUserEntityInput): CheckUserEntityResponse
+    getSignupProfile(id: ID!): entityUser
     getOrgDetails: entity
     checkAllUserAccount: [entity]
     getEntityTheme: theme
-    checkSubscription: checkSubscription
     checkUserOnline: checkUserOnlineResponse
+    getEntityModuleAccess(moduleName: ModuleName!): Boolean
+  }
+
+  enum ModuleName {
+    COMMUNITY
+    EVENTS
+    FORUM
+    JOBS
+    MENTORSHIP
+    LISTING
+    SHOP
+    OFFERS
+    SURVEYS
+    POLLS
+    STORIES
+    FEED
+
+   
   }
 
   type checkUserOnlineResponse {
@@ -149,9 +179,9 @@ export const typeDefs = `#graphql
 
   # Add signup input type
   input inputSignup {
-    firstName: String!
-    lastName: String!
+   
     email: String!
+   
   }
 
   type Mutation {
@@ -165,6 +195,35 @@ export const typeDefs = `#graphql
     updateActiveEntity(entityId: ID!): GenericResponse
     logoutUser: GenericResponse
     allowPushNotification(token: String!): GenericResponse
+    requestAccountDeletion: GenericResponse
+    restoreAccount: GenericResponse
+    deactivateAccount: GenericResponse
+    reactivateAccount: GenericResponse
+    createProfile(input: CreateProfileInput): chooseAccount
+  }
+
+  input CreateProfileInput {
+    firstName: String!
+    lastName: String!
+    dob: String
+    phone: String
+    headline: String
+    about: String
+    location: JSON
+    socialLinks: [SocialInput]
+    userId: ID!
+    entityId: ID!
+    deviceOs: String
+    deviceName: String
+    device_id: String
+    deviceType: String
+    deviceToken: String
+    country: String!
+  }
+
+  input SocialInput {
+    platform: String!
+    url: String!
   }
 
   type Subscription {

@@ -24,8 +24,8 @@ import { graphqlUploadExpress } from "graphql-upload-minimal";
 import checkAuth from "./utils/auth/checkAuth.utils";
 
 import { connectDynamo } from "@thrico/database";
-import { networkTypes } from "./schema/network/types";
-import { networkResolvers } from "./schema/network/resolvers";
+import { connectionTypes } from "./modules/connection/connection.model";
+import { connectionResolvers } from "./modules/connection/connection.resolver";
 import { feedTypes } from "./schema/feed/types";
 import { feedResolvers } from "./schema/feed/resolvers";
 import { forumTypes } from "./schema/forum/types";
@@ -60,6 +60,24 @@ import { chatTypes } from "./schema/chat/types";
 import { chatResolvers } from "./schema/chat/resolvers";
 import { shopTypes } from "./schema/shop/types";
 import { shopResolvers } from "./schema/shop/resolvers";
+import { currencyTypes } from "./schema/currency/types";
+import { currencyResolvers } from "./schema/currency/resolvers";
+import {
+  featureFlagsDefs,
+  featureFlagsResolvers,
+} from "./schema/featureFlags/schema";
+import { rewardsTypes } from "./schema/rewards/types";
+import { rewardsResolvers } from "./schema/rewards/resolvers";
+import { faqTypes } from "./modules/faq/faq.model";
+import { faqResolvers } from "./modules/faq/faq.resolver";
+import { momentTypes } from "./modules/moment/moment.model";
+import { momentResolvers } from "./modules/moment/moment.resolver";
+import { subscriptionTypes } from "./modules/subscription/subscription.model";
+import { subscriptionResolvers } from "./modules/subscription/subscription.resolver";
+import { nearbyUsersTypes } from "./schema/nearby-users/types";
+import { nearbyUsersResolvers } from "./schema/nearby-users/resolvers";
+import { reportTypes } from "./schema/report/types";
+import { reportResolvers } from "./schema/report/resolvers";
 
 const PORT = process.env.MOBILE_GRAPHQL_PORT || 3333;
 
@@ -121,7 +139,7 @@ async function startServer() {
   const schema = makeExecutableSchema({
     typeDefs: [
       typeDefs,
-      networkTypes,
+      connectionTypes,
       feedTypes,
       forumTypes,
       pollTypes,
@@ -138,10 +156,18 @@ async function startServer() {
       surveyTypes,
       chatTypes,
       shopTypes,
+      currencyTypes,
+      featureFlagsDefs,
+      rewardsTypes,
+      momentTypes,
+      faqTypes,
+      subscriptionTypes,
+      nearbyUsersTypes,
+      reportTypes,
     ],
     resolvers: [
       resolvers,
-      networkResolvers,
+      connectionResolvers,
       feedResolvers,
       forumResolvers,
       jobsResolvers,
@@ -158,6 +184,14 @@ async function startServer() {
       surveyResolvers,
       chatResolvers,
       shopResolvers,
+      currencyResolvers,
+      featureFlagsResolvers,
+      rewardsResolvers,
+      momentResolvers,
+      faqResolvers,
+      subscriptionResolvers,
+      nearbyUsersResolvers,
+      reportResolvers,
     ],
   });
 

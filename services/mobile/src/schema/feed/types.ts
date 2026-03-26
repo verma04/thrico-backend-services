@@ -63,6 +63,7 @@ export const feedTypes = `#graphql
     edges: [FeedEdge!]!
     pageInfo: PageInfo!
     totalCount: Int!
+    hasPinnedPost: Boolean
   }
 
   type poll {
@@ -142,13 +143,25 @@ export const feedTypes = `#graphql
 
   input GetFeedReactionsInput {
     feedId: ID!
-    offset: Int
+    cursor: String
     limit: Int
+  }
+
+  type FeedReactionEdge {
+    cursor: String!
+    node: FeedReaction!
+  }
+
+  type FeedReactionConnection {
+    edges: [FeedReactionEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
   }
 
   type FeedReaction {
     id: ID!
     createdAt: Date!
+    reactionType: String!
     user: user!
   }
    type jobFeed {
@@ -187,14 +200,13 @@ export const feedTypes = `#graphql
     source: String
     media: [String]
     group: group
-
+    # isPinned: Boolean
     privacy: feedPrivacy
     job: jobFeed
     offer: Offer
     listing: listing
     repostId: ID
-    # event: event
-    # story: stories
+
     addedBy: addedByType
     poll: poll
     forum: discussionForum
@@ -208,6 +220,9 @@ export const feedTypes = `#graphql
     communityFeedData: communityFeedData
     surveyId: ID  
     communityfeedId: ID
+    momentId: ID
+    moment: Moment
+    reactionType: String
     }
 
   type communityFeedData {
@@ -232,7 +247,7 @@ export const feedTypes = `#graphql
     getMyFeed(input: FeedCursorInput): FeedConnection!
 
     getFeedStats(input: GetFeedStatsInput!): FeedStats!
-    getFeedReactions(input: GetFeedReactionsInput!): [FeedReaction!]!
+    getFeedReactions(input: GetFeedReactionsInput!): FeedReactionConnection!
     getFeedActivityByUserId(userId: ID!, input: FeedCursorInput): FeedConnection!
   }
   input inputPollOption {
@@ -349,17 +364,28 @@ export const feedTypes = `#graphql
     isPinned: Boolean!
   }
 
+  input inputEditFeed {
+    id: ID!
+    description: String
+    media: [String]
+  }
+  input inputLikeFeed {
+  id:ID
+  type: String
+}
+
   extend type Mutation {
     addFeedCommunities(input: inputGroupFeed): feed
     wishListFeed(input: inputId): status
     repostFeedWithThought(input: repostFeedWithThought!): feed
-    likeFeed(input: inputId): status
+    likeFeed(input:inputLikeFeed): status
     addFeed(input: inputAddFeed): feed
     addComment(input: inputComment): comment
     deleteFeed(input: inputId): feed
     deleteCommentFeed(input: inputDeleteFeedComment): comment
     pinFeed(input: pinFeedInput!): feed
     editFeedComment(input: EditFeedCommentInput!): comment!
+    editFeed(input: inputEditFeed!): feed
   }
  # Added based on resolver
   

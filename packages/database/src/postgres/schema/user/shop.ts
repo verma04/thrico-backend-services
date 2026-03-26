@@ -11,6 +11,7 @@ import {
   varchar,
 } from "drizzle-orm/pg-core";
 import { entity } from "../tenant";
+import { moderationStateStatusEnum } from "../moderation";
 
 /**
  * Shop Product Status Enum
@@ -69,6 +70,9 @@ export const shopProducts = pgTable("shop_products", {
     .default(sql`CURRENT_TIMESTAMP`)
     .notNull(),
   createdBy: uuid("created_by"),
+  moderationStatus: moderationStateStatusEnum("moderationStatus").default("PENDING"),
+  moderationResult: text("moderationResult"),
+  moderatedAt: timestamp("moderatedAt"),
 });
 
 /**

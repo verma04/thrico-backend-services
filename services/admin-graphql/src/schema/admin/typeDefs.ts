@@ -4,20 +4,13 @@ export const adminTypeDefs = `#graphql
     success: Boolean
   }
 
-  type AdminToken {
-    id: ID
-    status: Boolean
-  }
-
-  type JwtToken {
-    token: String
-  }
-
   type AdminProfile {
     email: String
     firstName: String
     lastName: String
   }
+
+  
 
   type AdminUser {
     id: ID
@@ -25,25 +18,28 @@ export const adminTypeDefs = `#graphql
     email: String
     firstName: String
     lastName: String
+    role: Role
+    roleId: ID
+    memberStatus: String
+    # joinedAt: String
+    isSuperAdmin: Boolean
+    permissions: AdminAccess
+    modulePermissions: [ModulePermission]
   }
 
-  # Admin Inputs
   input AdminRegisterInput {
     firstName: String!
     lastName: String!
-    password: String!
     email: String!
     phone: String
+    roleId: ID
   }
 
-  input AdminLoginInput {
-    email: String!
-    password: String!
-  }
-
-  input AdminOtpInput {
-    id: ID!
-    otp: String!
+  input AdminUpdateInput {
+    firstName: String
+    lastName: String
+    phone: String
+    status: Boolean
   }
 
   input UpdateEntityModuleInput {
@@ -64,11 +60,12 @@ export const adminTypeDefs = `#graphql
   }
 
   extend type Query {
-     health: HealthStatus!
+    health: HealthStatus!
     getUser: AdminUser
     adminProfile: AdminProfile
+    getAdminUsers: [AdminUser!]
+    getMyAccounts: [AdminAccount!]
   }
-
 
   input inputUpdateEntityModule {
     id: ID!
@@ -82,12 +79,12 @@ export const adminTypeDefs = `#graphql
     showInMobileNavigationSortNumber: Int
   }
   extend type Mutation {
-    logoutAdmin: SuccessResponse
-    logoutAdminAllDevices: SuccessResponse
-    loginAsAdmin(input: AdminLoginInput): AdminToken
-    otpLogin(input: AdminOtpInput): JwtToken
-    registerAsAdmin(input: AdminRegisterInput): SuccessResponse
     updateEntityModule(input: [inputUpdateEntityModule]): SuccessResponse
     uploadImage(file: Upload!): String!
+    updateAdminUserRole(adminId: ID!, roleId: ID!): AdminUser
+    deleteAdminUser(adminId: ID!): SuccessResponse
+    createAdmin(input: AdminRegisterInput!): AdminUser
+    updateAdminUser(adminId: ID!, input: AdminUpdateInput!): AdminUser
+    updateAdminPassword(adminId: ID!, password: String!): SuccessResponse
   }
 `;

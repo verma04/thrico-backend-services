@@ -1,1 +1,0 @@
-ALTER TYPE "gamificationNotificationType" ADD VALUE 'LEADERBOARD';

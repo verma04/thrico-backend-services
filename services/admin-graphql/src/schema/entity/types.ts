@@ -25,20 +25,7 @@ export const entityTypes = `#graphql
     token: String
   }
 
-  input RegisterEntityInput {
-    name: String!
-    entityType: ID!
-    industryType: ID!
-    designation: String!
-    website: String!
-    country: String!
-    language: String!
-    address: String!
-    logo: Upload
-    domain: String!
-    phone: JSON!
-    agreement: Boolean
-  }
+
 
   input DomainQuery {
     domain: String!
@@ -395,7 +382,7 @@ export const entityTypes = `#graphql
 
 
   extend type Mutation {
-    registerEntity(input: RegisterEntityInput): Success
+
     editEntityTheme(input: EditEntityTheme): EntityAppearanceTheme
     updateCurrency(input: InputCurrency): Currency
     updateEntitySettings(input: EntityAutoApprovalSettingsInput): Settings

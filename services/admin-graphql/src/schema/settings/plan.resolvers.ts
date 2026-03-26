@@ -5,22 +5,26 @@ import { packageClient } from "@thrico/grpc";
 import { subscriptionClient } from "@thrico/grpc";
 import { eq, sql } from "drizzle-orm";
 import { user } from "@thrico/database";
-// import { createCustomRequest } from "@thrico/grpc"; // Assuming this is now available or mocked
+import {
+  ensurePermission,
+  AdminModule,
+  PermissionAction,
+} from "../../utils/auth/permissions.utils";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 
 export const planResolvers = {
   Query: {
     async getCountryPackage(_: any, { input }: any, context: any) {
       try {
-        const { entity, country } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.SUBSCRIPTION, PermissionAction.READ);
+        const { entity, country } = auth;
 
-        console.log(entity, country);
         const packages = await packageClient.getCountryPackages(
           country,
-          entity
+          entity,
         );
-        console.log(packages);
 
-        // console.log(packages);
         return packages;
       } catch (error) {
         console.log(error);
@@ -30,7 +34,9 @@ export const planResolvers = {
 
     async getPlanOverview(_: any, { input }: any, context: any) {
       try {
-        const { entity, country, db } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.SUBSCRIPTION, PermissionAction.READ);
+        const { entity, country, db } = auth;
 
         const overView = await subscriptionClient.getPlanOverview(entity);
 
@@ -61,13 +67,32 @@ export const planResolvers = {
 
     async getAllEntityInvoice(_: any, { input }: any, context: any) {
       try {
-        const { entity, country, db } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.SUBSCRIPTION, PermissionAction.READ);
+        const { entity } = auth;
 
-        const invoicesResult = await subscriptionClient.getAllEntityInvoice(
-          entity
-        );
+        const invoicesResult =
+          await subscriptionClient.getAllEntityInvoice(entity);
 
         return invoicesResult?.invoices;
+      } catch (error) {
+        console.log(error);
+        throw error;
+      }
+    },
+
+    async getUpdateToYearlySummary(_: any, { input }: any, context: any) {
+      try {
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.SUBSCRIPTION, PermissionAction.READ);
+        const { entity, country } = auth;
+
+        const summary = await subscriptionClient.updateToYearlySummary({
+          entityId: entity,
+          countryCode: country,
+        });
+
+        return summary;
       } catch (error) {
         console.log(error);
         throw error;
@@ -77,17 +102,30 @@ export const planResolvers = {
   Mutation: {
     async updateTrialToPackage(_: any, { input }: any, context: any) {
       try {
-        const { entity, country } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.SUBSCRIPTION, PermissionAction.EDIT);
+        const { entity, country, db, id: adminId } = auth;
 
         const { packageId, billingCycle } = input;
-        const packages = await subscriptionClient.updateTrialToPackage(
+        const result = await subscriptionClient.updateTrialToPackage(
           entity,
           packageId,
           country,
-          billingCycle
+          billingCycle,
         );
 
-        return packages?.razorpayOrder;
+        await createAuditLog(db, {
+          adminId,
+          entityId: entity,
+          module: AdminModule.SUBSCRIPTION,
+          action: "UPDATE_TRIAL_TO_PACKAGE",
+          resourceId: packageId,
+          newState: { packageId, billingCycle, result },
+          ipAddress: context.ip,
+          userAgent: context.userAgent,
+        });
+
+        return result?.razorpayOrder;
       } catch (error) {
         console.log(error);
         throw error;
@@ -96,17 +134,26 @@ export const planResolvers = {
 
     async updateToYearly(_: any, { input }: any, context: any) {
       try {
-        const { entity, country } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.SUBSCRIPTION, PermissionAction.EDIT);
+        const { entity, country, db, id: adminId } = auth;
 
-        const { packageId } = input;
-        const packages = await subscriptionClient.updateToYearly({
+        const result = await subscriptionClient.updateToYearly({
           entityId: entity,
-          packageId,
           countryCode: country,
         });
 
-        console.log(packages?.razorpayOrder);
-        return packages?.razorpayOrder;
+        await createAuditLog(db, {
+          adminId,
+          entityId: entity,
+          module: AdminModule.SUBSCRIPTION,
+          action: "UPDATE_TO_YEARLY",
+          newState: result,
+          ipAddress: context.ip,
+          userAgent: context.userAgent,
+        });
+
+        return result;
       } catch (error) {
         console.log(error);
         throw error;
@@ -115,17 +162,29 @@ export const planResolvers = {
 
     async verifyRazorpayPayment(_: any, { input }: any, context: any) {
       try {
-        const { entity, country } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.SUBSCRIPTION, PermissionAction.EDIT);
+        const { entity, db, id: adminId } = auth;
 
         const { razorpayOrderId, razorpayPaymentId, razorpaySignature } = input;
-        console.log(razorpayOrderId, razorpayPaymentId, razorpaySignature);
-        const packages = await subscriptionClient.verifyRazorpayPayment(
+        const result = await subscriptionClient.verifyRazorpayPayment(
           razorpayOrderId,
           razorpayPaymentId,
-          razorpaySignature
+          razorpaySignature,
         );
 
-        return packages;
+        await createAuditLog(db, {
+          adminId,
+          entityId: entity,
+          module: AdminModule.SUBSCRIPTION,
+          action: "VERIFY_PAYMENT",
+          resourceId: razorpayOrderId,
+          newState: { razorpayOrderId, razorpayPaymentId, result },
+          ipAddress: context.ip,
+          userAgent: context.userAgent,
+        });
+
+        return result;
       } catch (error) {
         console.log(error);
         throw error;
@@ -134,22 +193,22 @@ export const planResolvers = {
 
     async createCustomRequest(_: any, { input }: any, context: any) {
       try {
-        const { entity, country } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.SUBSCRIPTION, PermissionAction.EDIT);
+        const { entity, db, id: adminId } = auth;
 
-        const { teamRequirements, features, timeLine, contact, security } =
-          input;
+        await createAuditLog(db, {
+          adminId,
+          entityId: entity,
+          module: AdminModule.SUBSCRIPTION,
+          action: "CREATE_CUSTOM_REQUEST",
+          newState: input,
+          ipAddress: context.ip,
+          userAgent: context.userAgent,
+        });
 
-        // const request = await createCustomRequest({
-        //   teamRequirements,
-        //   features,
-        //   timeLine,
-        //   contact,
-        //   security,
-        //   entityId: entity,
-        // });
-
-        // console.log(request);
-        // return request;
+        // Current implementation is a placeholder
+        return { success: true };
       } catch (error) {
         console.log(error);
         throw error;
@@ -158,14 +217,15 @@ export const planResolvers = {
 
     async getUpgradePlanSummary(_: any, { input }: any, context: any) {
       try {
-        const { entity, country } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.SUBSCRIPTION, PermissionAction.READ);
+        const { entity } = auth;
 
         const request = await subscriptionClient.getUpgradePlanSummary({
           entityId: entity,
           newPackageId: input.packageId,
         });
 
-        console.log(request);
         return request;
       } catch (error) {
         console.log(error);
@@ -175,16 +235,29 @@ export const planResolvers = {
 
     async upgradePlan(_: any, { input }: any, context: any) {
       try {
-        const { entity, country } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.SUBSCRIPTION, PermissionAction.EDIT);
+        const { entity, country, db, id: adminId } = auth;
 
-        const request = await subscriptionClient.upgradePlan({
+        const result = await subscriptionClient.upgradePlan({
           entityId: entity,
           newPackageId: input.packageId,
           billingCycle: input.billingCycle,
           countryCode: country,
         });
 
-        return request?.razorpayOrder;
+        await createAuditLog(db, {
+          adminId,
+          entityId: entity,
+          module: AdminModule.SUBSCRIPTION,
+          action: "UPGRADE_PLAN",
+          resourceId: input.packageId,
+          newState: { ...input, result },
+          ipAddress: context.ip,
+          userAgent: context.userAgent,
+        });
+
+        return result?.razorpayOrder;
       } catch (error) {
         console.log(error);
         throw error;

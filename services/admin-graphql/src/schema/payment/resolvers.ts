@@ -6,13 +6,16 @@ import { checkEmail } from "../../utils/mail/checkmail.utils";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import { razorpay, stripe } from "@thrico/database";
 import { eq } from "drizzle-orm";
+import { ensurePermission, AdminModule, PermissionAction } from "../../utils/auth/permissions.utils";
 // import upload from "../../utils/upload/upload.utils"; // Not used in this file
 
 const paymentResolvers = {
   Query: {
     async checkPaymentDetails(_: any, { input }: any, context: any) {
       try {
-        const { db, id } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.SUBSCRIPTION, PermissionAction.READ);
+        const { db, id } = auth;
 
         const findUser = await db.query.users.findFirst({
           where: (user: any, { eq }: any) => eq(user.id, id),
@@ -45,7 +48,9 @@ const paymentResolvers = {
   Mutation: {
     async addPaymentDetails(_: any, { input }: any, context: any) {
       try {
-        const { db, id } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.SUBSCRIPTION, PermissionAction.CREATE);
+        const { db, id } = auth;
 
         const findUser = await db.query.users.findFirst({
           where: (user: any, { eq }: any) => eq(user.id, id),

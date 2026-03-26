@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  thrico-ai-worker:
+    build:
+      context: ../../
+      dockerfile: services/thrico-ai-worker/Dockerfile
+    environment:
+      - NODE_ENV=production
+      - RABBITMQ_URL=${RABBITMQ_URL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - IND_DATABASE_URL=${IND_DATABASE_URL}
+      - LOG_LEVEL=info
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

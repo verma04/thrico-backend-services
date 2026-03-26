@@ -14,6 +14,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { entity } from "../tenant/entity/details";
 import { userToEntity } from "./member/user";
+import { cities } from "./cities";
 
 export const mentorServicesType = pgEnum("mentorServicesType", [
   "1:1 call",
@@ -58,6 +59,7 @@ export const mentorShip = pgTable("mentorships", {
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
   category: text("category"),
   skills: jsonb("skills").$type<string[]>(),
+  cityId: uuid("city_id"),
 });
 
 export const mentorShipRelations = relations(mentorShip, ({ one, many }) => ({
@@ -72,6 +74,10 @@ export const mentorShipRelations = relations(mentorShip, ({ one, many }) => ({
 
   mentorShipTestimonial: many(mentorShipTestimonials),
   services: many(mentorShipService),
+  city: one(cities, {
+    fields: [mentorShip.cityId],
+    references: [cities.id],
+  }),
 }));
 
 export const mentorShipTestimonials = pgTable("mentorShipTestimonial", {

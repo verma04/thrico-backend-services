@@ -9,6 +9,7 @@ import {
   FeedNotificationService,
   JobNotificationService,
   ListingNotificationService,
+  MomentNotificationService,
   NetworkNotificationService,
   NotificationService,
 } from "@thrico/services";
@@ -41,12 +42,21 @@ export const notificationResolvers = {
     },
     async getUnreadNotificationCounts(_: any, __: any, context: any) {
       try {
-        const { userId, entityId } = context.user || (await checkAuth(context));
-        const { NotificationService } = await import("@thrico/services");
-        return await NotificationService.getUnreadNotificationCounts({
-          userId,
-          entityId,
-        });
+        // const { userId, entityId } = context.user || (await checkAuth(context));
+        // const { NotificationService } = await import("@thrico/services");
+        // return await NotificationService.getUnreadNotificationCounts({
+        //   userId,
+        //   entityId,
+        // });
+        return {
+          feed: 0,
+          community: 0,
+          network: 0,
+          job: 0,
+          listing: 0,
+          moment: 0,
+          gamification: 0,
+        };
       } catch (error) {
         log.error("Error in getUnreadNotificationCounts", { error });
         throw error;
@@ -148,6 +158,21 @@ export const notificationResolvers = {
         });
       } catch (error) {
         log.error("Error in getListingNotifications", { error, input });
+        throw error;
+      }
+    },
+    async getMomentNotifications(_: any, { input }: any, context: any) {
+      try {
+        const { db, userId } = await checkAuth(context);
+
+        return await MomentNotificationService.getMomentNotifications({
+          db,
+          userId,
+          cursor: input?.cursor,
+          limit: input?.limit || 10,
+        });
+      } catch (error) {
+        log.error("Error in getMomentNotifications", { error, input });
         throw error;
       }
     },

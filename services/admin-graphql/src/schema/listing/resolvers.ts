@@ -612,4 +612,10 @@ export const listingResolvers = {
       }
     },
   },
+
+  MarketPlaceListing: {
+    postedBy: (listing: any) => {
+      return listing.postedBy || listing.user || null;
+    },
+  },
 };

@@ -186,12 +186,12 @@ export const marketPlaceTypes = `#graphql
   }
   # Report Types
   input ReportListingInput {
-    listingId: ID!
-    reason: String!
+    listingId: ID
+    reason: String
     description: String
   }
 
-  type ReportResponse {
+  type ListingReportResponse {
     success: Boolean!
     reportId: ID!
     message: String!
@@ -226,7 +226,7 @@ export const marketPlaceTypes = `#graphql
     addListing(input: inputAddListing): listing
     editListing(listingId: ID!, input: inputAddListing): listing
     contactSeller(input: ContactSellerInput!): ContactSellerResponse!
-    reportListing(input: ReportListingInput!): ReportResponse!
+    reportListing(input: ReportListingInput!): ListingReportResponse!
 
     markListingAsSold(input: MarkAsSoldInput!): ListingActionResponse!
     deleteListing(input: DeleteListingInput!): ListingActionResponse!

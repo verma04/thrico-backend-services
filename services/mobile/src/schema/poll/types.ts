@@ -80,6 +80,20 @@ export const pollTypes = `#graphql
     limit: Int
   }
 
+  input inputEditPollOption {
+    id: ID
+    option: String!
+  }
+
+  input inputEditPoll {
+    pollId: String!
+    title: String
+    question: String
+    resultVisibility: String
+    options: [inputEditPollOption!]
+    endDate: String
+  }
+
   type Query {
     getPollByIdForUser(input: inputGetPollByIdForUser!): polls
     getAllPolls(input: inputGetAllPolls): [polls]
@@ -88,5 +102,6 @@ export const pollTypes = `#graphql
 
   type Mutation {
     voteOnPoll(input: inputVoteOnPoll): polls
+    editPoll(input: inputEditPoll!): polls
   }
 `;

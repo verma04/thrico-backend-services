@@ -207,7 +207,7 @@ export const shopResolvers = {
     // Create product variant
     async createShopProductVariant(_: any, { input, id }: any, context: any) {
       try {
-        const { db, entity } = await checkAuth(context);
+        const { db, entity, userId } = await checkAuth(context);
 
         const payload = {
           ...input,
@@ -216,7 +216,7 @@ export const shopResolvers = {
         };
 
         if (input.image) {
-          payload.image = await upload(input.image);
+          payload.image = await upload(input.image, entity, db, userId, "SHOP_PRODUCT");
         }
 
         const [newVariant] = await db
@@ -249,7 +249,7 @@ export const shopResolvers = {
       context: any,
     ) {
       try {
-        const { db, entity } = await checkAuth(context);
+        const { db, entity, userId } = await checkAuth(context);
 
         // Verify product existence and ownership
         const product = await db.query.shopProducts.findFirst({
@@ -295,9 +295,8 @@ export const shopResolvers = {
           for (const item of input) {
             const payload: any = { ...item, updatedAt: new Date() };
 
-            // Handle image upload if it's a new file
             if (item.image && typeof item.image !== "string") {
-              payload.image = await upload(item.image);
+              payload.image = await upload(item.image, entity, tx, userId, "SHOP_PRODUCT");
             }
 
             if (item.id) {
@@ -397,7 +396,7 @@ export const shopResolvers = {
         };
 
         if (input.image) {
-          payload.image = await upload(input.image);
+          payload.image = await upload(input.image, entity, db, userId, "SHOP_BANNER");
         }
 
         const [newBanner] = await db
@@ -415,12 +414,12 @@ export const shopResolvers = {
     // Update shop banner
     async updateShopBanner(_: any, { id, input }: any, context: any) {
       try {
-        const { db, entity } = await checkAuth(context);
+        const { db, entity, userId } = await checkAuth(context);
 
         const payload: any = { ...input, updatedAt: new Date() };
 
         if (input.image) {
-          payload.image = await upload(input.image);
+          payload.image = await upload(input.image, entity, db, userId, "SHOP_BANNER");
         }
 
         const [updatedBanner] = await db

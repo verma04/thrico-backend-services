@@ -7,12 +7,12 @@ import {
   user,
 } from "@thrico/database";
 import { and, desc, eq, sql } from "drizzle-orm";
-import { upload } from "../upload";
 import slugify from "slugify";
 import { GraphQLError } from "graphql";
 import { log } from "@thrico/logging";
 import { GamificationEventService } from "../gamification/gamification-event.service";
 import { CloseFriendNotificationService } from "../network/closefriend-notification.service";
+import { StorageService } from "../storage/storage.service";
 
 export class EventsService {
   constructor(private db: any) {}
@@ -38,7 +38,15 @@ export class EventsService {
     try {
       let cover: string | undefined;
       if (input?.cover) {
-        cover = await upload(input.cover);
+        const uploadResult = await StorageService.uploadFile(
+          input.cover,
+          entityId,
+          "EVENT",
+          id,
+          this.db,
+          { processImage: true },
+        );
+        cover = uploadResult.key;
       }
 
       let slug = slugify(input.title, {
@@ -80,6 +88,7 @@ export class EventsService {
           .returning();
       });
 
+
       if (newEvent) {
         // CloseFriendNotificationService.publishNotificationTask({
         //   creatorId: id,
@@ -112,9 +121,13 @@ export class EventsService {
   async getAllEvents({
     currentUserId,
     entityId,
+    cursor,
+    limit = 10,
   }: {
     currentUserId: string;
     entityId: string;
+    cursor?: string;
+    limit?: number;
   }) {
     try {
       await this.db
@@ -131,6 +144,17 @@ export class EventsService {
           and(eq(trendingConditionsGroups.entity, entityId)),
       });
 
+      const whereConditions = [eq(events.entityId, entityId)];
+
+      if (cursor) {
+        whereConditions.push(sql`${events.createdAt} < ${new Date(cursor)}`);
+      }
+
+      const [{ count: totalCount }] = await this.db
+        .select({ count: sql<number>`count(*)` })
+        .from(events)
+        .where(and(...whereConditions));
+
       const eventsList = await this.db
         .select({
           id: events.id,
@@ -138,6 +162,7 @@ export class EventsService {
           isTrending: sql`false`,
           isWishList: sql`EXISTS (SELECT 1 FROM ${eventsWishList} WHERE ${eventsWishList.eventId} = ${events.id} AND ${eventsWishList.userId} = ${currentUserId})`,
           eventCreator: events.eventCreator,
+          createdAt: events.createdAt,
           details: {
             cover: events.cover,
             type: events.type,
@@ -156,17 +181,20 @@ export class EventsService {
             id: user.id,
             firstName: user.firstName,
             lastName: user.lastName,
-
             avatar: user.avatar,
           },
         })
         .from(events)
         .leftJoin(user, eq(events.eventCreator, user.id))
-        .where(and(eq(events.entityId, entityId)))
-        .orderBy(desc(events.createdAt));
+        .where(and(...whereConditions))
+        .orderBy(desc(events.createdAt))
+        .limit(limit + 1);
+
+      const hasNextPage = eventsList.length > limit;
+      const nodes = hasNextPage ? eventsList.slice(0, limit) : eventsList;
 
       let trendingCount = 5;
-      let scored = eventsList.map((e: any) => ({
+      let scored = nodes.map((e: any) => ({
         ...e,
         trendingScore:
           (condition?.attendees ? e.details.numberOfAttendees || 0 : 0) +
@@ -177,22 +205,25 @@ export class EventsService {
       const trendingIds = new Set(
         scored.slice(0, trendingCount).map((e: any) => e.id),
       );
-      const final = eventsList.map((e: any) => ({
-        ...e,
-        isTrending: trendingIds.has(e.id),
-        isOwner: e.eventCreator === currentUserId,
-        canReport: e.eventCreator !== currentUserId,
-        canDelete: e.eventCreator === currentUserId,
+
+      const edges = nodes.map((e: any) => ({
+        cursor: e.createdAt.toISOString(),
+        node: {
+          ...e,
+          isTrending: trendingIds.has(e.id),
+          isOwner: e.eventCreator === currentUserId,
+          canReport: e.eventCreator !== currentUserId,
+          canDelete: e.eventCreator === currentUserId,
+        },
       }));
 
-      console.log(eventsList);
       return {
-        events: final,
-        pagination: {
-          total: final.length,
-          page: 1,
-          limit: final.length,
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
         },
+        totalCount: Number(totalCount),
       };
     } catch (error) {
       log.error("Error in getAllEvents", { error });

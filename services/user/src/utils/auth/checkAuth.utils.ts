@@ -33,7 +33,7 @@ export interface AuthenticatedContext extends UnauthenticatedContext {
 }
 
 const domainCheck = async (
-  domain: string | undefined
+  domain: string | undefined,
 ): Promise<string | null> => {
   if (!domain) return null;
 
@@ -64,7 +64,7 @@ const domainCheck = async (
 };
 
 const checkAuth = async (
-  context: UnauthenticatedContext
+  context: UnauthenticatedContext,
 ): Promise<AuthenticatedContext> => {
   if (!context.headers?.authorization) {
     throw new GraphQLError("Unauthorized");
@@ -112,7 +112,7 @@ const checkAuth = async (
       const entity = await DB.query.userToEntity.findFirst({
         where: and(
           eq(userToEntity?.entityId, domain),
-          eq(userToEntity?.userId, userToken.id)
+          eq(userToEntity?.userId, userToken.id),
         ),
       });
 

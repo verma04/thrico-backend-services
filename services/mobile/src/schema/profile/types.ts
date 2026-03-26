@@ -13,6 +13,8 @@ export const profileTypes = `#graphql
     experience: JSON
     categories: [String]
     skills: [skill]
+    currentCompany: JSON
+    currentEducation: JSON
   }
 
   type connectionsUsers {
@@ -106,6 +108,8 @@ export const profileTypes = `#graphql
   type profileInfoDetails {
     education: JSON
     experience: JSON
+    currentEducation: education
+    currentCompany: experience
     skills: JSON
     interests: JSON
     socialLinks: JSON
@@ -128,6 +132,7 @@ export const profileTypes = `#graphql
     getExperienceItemById(id: String!): experience
     getSkillsItemById(id: String!): skill
     getSocialLinkById(id: String!): social
+    getProfileViewers(input: GetProfileViewersInput): profileViewerResponse
   }
 
   input inputProfileDetails {
@@ -192,6 +197,38 @@ export const profileTypes = `#graphql
     tags: [String]!
     yearsOfExperience: Int
     description: String
+  }
+
+  type profileViewer {
+    id: ID
+    firstName: String
+    lastName: String
+    avatar: String
+    designation: String
+    viewedAt: String
+  }
+
+  type profileViewerEdge {
+    cursor: String!
+    node: profileViewer!
+  }
+
+  type profileViewerResponse {
+    edges: [profileViewerEdge]
+    pageInfo: PageInfo
+    totalCount: Int
+    lastWeekViews: Int
+    lastMonthViews: Int
+  }
+
+  type PageInfo {
+    hasNextPage: Boolean!
+    endCursor: String
+  }
+
+  input GetProfileViewersInput {
+    limit: Int
+    cursor: String
   }
 
   input inputSkill {

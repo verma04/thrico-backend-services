@@ -5,6 +5,7 @@ import { log } from '@thrico/logging';
 
 const SERVICE_PROTO_PATH = path.join(__dirname, '../proto/service.proto');
 const COUNTRY_PROTO_PATH = path.join(__dirname, '../proto/country.proto');
+const ADDON_PROTO_PATH = path.join(__dirname, '../proto/addon.proto');
 
 // Load service proto file
 const servicePackageDefinition = protoLoader.loadSync(SERVICE_PROTO_PATH, {
@@ -24,15 +25,28 @@ const countryPackageDefinition = protoLoader.loadSync(COUNTRY_PROTO_PATH, {
   oneofs: true,
 });
 
+// Load addon proto file
+const addonPackageDefinition = protoLoader.loadSync(ADDON_PROTO_PATH, {
+  keepCase: true,
+  longs: String,
+  enums: String,
+  defaults: true,
+  oneofs: true,
+});
+
 const serviceProtoDescriptor = grpc.loadPackageDefinition(servicePackageDefinition) as any;
 const countryProtoDescriptor = grpc.loadPackageDefinition(countryPackageDefinition) as any;
+const addonProtoDescriptor = grpc.loadPackageDefinition(addonPackageDefinition) as any;
+
 const thrico = serviceProtoDescriptor.thrico;
-const thricoCountry = countryProtoDescriptor.thrico;
+const thricoCountry = countryProtoDescriptor.countryapi;
+const addonProto = addonProtoDescriptor.addon;
 
 export interface GrpcServiceImplementations {
   userService: any;
   entityService: any;
   countryService: any;
+  addonService: any;
 }
 
 export function createGrpcServer(
@@ -58,6 +72,9 @@ export function createGrpcServer(
 
   // Add CountryService
   server.addService(thricoCountry.CountryService.service, implementations.countryService);
+
+  // Add AddonService
+  server.addService(addonProto.AddonService.service, implementations.addonService);
 
   // Bind server
   const address = `0.0.0.0:${port}`;

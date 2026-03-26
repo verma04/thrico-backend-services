@@ -4,21 +4,29 @@ import { and, eq, ne } from "drizzle-orm";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import { GraphQLError } from "graphql";
 import { log } from "@thrico/logging";
+import {
+  ensurePermission,
+  AdminModule,
+  PermissionAction,
+} from "../../utils/auth/permissions.utils";
 
 const cache = new WebsiteCache();
+
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
+
+// const cache = new WebsiteCache();
 
 export const websiteResolvers = {
   Query: {
     async getWebsite(_: any, { input }: any, context: any) {
       try {
-        // Try cache first
-        const { id, entity, db } = await checkAuth(context);
-        log.debug("Auth check", { id, entity });
-        const cached = await cache.getWebsite(entity);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.WEBSITE, PermissionAction.READ);
+        const { id, entity, db } = auth;
 
+        const cached = await cache.getWebsite(entity);
         if (cached) return cached;
 
-        // Fetch from database
         const website = await db.query.websites.findFirst({
           where: eq(websites.entityId, entity),
           with: {
@@ -35,16 +43,8 @@ export const websiteResolvers = {
           },
         });
 
-        if (website && website.pages && website.pages.length > 0) {
-          log.debug("Website fetched from DB", {
-            modules: website.pages[0].modules,
-          });
-        }
-
-        // Cache the result
         if (website) {
           await cache.setWebsite(entity, website);
-          log.info("Website fetched from DB", { websiteId: website.id });
         }
 
         return website;
@@ -55,7 +55,10 @@ export const websiteResolvers = {
     },
     async getAllPagesSeo(_: any, { websiteId }: any, context: any) {
       try {
-        const { db } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.WEBSITE, PermissionAction.READ);
+        const { db } = auth;
+
         const websitePages = await db.query.pages.findMany({
           where: eq(pages.websiteId, websiteId),
           orderBy: (p: any, { asc }: any) => [asc(p.order)],
@@ -69,7 +72,10 @@ export const websiteResolvers = {
 
     async getPageBySlug(_: any, { websiteId, slug }: any, context: any) {
       try {
-        const { db } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.WEBSITE, PermissionAction.READ);
+        const { db } = auth;
+
         const page = await db.query.pages.findFirst({
           where: and(eq(pages.websiteId, websiteId), eq(pages.slug, slug)),
           with: {
@@ -102,7 +108,14 @@ export const websiteResolvers = {
   Mutation: {
     async updateWebsiteTheme(_: any, { websiteId, theme }: any, context: any) {
       try {
-        const { db, entity } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.APPEARANCE, PermissionAction.EDIT);
+        const { db, entity, id: adminId } = auth;
+
+        const previousState = await db.query.websites.findFirst({
+          where: and(eq(websites.id, websiteId), eq(websites.entityId, entity)),
+        });
+
         const [updatedWebsite] = await db
           .update(websites)
           .set({ theme, updatedAt: new Date() })
@@ -115,6 +128,18 @@ export const websiteResolvers = {
           });
         }
 
+        await createAuditLog(db, {
+          adminId,
+          entityId: entity,
+          module: AdminModule.APPEARANCE,
+          action: "UPDATE_THEME",
+          resourceId: websiteId,
+          previousState,
+          newState: updatedWebsite,
+          ipAddress: context.ip,
+          userAgent: context.userAgent,
+        });
+
         await cache.invalidateWebsite(entity, websiteId);
         return updatedWebsite;
       } catch (error) {
@@ -125,7 +150,14 @@ export const websiteResolvers = {
 
     async updateWebsiteFont(_: any, { websiteId, font }: any, context: any) {
       try {
-        const { db, entity } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.APPEARANCE, PermissionAction.EDIT);
+        const { db, entity, id: adminId } = auth;
+
+        const previousState = await db.query.websites.findFirst({
+          where: and(eq(websites.id, websiteId), eq(websites.entityId, entity)),
+        });
+
         const [updatedWebsite] = await db
           .update(websites)
           .set({ font, updatedAt: new Date() })
@@ -138,6 +170,18 @@ export const websiteResolvers = {
           });
         }
 
+        await createAuditLog(db, {
+          adminId,
+          entityId: entity,
+          module: AdminModule.APPEARANCE,
+          action: "UPDATE_FONT",
+          resourceId: websiteId,
+          previousState,
+          newState: updatedWebsite,
+          ipAddress: context.ip,
+          userAgent: context.userAgent,
+        });
+
         await cache.invalidateWebsite(entity, websiteId);
         return updatedWebsite;
       } catch (error) {
@@ -149,47 +193,49 @@ export const websiteResolvers = {
     async updateWebsiteCustomColors(
       _: any,
       { websiteId, customColors }: any,
-      context: any
+      context: any,
     ) {
       try {
-        const { db, entity } = await checkAuth(context);
-        log.debug("Update website custom colors", { websiteId, customColors });
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.APPEARANCE, PermissionAction.EDIT);
+        const { db, entity, id: adminId } = auth;
+
+        const previousState = await db.query.websites.findFirst({
+          where: and(eq(websites.id, websiteId), eq(websites.entityId, entity)),
+        });
 
         if (customColors === undefined || customColors === null) {
           throw new GraphQLError(
             "customColors is required and cannot be null.",
             {
               extensions: { code: "BAD_USER_INPUT" },
-            }
+            },
           );
-        }
-
-        // Build the update object conditionally
-        const updateData: any = {
-          updatedAt: new Date(),
-        };
-
-        // Only add customColors if it's a valid value
-        if (customColors !== undefined && customColors !== null) {
-          updateData.customColors = customColors;
         }
 
         const [updatedWebsite] = await db
           .update(websites)
-          .set(updateData)
+          .set({ customColors, updatedAt: new Date() })
           .where(and(eq(websites.id, websiteId), eq(websites.entityId, entity)))
           .returning();
-
-        log.info("Website custom colors updated", {
-          websiteId,
-          hasCustomColors: !!updatedWebsite?.customColors,
-        });
 
         if (!updatedWebsite) {
           throw new GraphQLError("Website not found or access denied.", {
             extensions: { code: "NOT_FOUND" },
           });
         }
+
+        await createAuditLog(db, {
+          adminId,
+          entityId: entity,
+          module: AdminModule.APPEARANCE,
+          action: "UPDATE_CUSTOM_COLORS",
+          resourceId: websiteId,
+          previousState: previousState?.customColors,
+          newState: updatedWebsite.customColors,
+          ipAddress: context.ip,
+          userAgent: context.userAgent,
+        });
 
         await cache.invalidateWebsite(entity, websiteId);
         return updatedWebsite.customColors;
@@ -199,23 +245,22 @@ export const websiteResolvers = {
       }
     },
 
-    async updatePage(
-      _: any,
-      {
-        pageId,
-        name,
-        slug,
-        isEnabled,
-        title,
-        description,
-        keywords,
-        schemaMarkup,
-        includeInSitemap,
-      }: any,
-      context: any
-    ) {
+    async updatePage(_: any, input: any, context: any) {
       try {
-        const { db, entity } = await checkAuth(context);
+        const {
+          pageId,
+          name,
+          slug,
+          isEnabled,
+          title,
+          description,
+          keywords,
+          schemaMarkup,
+          includeInSitemap,
+        } = input;
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.WEBSITE, PermissionAction.EDIT);
+        const { db, entity, id: adminId } = auth;
 
         const page = await db.query.pages.findFirst({
           where: eq(pages.id, pageId),
@@ -232,7 +277,7 @@ export const websiteResolvers = {
             where: and(
               eq(pages.websiteId, page.websiteId),
               eq(pages.slug, slug),
-              ne(pages.id, pageId)
+              ne(pages.id, pageId),
             ),
           });
 
@@ -243,7 +288,6 @@ export const websiteResolvers = {
           }
         }
 
-        // Merge existing SEO if updating only some fields, or start fresh if no SEO exists
         const currentSeo = (page.seo as any) || {};
         const updatedSeo = {
           ...currentSeo,
@@ -261,11 +305,22 @@ export const websiteResolvers = {
             ...(isEnabled !== undefined && { isEnabled }),
             ...(includeInSitemap !== undefined && { includeInSitemap }),
             seo: updatedSeo,
-
             updatedAt: new Date(),
           })
           .where(eq(pages.id, pageId))
           .returning();
+
+        await createAuditLog(db, {
+          adminId,
+          entityId: entity,
+          module: AdminModule.WEBSITE,
+          action: "UPDATE_PAGE",
+          resourceId: pageId,
+          previousState: page,
+          newState: updatedPage,
+          ipAddress: context.ip,
+          userAgent: context.userAgent,
+        });
 
         await cache.invalidateWebsite(entity, page.websiteId);
         return updatedPage;
@@ -275,20 +330,19 @@ export const websiteResolvers = {
       }
     },
 
-    async updatePageSeo(
-      _: any,
-      {
-        pageId,
-        title,
-        description,
-        keywords,
-        schemaMarkup,
-        includeInSitemap,
-      }: any,
-      context: any
-    ) {
+    async updatePageSeo(_: any, input: any, context: any) {
       try {
-        const { db, entity } = await checkAuth(context);
+        const {
+          pageId,
+          title,
+          description,
+          keywords,
+          schemaMarkup,
+          includeInSitemap,
+        } = input;
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.WEBSITE, PermissionAction.EDIT);
+        const { db, entity, id: adminId } = auth;
 
         const page = await db.query.pages.findFirst({
           where: eq(pages.id, pageId),
@@ -319,6 +373,18 @@ export const websiteResolvers = {
           .where(eq(pages.id, pageId))
           .returning();
 
+        await createAuditLog(db, {
+          adminId,
+          entityId: entity,
+          module: AdminModule.WEBSITE,
+          action: "UPDATE_PAGE_SEO",
+          resourceId: pageId,
+          previousState: page.seo,
+          newState: updatedPage.seo,
+          ipAddress: context.ip,
+          userAgent: context.userAgent,
+        });
+
         await cache.invalidateWebsite(entity, page.websiteId);
         return updatedPage;
       } catch (error) {
@@ -329,7 +395,9 @@ export const websiteResolvers = {
 
     async deletePage(_: any, { pageId }: any, context: any) {
       try {
-        const { db, entity } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.WEBSITE, PermissionAction.DELETE);
+        const { db, entity, id: adminId } = auth;
 
         const page = await db.query.pages.findFirst({
           where: eq(pages.id, pageId),
@@ -341,18 +409,26 @@ export const websiteResolvers = {
           });
         }
 
-        // Delete associated modules first
         await db.delete(modules).where(eq(modules.pageId, pageId));
 
-        // Delete the page
         const [deletedPage] = await db
           .delete(pages)
           .where(eq(pages.id, pageId))
           .returning();
 
-        await cache.invalidateWebsite(entity, page.websiteId);
+        await createAuditLog(db, {
+          adminId,
+          entityId: entity,
+          module: AdminModule.WEBSITE,
+          action: "DELETE_PAGE",
+          resourceId: pageId,
+          previousState: page,
+          ipAddress: context.ip,
+          userAgent: context.userAgent,
+        });
 
-        return true; // Original was returning object, but Mutation return type logic says Boolean!
+        await cache.invalidateWebsite(entity, page.websiteId);
+        return true;
       } catch (error) {
         log.error("Error in deletePage", { error });
         throw error;
@@ -362,11 +438,17 @@ export const websiteResolvers = {
     async updateNavbar(
       _: any,
       { websiteId, layout, content, isEnabled }: any,
-      context: any
+      context: any,
     ) {
       try {
-        const { id, entity, db } = await checkAuth(context);
-        // Update database
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.APPEARANCE, PermissionAction.EDIT);
+        const { db, entity, id: adminId } = auth;
+
+        const previousState = await db.query.navbars.findFirst({
+          where: eq(navbars.websiteId, websiteId),
+        });
+
         const [updated] = await db
           .update(navbars)
           .set({
@@ -378,7 +460,18 @@ export const websiteResolvers = {
           .where(eq(navbars.websiteId, websiteId))
           .returning();
 
-        // Invalidate cache
+        await createAuditLog(db, {
+          adminId,
+          entityId: entity,
+          module: AdminModule.APPEARANCE,
+          action: "UPDATE_NAVBAR",
+          resourceId: websiteId,
+          previousState,
+          newState: updated,
+          ipAddress: context.ip,
+          userAgent: context.userAgent,
+        });
+
         const website = await db.query.websites.findFirst({
           where: eq(websites.id, websiteId),
         });
@@ -396,11 +489,17 @@ export const websiteResolvers = {
     async updateFooter(
       _: any,
       { websiteId, layout, content, isEnabled }: any,
-      context: any
+      context: any,
     ) {
       try {
-        const { id, entity, db } = await checkAuth(context);
-        // Similar to updateNavbar
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.APPEARANCE, PermissionAction.EDIT);
+        const { db, entity, id: adminId } = auth;
+
+        const previousState = await db.query.footers.findFirst({
+          where: eq(footers.websiteId, websiteId),
+        });
+
         const [updated] = await db
           .update(footers)
           .set({
@@ -411,6 +510,18 @@ export const websiteResolvers = {
           })
           .where(eq(footers.websiteId, websiteId))
           .returning();
+
+        await createAuditLog(db, {
+          adminId,
+          entityId: entity,
+          module: AdminModule.APPEARANCE,
+          action: "UPDATE_FOOTER",
+          resourceId: websiteId,
+          previousState,
+          newState: updated,
+          ipAddress: context.ip,
+          userAgent: context.userAgent,
+        });
 
         const website = await db.query.websites.findFirst({
           where: eq(websites.id, websiteId),
@@ -428,29 +539,26 @@ export const websiteResolvers = {
 
     async createPage(_: any, { websiteId, name, slug }: any, context: any) {
       try {
-        const { id, entity, db } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.WEBSITE, PermissionAction.CREATE);
+        const { id: adminId, entity, db } = auth;
 
-        // Check if a page with the same slug already exists for this website
         const existingPage = await db.query.pages.findFirst({
           where: and(eq(pages.websiteId, websiteId), eq(pages.slug, slug)),
         });
 
         if (existingPage) {
           throw new GraphQLError("A page with this slug already exists.", {
-            extensions: {
-              code: "BAD_USER_INPUT",
-              http: { status: 400 },
-            },
+            extensions: { code: "BAD_USER_INPUT", http: { status: 400 } },
           });
         }
 
-        // Get max order
-        const existingPages = await db.query.pages.findMany({
+        const existingPagesList = await db.query.pages.findMany({
           where: eq(pages.websiteId, websiteId),
         });
         const maxOrder = Math.max(
-          ...existingPages.map((p: any) => p.order),
-          -1
+          ...existingPagesList.map((p: any) => p.order),
+          -1,
         );
 
         const seo = {
@@ -462,16 +570,20 @@ export const websiteResolvers = {
 
         const [newPage] = await db
           .insert(pages)
-          .values({
-            websiteId,
-            name,
-            slug,
-            order: maxOrder + 1,
-            seo,
-          })
+          .values({ websiteId, name, slug, order: maxOrder + 1, seo })
           .returning();
 
-        // Invalidate cache
+        await createAuditLog(db, {
+          adminId,
+          entityId: entity,
+          module: AdminModule.WEBSITE,
+          action: "CREATE_PAGE",
+          resourceId: newPage.id,
+          newState: newPage,
+          ipAddress: context.ip,
+          userAgent: context.userAgent,
+        });
+
         const website = await db.query.websites.findFirst({
           where: eq(websites.id, websiteId),
         });
@@ -489,10 +601,22 @@ export const websiteResolvers = {
     async updateModule(
       _: any,
       { moduleId, name, layout, content, isEnabled }: any,
-      context: any
+      context: any,
     ) {
       try {
-        const { db, entity } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.WEBSITE, PermissionAction.EDIT);
+        const { db, entity, id: adminId } = auth;
+
+        const previousState = await db.query.modules.findFirst({
+          where: eq(modules.id, moduleId),
+        });
+
+        if (!previousState) {
+          throw new GraphQLError("Module not found.", {
+            extensions: { code: "NOT_FOUND" },
+          });
+        }
 
         const [updatedModule] = await db
           .update(modules)
@@ -506,18 +630,22 @@ export const websiteResolvers = {
           .where(eq(modules.id, moduleId))
           .returning();
 
-        if (!updatedModule) {
-          throw new GraphQLError("Module not found.", {
-            extensions: { code: "NOT_FOUND" },
-          });
-        }
+        await createAuditLog(db, {
+          adminId,
+          entityId: entity,
+          module: AdminModule.WEBSITE,
+          action: "UPDATE_MODULE",
+          resourceId: moduleId,
+          previousState,
+          newState: updatedModule,
+          ipAddress: context.ip,
+          userAgent: context.userAgent,
+        });
 
-        // Get the page to find the websiteId
         const page = await db.query.pages.findFirst({
           where: eq(pages.id, updatedModule.pageId),
         });
 
-        // Invalidate both page and website cache
         await cache.invalidatePage(updatedModule.pageId);
         if (page) {
           await cache.invalidateWebsite(entity, page.websiteId);
@@ -533,41 +661,41 @@ export const websiteResolvers = {
     async createModule(
       _: any,
       { pageId, type, name, layout, content }: any,
-      context: any
+      context: any,
     ) {
       try {
-        const { id, entity, db } = await checkAuth(context);
-        // Get max order
-        const existingModules = await db.query.modules.findMany({
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.WEBSITE, PermissionAction.CREATE);
+        const { id: adminId, entity, db } = auth;
+
+        const existingModulesList = await db.query.modules.findMany({
           where: eq(modules.pageId, pageId),
         });
         const maxOrder = Math.max(
-          ...existingModules.map((m: any) => m.order),
-          -1
+          ...existingModulesList.map((m: any) => m.order),
+          -1,
         );
 
         const [newModule] = await db
           .insert(modules)
-          .values({
-            pageId,
-            type,
-            name,
-            layout,
-            content,
-            order: maxOrder + 1,
-          })
+          .values({ pageId, type, name, layout, content, order: maxOrder + 1 })
           .returning();
 
-        // Get the page to find the websiteId
+        await createAuditLog(db, {
+          adminId,
+          entityId: entity,
+          module: AdminModule.WEBSITE,
+          action: "CREATE_MODULE",
+          resourceId: newModule.id,
+          newState: newModule,
+          ipAddress: context.ip,
+          userAgent: context.userAgent,
+        });
+
         const page = await db.query.pages.findFirst({
           where: eq(pages.id, pageId),
         });
 
-        // Invalidate both page and website cache
-        log.info("Module created", {
-          moduleId: newModule.id,
-          pageId: newModule.pageId,
-        });
         await cache.invalidatePage(pageId);
         if (page) {
           await cache.invalidateWebsite(entity, page.websiteId);
@@ -582,27 +710,38 @@ export const websiteResolvers = {
 
     async deleteModule(_: any, { moduleId }: any, context: any) {
       try {
-        const { db, entity } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.WEBSITE, PermissionAction.DELETE);
+        const { db, entity, id: adminId } = auth;
 
-        const module = await db.query.modules.findFirst({
+        const moduleRecord = await db.query.modules.findFirst({
           where: eq(modules.id, moduleId),
         });
 
-        if (!module) {
+        if (!moduleRecord) {
           throw new GraphQLError("Module not found.", {
             extensions: { code: "NOT_FOUND" },
           });
         }
 
-        // Get the page to find the websiteId
-        const page = await db.query.pages.findFirst({
-          where: eq(pages.id, module.pageId),
+        await db.delete(modules).where(eq(modules.id, moduleId));
+
+        await createAuditLog(db, {
+          adminId,
+          entityId: entity,
+          module: AdminModule.WEBSITE,
+          action: "DELETE_MODULE",
+          resourceId: moduleId,
+          previousState: moduleRecord,
+          ipAddress: context.ip,
+          userAgent: context.userAgent,
         });
 
-        await db.delete(modules).where(eq(modules.id, moduleId)).returning();
+        const page = await db.query.pages.findFirst({
+          where: eq(pages.id, moduleRecord.pageId),
+        });
 
-        // Invalidate both page and website cache
-        await cache.invalidatePage(module.pageId);
+        await cache.invalidatePage(moduleRecord.pageId);
         if (page) {
           await cache.invalidateWebsite(entity, page.websiteId);
         }
@@ -616,7 +755,9 @@ export const websiteResolvers = {
 
     async toggleModule(_: any, { moduleId, isEnabled }: any, context: any) {
       try {
-        const { db, entity } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.WEBSITE, PermissionAction.EDIT);
+        const { db, entity, id: adminId } = auth;
 
         const [updatedModule] = await db
           .update(modules)
@@ -630,12 +771,21 @@ export const websiteResolvers = {
           });
         }
 
-        // Get the page to find the websiteId
+        await createAuditLog(db, {
+          adminId,
+          entityId: entity,
+          module: AdminModule.WEBSITE,
+          action: "TOGGLE_MODULE",
+          resourceId: moduleId,
+          newState: updatedModule,
+          ipAddress: context.ip,
+          userAgent: context.userAgent,
+        });
+
         const page = await db.query.pages.findFirst({
           where: eq(pages.id, updatedModule.pageId),
         });
 
-        // Invalidate both page and website cache
         await cache.invalidatePage(updatedModule.pageId);
         if (page) {
           await cache.invalidateWebsite(entity, page.websiteId);
@@ -650,22 +800,40 @@ export const websiteResolvers = {
 
     async reorderModules(_: any, { pageId, moduleIds }: any, context: any) {
       try {
-        // Update order for each module
-        const { id, entity, db } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.WEBSITE, PermissionAction.EDIT);
+        const { db, entity, id: adminId } = auth;
+
+        const previousState = await db.query.modules.findMany({
+          where: eq(modules.pageId, pageId),
+          orderBy: (m: any, { asc }: any) => [asc(m.order)],
+        });
+
         await Promise.all(
           moduleIds.map((id: string, index: number) =>
-            db.update(modules).set({ order: index }).where(eq(modules.id, id))
-          )
+            db.update(modules).set({ order: index }).where(eq(modules.id, id)),
+          ),
         );
 
-        // Invalidate cache
-        await cache.invalidatePage(pageId);
-
-        // Return updated modules
-        return db.query.modules.findMany({
+        const newState = await db.query.modules.findMany({
           where: eq(modules.pageId, pageId),
-          orderBy: (modules: any, { asc }: any) => [asc(modules.order)],
+          orderBy: (m: any, { asc }: any) => [asc(m.order)],
         });
+
+        await createAuditLog(db, {
+          adminId,
+          entityId: entity,
+          module: AdminModule.WEBSITE,
+          action: "REORDER_MODULES",
+          resourceId: pageId,
+          previousState,
+          newState,
+          ipAddress: context.ip,
+          userAgent: context.userAgent,
+        });
+
+        await cache.invalidatePage(pageId);
+        return newState;
       } catch (error) {
         log.error("Error in reorderModules", { error });
         throw error;

@@ -256,6 +256,7 @@ export async function getUnreadCounts(
       "JOB",
       "LISTING",
       "GAMIFICATION",
+      "MOMENT",
     ];
     const client = redis.client;
     const pipeline = client.pipeline();

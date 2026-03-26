@@ -1,7 +1,6 @@
-import { AuthService } from "@thrico/services";
+import { AuthService, UserService } from "@thrico/services";
 import { getDb } from "@thrico/database";
 import { DatabaseRegion } from "@thrico/shared";
-import { subscriptionClient } from "@thrico/grpc";
 import { log } from "@thrico/logging";
 import checkAuth from "../utils/auth/checkAuth.utils";
 import sendOtp from "../utils/sendOtp.utils";
@@ -64,6 +63,14 @@ export const resolvers = {
         throw error;
       }
     },
+    async getSignupProfile(_: any, { id }: any, context: any) {
+      try {
+        return AuthService.getSignupProfile({ id });
+      } catch (error) {
+        log.error("Error in getSignupProfile", { error, id });
+        throw error;
+      }
+    },
 
     async getOrgDetails(_: any, { input }: any, context: any) {
       try {
@@ -71,20 +78,6 @@ export const resolvers = {
         return AuthService.getOrgDetails({ entityId, db });
       } catch (error) {
         log.error("Error in getOrgDetails", { error });
-        throw error;
-      }
-    },
-
-    async checkSubscription(_: any, { input }: any, context: any) {
-      try {
-        const { entityId } = context.user || (await checkAuth(context));
-        return AuthService.checkSubscription({
-          entityId,
-          checkEntitySubscriptionFn: (id) =>
-            subscriptionClient.checkEntitySubscription(id),
-        });
-      } catch (error) {
-        log.error("Error in checkSubscription", { error });
         throw error;
       }
     },
@@ -111,6 +104,51 @@ export const resolvers = {
         return result;
       } catch (error) {
         log.error("Error in checkAllUserAccount", { error });
+        throw error;
+      }
+    },
+
+    async getEntityModuleAccess(_: any, { moduleName }: any, context: any) {
+      try {
+        const { db, entityId } = context.user || (await checkAuth(context));
+        const settings = await db.query.entitySettings.findFirst({
+          where: (es: any, { eq }: any) => eq(es.entity, entityId),
+        });
+
+        if (!settings) return false;
+
+        switch (moduleName) {
+          case "COMMUNITY":
+            return settings.allowCommunity ?? true;
+          case "EVENTS":
+            return settings.allowEvents ?? true;
+          case "FORUM":
+            return settings.allowDiscussionForum ?? true;
+          case "JOBS":
+            return settings.allowJobs ?? true;
+          case "MENTORSHIP":
+            return settings.allowMentorship ?? true;
+          case "LISTING":
+            return settings.allowListing ?? true;
+          case "SHOP":
+            return settings.allowShop ?? true;
+          case "OFFERS":
+            return settings.allowOffers ?? true;
+          case "SURVEYS":
+            return settings.allowSurveys ?? true;
+          case "POLLS":
+            return settings.allowPolls ?? true;
+          case "STORIES":
+            return settings.allowStories ?? true;
+          case "FEED":
+          case "GAMIFICATION":
+          case "REWARDS":
+            return true;
+          default:
+            return false;
+        }
+      } catch (error) {
+        log.error("Error in getEntityModuleAccess", { error, moduleName });
         throw error;
       }
     },
@@ -250,6 +288,63 @@ export const resolvers = {
         });
       } catch (error) {
         log.error("Error in allowPushNotification", { error });
+        throw error;
+      }
+    },
+
+    async requestAccountDeletion(_: any, {}: any, context: any) {
+      try {
+        const { db, userId } = context.user || (await checkAuth(context));
+        await UserService.requestAccountDeletion({ userId, db });
+        return { success: true, message: "Account scheduled for deletion" };
+      } catch (error) {
+        log.error("Error in requestAccountDeletion", { error });
+        throw error;
+      }
+    },
+
+    async restoreAccount(_: any, {}: any, context: any) {
+      try {
+        const { db, userId } = context.user || (await checkAuth(context));
+        await UserService.restoreAccount({ userId, db });
+        return { success: true, message: "Account restored successfully" };
+      } catch (error) {
+        log.error("Error in restoreAccount", { error });
+        throw error;
+      }
+    },
+
+    async deactivateAccount(_: any, {}: any, context: any) {
+      try {
+        const { db, userId } = context.user || (await checkAuth(context));
+        await UserService.deactivateAccount({ userId, db });
+        return { success: true, message: "Account deactivated successfully" };
+      } catch (error) {
+        log.error("Error in deactivateAccount", { error });
+        throw error;
+      }
+    },
+
+    async reactivateAccount(_: any, {}: any, context: any) {
+      try {
+        const { db, userId } = context.user || (await checkAuth(context));
+        await UserService.reactivateAccount({ userId, db });
+        return { success: true, message: "Account reactivated successfully" };
+      } catch (error) {
+        log.error("Error in reactivateAccount", { error });
+        throw error;
+      }
+    },
+    async createProfile(_: any, { input }: any, context: any) {
+      try {
+        const db = getDatabase();
+        return AuthService.createProfile({
+          input,
+          db,
+          generateJwtTokenFn: generateJwtToken,
+        });
+      } catch (error) {
+        log.error("Error in createProfile", { error, userId: input?.userId });
         throw error;
       }
     },

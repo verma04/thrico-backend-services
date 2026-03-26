@@ -247,7 +247,7 @@ export const gamificationTypes = `#graphql
     getGamificationModules: [GamificationModule!]!
     getModuleTriggers(moduleId: ID): [ModuleTrigger!]!
     getBadges(filter: BadgeFilter, pagination: PaginationInput): [Badge!]!
-    getPointRules(filter: PointRuleFilter): [PointRule!]!
+  getPointRules(filter: PointRuleFilter): [PointRule!]!
     getPointRuleStats: PointRuleStats!
     getRanks(filter: RankFilter): [Rank!]!
     getLeaderboard(pagination: PaginationInput): Leaderboard!

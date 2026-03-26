@@ -1,0 +1,107 @@
+syntax = "proto3";
+
+package addon;
+
+// =========================
+// ADDON PRICING (per country)
+// =========================
+
+message AddonPricingItem {
+  string countryCode = 1;
+  string addonPricingId = 2;
+  string type = 3; // users, admins, storage
+  string name = 4;
+  string description = 5;
+  string unitLabel = 6;
+  double monthlyUnitPrice = 7;
+  double yearlyUnitPrice = 8;
+  bool isActive = 9;
+  int32 order = 10;
+  string createdAt = 11;
+  string updatedAt = 12;
+}
+
+message GetAddonPricingRequest {
+  string countryCode = 1;
+}
+
+message GetAddonPricingResponse {
+  repeated AddonPricingItem addons = 1;
+  string currency = 2;
+}
+
+// =========================
+// ADDON INSTANCE (on subscription)
+// =========================
+
+message Addon {
+  string addonId = 1;
+  string type = 2; // users, admins, storage
+  string name = 3;
+  int32 quantity = 4;
+  double unitPrice = 5;
+  double totalPrice = 6;
+  bool isActive = 7;
+  string addedAt = 8;
+  string removedAt = 9;
+  string effectiveFrom = 10;
+}
+
+// =========================
+// ADD ADDON TO SUBSCRIPTION
+// =========================
+
+message AddAddonRequest {
+  string entityId = 1;
+  string addonPricingId = 2;
+  string countryCode = 3;
+  int32 quantity = 4;
+}
+
+message RazorpayOrder {
+  string id = 1;
+  string entity = 2;
+  int64 amount = 3;
+  string currency = 4;
+  string receipt = 5;
+  string status = 6;
+  int64 created_at = 7;
+  map<string, string> notes = 8;
+}
+
+message AddAddonResponse {
+  bool success = 1;
+  string message = 2;
+  string billingId = 3;
+  double amount = 4;
+  string currency = 5;
+  Addon addon = 6;
+  RazorpayOrder razorpayOrder = 7;
+}
+
+// =========================
+// REMOVE ADDON FROM SUBSCRIPTION
+// =========================
+
+message RemoveAddonRequest {
+  string entityId = 1;
+  string addonId = 2;
+}
+
+message RemoveAddonResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// =========================
+// SERVICE DECLARATION
+// =========================
+
+service AddonService {
+  // Pricing Management
+  rpc GetAddonPricing(GetAddonPricingRequest) returns (GetAddonPricingResponse);
+
+  // Subscription Operations
+  rpc AddAddon(AddAddonRequest) returns (AddAddonResponse);
+  rpc RemoveAddon(RemoveAddonRequest) returns (RemoveAddonResponse);
+}

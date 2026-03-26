@@ -61,6 +61,24 @@ export class CommunityMediaService {
         })
         .returning();
 
+      // Track storage usage
+      try {
+        const { StorageService } = await import("../storage/storage.service");
+        await StorageService.trackUploadedFile(
+          imageUrl,
+          entityId,
+          "COMMUNITY",
+          uploadedBy,
+          db,
+          { referenceId: groupId, metadata: { title } },
+        );
+      } catch (storageError) {
+        log.error("Failed to track community media storage usage", {
+          storageError,
+          groupId,
+        });
+      }
+
       return media[0];
     } catch (error) {
       log.error("Error in addCommunityMedia", {

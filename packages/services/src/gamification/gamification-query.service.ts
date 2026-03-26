@@ -192,6 +192,11 @@ export class GamificationQueryService {
             type: badges.type,
             icon: badges.icon,
             description: badges.description,
+            targetValue: badges.targetValue,
+            isActive: badges.isActive,
+            createdAt: badges.createdAt,
+            updatedAt: badges.updatedAt,
+            condition: badges.condition,
           },
         })
         .from(userBadges)
@@ -678,23 +683,39 @@ export class GamificationQueryService {
   }
 
   /**
-   * Fetches leaderboard entries for an entity, optionally highlighting a specific user
+   * Fetches leaderboard entries for an entity with cursor-based pagination
    */
   async getLeaderboard({
     entityId,
     userId,
     limit = 20,
-    offset = 0,
+    cursor,
     db = this.db,
   }: {
     entityId: string;
     userId?: string;
     limit?: number;
-    offset?: number;
+    cursor?: string;
     db?: any;
   }) {
     try {
-      // 1. Get gamification profiles for the leaderboard page
+      // 1. Build conditions for cursor-based pagination
+      const conditions: any[] = [eq(gamificationUser.entityId, entityId)];
+
+      if (cursor) {
+        // Cursor format: base64(totalPoints:id)
+        const decoded = Buffer.from(cursor, "base64").toString("utf-8");
+        const [cursorPoints, cursorId] = decoded.split(":");
+        const points = Number(cursorPoints);
+
+        // For descending order by totalPoints, next page = entries with lower points
+        // or same points but id > cursorId (for tie-breaking)
+        conditions.push(
+          sql`(${gamificationUser.totalPoints} < ${points} OR (${gamificationUser.totalPoints} = ${points} AND ${gamificationUser.id} > ${cursorId}))`,
+        );
+      }
+
+      // 2. Fetch entries (limit + 1 to check hasNextPage)
       const entries = await db
         .select({
           id: gamificationUser.id,
@@ -703,20 +724,38 @@ export class GamificationQueryService {
           currentRankId: gamificationUser.currentRankId,
         })
         .from(gamificationUser)
-        .where(eq(gamificationUser.entityId, entityId))
-        .orderBy(desc(gamificationUser.totalPoints))
-        .limit(limit)
-        .offset(offset);
+        .where(and(...conditions))
+        .orderBy(desc(gamificationUser.totalPoints), gamificationUser.id)
+        .limit(limit + 1);
 
-      // 2. Fetch total users count
+      const hasMore = entries.length > limit;
+      const pageEntries = hasMore ? entries.slice(0, limit) : entries;
+
+      // 3. Fetch total users count
       const [totalRes] = await db
         .select({ count: sql<number>`count(*)` })
         .from(gamificationUser)
         .where(eq(gamificationUser.entityId, entityId));
 
-      const totalUsers = Number(totalRes?.count || 0);
+      const totalCount = Number(totalRes?.count || 0);
 
-      // 3. Helper to format a single entry
+      // 4. Calculate the global rank offset for the first entry on this page
+      let startRank = 1;
+      if (cursor && pageEntries.length > 0) {
+        const firstEntry = pageEntries[0];
+        const [rankRes] = await db
+          .select({ count: sql<number>`count(*)` })
+          .from(gamificationUser)
+          .where(
+            and(
+              eq(gamificationUser.entityId, entityId),
+              sql`${gamificationUser.totalPoints} > ${firstEntry.totalPoints} OR (${gamificationUser.totalPoints} = ${firstEntry.totalPoints} AND ${gamificationUser.id} < ${firstEntry.id})`,
+            ),
+          );
+        startRank = Number(rankRes?.count || 0) + 1;
+      }
+
+      // 5. Helper to format a single entry
       const formatEntry = async (entry: any, customRank?: number) => {
         const [badgesCountRes] = await db
           .select({ count: sql<number>`count(*)` })
@@ -750,14 +789,21 @@ export class GamificationQueryService {
         };
       };
 
-      // 4. Enrich page entries
-      const leaderboardEntries = await Promise.all(
-        entries.map((entry: any, index: number) =>
-          formatEntry(entry, offset + index + 1),
-        ),
+      // 6. Enrich page entries and build edges
+      const edges = await Promise.all(
+        pageEntries.map(async (entry: any, index: number) => {
+          const node = await formatEntry(entry, startRank + index);
+          const entryCursor = Buffer.from(
+            `${entry.totalPoints}:${entry.id}`,
+          ).toString("base64");
+          return {
+            cursor: entryCursor,
+            node,
+          };
+        }),
       );
 
-      // 5. Fetch specific user's entry if requested
+      // 7. Fetch specific user's entry if requested
       let userEntry = null;
       if (userId) {
         const [userProfile] = await db
@@ -776,7 +822,6 @@ export class GamificationQueryService {
           );
 
         if (userProfile) {
-          // Find rank via count of players with more points
           const [rankRes] = await db
             .select({ count: sql<number>`count(*)` })
             .from(gamificationUser)
@@ -795,8 +840,12 @@ export class GamificationQueryService {
       }
 
       return {
-        entries: leaderboardEntries,
-        totalUsers,
+        edges,
+        pageInfo: {
+          hasNextPage: hasMore,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount,
         userEntry,
       };
     } catch (error) {

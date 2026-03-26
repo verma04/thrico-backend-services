@@ -91,17 +91,16 @@ export const gamificationResolvers = {
       try {
         const { db, userId, entityId } =
           context.user || (await checkAuth(context));
-        const { limit, offset } = input || {};
+        const { limit, cursor } = input || {};
         const gamificationQueryService = new GamificationQueryService(db);
         const data = await gamificationQueryService.getLeaderboard({
           entityId,
           userId,
           limit: limit || 20,
-          offset: offset || 0,
+          cursor,
           db,
         });
 
-        console.log(data);
         return data;
       } catch (error) {
         log.error("Error in getUserLeaderboard", { error });

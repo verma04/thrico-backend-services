@@ -316,7 +316,7 @@ const UserSchema = new dynamoose.Schema(
     },
     firstName: { type: String, required: true },
     lastName: { type: String, required: true },
-    password: { type: String, required: true },
+    password: { type: String, required: false },
     entityId: {
       type: String,
       required: false,
@@ -328,9 +328,12 @@ const UserSchema = new dynamoose.Schema(
     },
     role: {
       type: String,
-      enum: Object.values(UserRole),
       required: true,
-      default: UserRole.superAdmin, // Default role is 'manager'
+      default: UserRole.superAdmin,
+    },
+    roleId: {
+      type: String,
+      required: false,
     },
     isEntityCreated: {
       type: Boolean,

@@ -371,6 +371,127 @@ export class FeedPollService {
       throw error;
     }
   }
+  // Edit poll (owner only)
+  static async editPoll({
+    input,
+    userId,
+    db,
+    entityId,
+  }: {
+    input: {
+      pollId: string;
+      question?: string;
+      title?: string;
+      options?: Array<{ id?: string; option: string }>;
+      endDate?: string;
+      resultVisibility?: string;
+    };
+    userId: string;
+    db: any;
+    entityId: string;
+  }) {
+    try {
+      const { pollId } = input;
+
+      // Verify poll exists and belongs to the user
+      const poll = await db.query.polls.findFirst({
+        where: (polls: any, { eq, and }: any) =>
+          and(eq(polls.id, pollId), eq(polls.entityId, entityId)),
+        with: { options: true },
+      });
+
+      if (!poll) {
+        throw new GraphQLError("Poll not found or not authorized", {
+          extensions: { code: "NOT_FOUND", http: { status: 404 } },
+        });
+      }
+
+      if (poll.userId !== userId) {
+        throw new GraphQLError("Only the poll owner can edit this poll", {
+          extensions: { code: "FORBIDDEN", http: { status: 403 } },
+        });
+      }
+
+      const result = await db.transaction(async (tx: any) => {
+        // Update poll fields
+        const updateData: Record<string, any> = {};
+        if (input.title !== undefined) updateData.title = input.title;
+        if (input.question !== undefined) updateData.question = input.question;
+        if (input.resultVisibility !== undefined)
+          updateData.resultVisibility = input.resultVisibility;
+        if (input.endDate !== undefined)
+          updateData.endDate = input.endDate ? new Date(input.endDate) : null;
+
+        if (Object.keys(updateData).length > 0) {
+          await tx.update(polls).set(updateData).where(eq(polls.id, pollId));
+        }
+
+        // Handle options diff (add / update / delete)
+        if (Array.isArray(input.options) && input.options.length > 0) {
+          const existingOptions = poll.options || [];
+          const existingOptionIds = existingOptions.map((opt: any) => opt.id);
+          const inputOptionIds = input.options
+            .filter((o) => o.id)
+            .map((o) => o.id);
+
+          // Delete options that were removed
+          const { inArray } = await import("drizzle-orm");
+          const toDeleteIds = existingOptionIds.filter(
+            (id: string) => !inputOptionIds.includes(id),
+          );
+          if (toDeleteIds.length > 0) {
+            await tx
+              .delete(pollOptions)
+              .where(inArray(pollOptions.id, toDeleteIds));
+          }
+
+          // Update or insert options
+          for (let idx = 0; idx < input.options.length; idx++) {
+            const option = input.options[idx];
+            if (option.id) {
+              await tx
+                .update(pollOptions)
+                .set({ text: option.option, order: idx })
+                .where(eq(pollOptions.id, option.id));
+            } else {
+              await tx.insert(pollOptions).values({
+                pollId,
+                text: option.option,
+                order: idx,
+              });
+            }
+          }
+        }
+
+        // Update associated feed description if question changed
+        if (input.question !== undefined) {
+          await tx
+            .update(userFeed)
+            .set({ description: input.question })
+            .where(eq(userFeed.pollId, pollId));
+        }
+
+        // Return the updated poll with options
+        return await tx.query.polls.findFirst({
+          where: eq(polls.id, pollId),
+          with: {
+            options: true,
+            user: {
+              with: {
+                about: true,
+              },
+            },
+          },
+        });
+      });
+
+      return result;
+    } catch (error) {
+      log.error("Error editing poll:", { error, userId, entityId });
+      throw error;
+    }
+  }
+
   // Get poll voters
   static async getPollVoters({
     pollId,

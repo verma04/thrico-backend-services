@@ -4,9 +4,16 @@ import { customDomain } from "@thrico/database";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import { CUSTOM_DOMAIN, DOMAIN } from "@thrico/database"; // Need to verify if these models are exported from @thrico/database
 import { GraphQLError } from "graphql";
+import {
+  ensurePermission,
+  AdminModule,
+  PermissionAction,
+} from "../../utils/auth/permissions.utils";
 import { registerDomain } from "../../utils/rabbit-mq/domin-register";
 import { entityClient } from "@thrico/grpc";
 import { customDomainQueue } from "../../queue/email-rabbit";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
+
 const dns = require("dns").promises;
 
 function isSubdomain(url: string) {
@@ -26,6 +33,20 @@ function getSubdomainFromHost(hostname: string) {
   console.log(hostname);
 
   return null; // No subdomain
+}
+
+function getDomainName(str: string) {
+  // Remove any leading underscores or special characters
+  const cleanedStr = str.replace(/^[_\.]+/, "");
+
+  // Split the string by periods
+  const parts = cleanedStr.split(".");
+
+  // If there are more than two parts, return the last two as the domain
+  if (parts.length > 1) {
+    return parts.slice(-2).join(".");
+  }
+  return cleanedStr; // In case of a single part
 }
 
 async function verifyCame(name: string, value: string) {
@@ -64,6 +85,7 @@ async function verifyTxt(domain: string, name: string, value: string) {
     return false; // Return false if there's an error or no records
   }
 }
+
 async function verifyARecord(name: string, value: string) {
   try {
     const records = await dns.resolve4(name);
@@ -79,19 +101,6 @@ async function verifyARecord(name: string, value: string) {
   }
 }
 
-function getDomainName(str: string) {
-  // Remove any leading underscores or special characters
-  const cleanedStr = str.replace(/^[_\.]+/, "");
-
-  // Split the string by periods
-  const parts = cleanedStr.split(".");
-
-  // If there are more than two parts, return the last two as the domain
-  if (parts.length > 1) {
-    return parts.slice(-2).join(".");
-  }
-  return cleanedStr; // In case of a single part
-}
 async function checkDnsRecord(domain: any) {
   const { isSubDomain, cname, txt, aRecord, id, mainDomain } = domain;
   let checkCName = cname.verified;
@@ -104,7 +113,6 @@ async function checkDnsRecord(domain: any) {
     const set = await CUSTOM_DOMAIN.update(
       { id: id },
       {
-        // Adjusted update signature if needed, user code: CUSTOM_DOMAIN.update(id, { $SET... })
         $SET: {
           cname: {
             verified: checkCName,
@@ -112,7 +120,7 @@ async function checkDnsRecord(domain: any) {
             value: cname.value,
           },
         },
-      }
+      },
     );
     console.log(set);
   }
@@ -129,7 +137,7 @@ async function checkDnsRecord(domain: any) {
             value: txt.value,
           },
         },
-      }
+      },
     );
   }
   if (!isSubDomain) {
@@ -146,7 +154,7 @@ async function checkDnsRecord(domain: any) {
               value: aRecord.value,
             },
           },
-        }
+        },
       );
     }
   }
@@ -160,7 +168,7 @@ async function checkDnsRecord(domain: any) {
             isVerified: true,
             ssl: false,
           },
-        }
+        },
       );
       const v = data.toJSON();
       registerDomain({ ...v, type: "subdomain" });
@@ -175,7 +183,7 @@ async function checkDnsRecord(domain: any) {
           $SET: {
             isVerified: true,
           },
-        }
+        },
       );
       const v = data.toJSON();
       registerDomain({ ...v, type: "domain" });
@@ -198,11 +206,15 @@ async function hasSSL(domain: string) {
     return false;
   }
 }
+
 export const domainResolvers: any = {
   Query: {
     async getCustomDomain(_: any, {}: any, context: any) {
       try {
-        const { entity } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        console.log(auth);
+        ensurePermission(auth, AdminModule.DOMAIN, PermissionAction.READ);
+        const { entity } = auth;
 
         const findDomain = await CUSTOM_DOMAIN.query("entity")
           .eq(entity)
@@ -217,7 +229,9 @@ export const domainResolvers: any = {
 
     async getThricoDomain(_: any, {}: any, context: any) {
       try {
-        const { entity } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.DOMAIN, PermissionAction.READ);
+        const { entity } = auth;
 
         const findDomain = await DOMAIN.query("entity").eq(entity).exec();
         if (findDomain.length > 0 && findDomain[0]?.toJSON()) {
@@ -235,9 +249,12 @@ export const domainResolvers: any = {
         throw error;
       }
     },
+
     async getCustomDomainDetails(_: any, { input }: any, context: any) {
       try {
-        const { entity } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.DOMAIN, PermissionAction.READ);
+        const { entity } = auth;
 
         const findDomain = await CUSTOM_DOMAIN.query("entity")
           .eq(entity)
@@ -260,50 +277,60 @@ export const domainResolvers: any = {
 
     async checkDomainIsVerified(_: any, {}: any, context: any) {
       try {
-        const { id, db, entity } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.DOMAIN, PermissionAction.READ);
+        const { entity, db } = auth;
 
-        // const userOrgId = await userOrg(id); // Replaced with entity from checkAuth
         const domain = await db.query.customDomain.findFirst({
           where: eq(customDomain.entity, entity),
         });
 
-        // if (domain) {
-        //     if (!domain?.status) checkDomainCName(domain)
-        //     if (!domain?.ssl) checkSSl(domain)
-        // }
         return domain;
       } catch (error) {
         console.log(error);
         throw error;
       }
     },
+
     async checkSSL(_: any, { input }: any, context: any) {
       try {
-        const { entity, email, firstName, lastName } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.DOMAIN, PermissionAction.EDIT);
+        const { entity, email, firstName, lastName, db, id: adminId } = auth;
 
         const findDomain = await CUSTOM_DOMAIN.query("entity")
           .eq(entity)
-
           .exec();
-        console.log(findDomain[0]?.toJSON());
 
         if (findDomain[0]?.toJSON()) {
-          const ifSsl = findDomain[0]?.toJSON().ssl;
+          const value = findDomain[0]?.toJSON();
+          const ifSsl = value.ssl;
           if (!ifSsl) {
-            const value = findDomain[0]?.toJSON();
-
             const check = await hasSSL(value?.domain);
 
             const entityDetails = await entityClient.getEntityDetails(entity);
             if (check) {
-              await CUSTOM_DOMAIN.update(
-                { id: findDomain[0]?.toJSON().id },
+              const updated = await CUSTOM_DOMAIN.update(
+                { id: value.id },
                 {
                   $SET: {
                     ssl: true,
                   },
-                }
+                },
               );
+
+              await createAuditLog(db, {
+                adminId: adminId,
+                entityId: entity,
+                module: AdminModule.DOMAIN,
+                action: "SSL_VERIFIED",
+                resourceId: value.id,
+                previousState: value,
+                newState: updated.toJSON(),
+                ipAddress: context.ip,
+                userAgent: context.userAgent,
+              });
+
               await customDomainQueue({
                 entity,
                 entityName: entityDetails?.name || "",
@@ -327,10 +354,13 @@ export const domainResolvers: any = {
       }
     },
   },
+
   Mutation: {
     async addCustomDomain(_: any, { input }: any, context: any) {
       try {
-        const { id, entity } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.DOMAIN, PermissionAction.CREATE);
+        const { id: adminId, entity, db } = auth;
 
         const findDomain = await CUSTOM_DOMAIN.query("entity")
           .eq(entity)
@@ -369,6 +399,17 @@ export const domainResolvers: any = {
             },
           });
 
+          await createAuditLog(db, {
+            adminId: adminId,
+            entityId: entity,
+            module: AdminModule.DOMAIN,
+            action: "CREATE",
+            resourceId: newDomain.id,
+            newState: newDomain.toJSON(),
+            ipAddress: context.ip,
+            userAgent: context.userAgent,
+          });
+
           return newDomain.toJSON();
         }
       } catch (error) {
@@ -379,14 +420,31 @@ export const domainResolvers: any = {
 
     async deleteDomain(_: any, { input }: any, context: any) {
       try {
-        const { entity } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.DOMAIN, PermissionAction.DELETE);
+        const { entity, db, id: adminId } = auth;
 
         const currentDomain = await CUSTOM_DOMAIN.query("id")
           .eq(input.id)
           .exec();
         const domainData = currentDomain[0]?.toJSON();
 
-        const findDomain = await CUSTOM_DOMAIN.delete({ id: input.id });
+        if (!domainData) {
+          throw new GraphQLError("Domain not found");
+        }
+
+        await CUSTOM_DOMAIN.delete({ id: input.id });
+
+        await createAuditLog(db, {
+          adminId: adminId,
+          entityId: entity,
+          module: AdminModule.DOMAIN,
+          action: "DELETE",
+          resourceId: input.id,
+          previousState: domainData,
+          ipAddress: context.ip,
+          userAgent: context.userAgent,
+        });
 
         return {
           success: true,
@@ -396,27 +454,44 @@ export const domainResolvers: any = {
         throw error;
       }
     },
+
     async checkUpdatedDnsRecord(_: any, { input }: any, context: any) {
       try {
-        const { entity } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.DOMAIN, PermissionAction.EDIT);
+        const { entity, db, id: adminId } = auth;
 
         const findDomain = await CUSTOM_DOMAIN.query("entity")
           .eq(entity)
           .filter("id")
           .eq(input.id)
           .exec();
-        const domain = findDomain[0].toJSON();
 
-        const check = await checkDnsRecord(domain);
+        if (!findDomain[0]) {
+          throw new GraphQLError("Domain not found");
+        }
 
-        const newValues = await CUSTOM_DOMAIN.query("entity")
-          .eq(entity)
-          .filter("id")
-          .eq(input.id)
-          .exec();
-        const { cname, aRecord, txt, isSubDomain } = newValues[0].toJSON();
+        const previousState = findDomain[0].toJSON();
 
-        return newValues[0].toJSON();
+        await checkDnsRecord(previousState);
+
+        const newValues = await CUSTOM_DOMAIN.query("id").eq(input.id).exec();
+
+        const newState = newValues[0].toJSON();
+
+        await createAuditLog(db, {
+          adminId: adminId,
+          entityId: entity,
+          module: AdminModule.DOMAIN,
+          action: "VERIFY_DNS",
+          resourceId: input.id,
+          previousState,
+          newState,
+          ipAddress: context.ip,
+          userAgent: context.userAgent,
+        });
+
+        return newState;
       } catch (error) {
         console.log(error);
         throw error;

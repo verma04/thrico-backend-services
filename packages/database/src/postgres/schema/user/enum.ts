@@ -37,6 +37,7 @@ export const userEntityStatus = pgEnum("userStatus", [
   "REJECTED",
   "FLAGGED",
   "DISABLED",
+  "SUSPENDED",
 ]);
 
 export const userPronounsStatus = pgEnum("userPronounsStatus", [

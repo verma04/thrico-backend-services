@@ -137,7 +137,7 @@ export class ListingContactService {
 
       const messages = await db.query.listingMessage.findMany({
         where: (msg: any, { eq, and }: any) => and(...conditions),
-        orderBy: (msg: any, { desc }: any) => [desc(msg.createdAt)],
+        // orderBy: (msg: any, { desc }: any) => [desc(msg.createdAt)],
         limit: limit + 1,
         with: {
           sender: {

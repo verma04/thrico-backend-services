@@ -7,9 +7,9 @@ import {
   AppDatabase,
   userFeed,
 } from "@thrico/database";
-import { upload } from "../upload";
 import { GamificationEventService } from "../gamification/gamification-event.service";
 import { CloseFriendNotificationService } from "../network/closefriend-notification.service";
+import { StorageService } from "../storage/storage.service";
 
 export class OfferService {
   static async createOffer({
@@ -31,8 +31,17 @@ export class OfferService {
       }
 
       let imageUrl = input.image;
+      let uploadResult: any = null;
       if (input.image && typeof input.image !== "string") {
-        imageUrl = await upload(input.image);
+        uploadResult = await StorageService.uploadFile(
+          input.image,
+          entityId,
+          "OFFER",
+          userId,
+          db,
+          { processImage: true },
+        );
+        imageUrl = uploadResult.key;
       }
 
       log.debug("Creating offer", { userId, entityId, title: input.title });
@@ -52,6 +61,31 @@ export class OfferService {
           validityEnd: input.validityEnd ? new Date(input.validityEnd) : null,
         })
         .returning();
+
+      // Track storage usage - link to the created offer record
+      try {
+        if (imageUrl && typeof input.image !== "string" && uploadResult) {
+          await StorageService.trackUploadedFile(
+            imageUrl,
+            entityId,
+            "OFFER",
+            userId,
+            db,
+            {
+              referenceId: newOffer.id,
+              sizeInBytes: uploadResult.size,
+              mimeType: uploadResult.mimetype,
+              metadata: { type: "offer" },
+            },
+          );
+        }
+      } catch (storageError) {
+        log.error("Failed to track offer storage usage", {
+          storageError,
+          offerId: newOffer.id,
+        });
+      }
+
 
       await GamificationEventService.triggerEvent({
         triggerId: "tr-off-create",
@@ -557,7 +591,15 @@ export class OfferService {
 
       let imageUrl = input.image;
       if (input.image && typeof input.image !== "string") {
-        imageUrl = await upload(input.image);
+        const uploadResult = await StorageService.uploadFile(
+          input.image,
+          entityId,
+          "OFFER",
+          userId,
+          db,
+          { processImage: true },
+        );
+        imageUrl = uploadResult.key;
       }
 
       const updateData: any = {
@@ -669,4 +711,82 @@ export class OfferService {
       throw error;
     }
   }
+
+  static async getGlobalOfferStats({
+    entityId,
+    userId,
+    db,
+  }: {
+    entityId: string;
+    userId: string;
+    db: AppDatabase;
+  }) {
+    try {
+      log.debug("Getting global offer stats", { entityId, userId });
+
+      const [{ totalOffers }] = await db
+        .select({ totalOffers: sql<number>`count(*)` })
+        .from(offers)
+        .where(and(eq(offers.entityId, entityId), eq(offers.isActive, true)));
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const [{ newToday }] = await db
+        .select({ newToday: sql<number>`count(*)` })
+        .from(offers)
+        .where(
+          and(
+            eq(offers.entityId, entityId),
+            eq(offers.isActive, true),
+            sql`${offers.createdAt} >= ${today}`,
+          ),
+        );
+
+      const [{ yourOffers }] = await db
+        .select({ yourOffers: sql<number>`count(*)` })
+        .from(offers)
+        .where(
+          and(
+            eq(offers.entityId, entityId),
+            eq(offers.userId, userId),
+            eq(offers.isActive, true),
+          ),
+        );
+
+      // Mapping Popular Categories
+      const categories = await db
+        .select({
+          id: offerCategories.id,
+          name: offerCategories.name,
+          count: sql<number>`count(${offers.id})`,
+        })
+        .from(offerCategories)
+        .leftJoin(offers, eq(offers.categoryId, offerCategories.id))
+        .where(
+          and(
+            eq(offerCategories.entityId, entityId),
+            eq(offerCategories.isActive, true),
+          ),
+        )
+        .groupBy(offerCategories.id, offerCategories.name)
+        .orderBy(desc(sql`count(${offers.id})`))
+        .limit(5);
+
+      return {
+        totalOffers: Number(totalOffers || 0),
+        newToday: Number(newToday || 0),
+        yourOffers: Number(yourOffers || 0),
+        savedOffers: 0, // Mocked for now
+        popularCategories: categories.map((c) => ({
+          name: c.name,
+          count: Number(c.count || 0),
+        })),
+      };
+    } catch (error) {
+      log.error("Error in getGlobalOfferStats", { error, entityId, userId });
+      throw error;
+    }
+  }
 }
+

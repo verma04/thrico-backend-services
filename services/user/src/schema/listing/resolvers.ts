@@ -4,6 +4,7 @@ import {
   ListingContactService,
   ListingReportService,
   ListingService,
+  ReportService,
 } from "@thrico/services";
 import { GraphQLError } from "graphql";
 
@@ -249,7 +250,6 @@ const listingResolvers: any = {
     async getListingEnquiryStats(_: any, { listingId }: any, context: any) {
       try {
         const { userId, db } = await checkAuth(context);
-        console.log(listingId);
 
         return ListingService.getListingEnquiryStats(db, listingId, userId);
       } catch (error) {
@@ -263,30 +263,6 @@ const listingResolvers: any = {
       }
     },
 
-    // New: Get enquiries grouped by buyer
-    // async getListingEnquiriesGroupedByBuyer(
-    //   _: any,
-    //   { listingId }: any,
-    //   context: any
-    // ) {
-    //   try {
-    //     const { userId, db } = await checkAuth(context);
-
-    //     return ListingService.getListingEnquiriesGroupedByBuyer(
-    //       db,
-    //       listingId,
-    //       userId
-    //     );
-    //   } catch (error) {
-    //     console.log(error);
-    //     throw new GraphQLError(
-    //       error instanceof Error
-    //         ? error.message
-    //         : "Failed to fetch grouped enquiries",
-    //       { extensions: { code: "INTERNAL_SERVER_ERROR" } }
-    //     );
-    //   }
-    // },
     async mapViewAllListings(_: any, { input }: any, context: any) {
       try {
         const { entityId, db } = await checkAuth(context);
@@ -296,6 +272,16 @@ const listingResolvers: any = {
           cursor,
           limit,
         });
+      } catch (error) {
+        console.log(error);
+        throw error;
+      }
+    },
+
+    async getListingStats(_: any, __: any, context: any) {
+      try {
+        const { entityId, db, userId } = await checkAuth(context);
+        return await ListingService.getListingStats(db, entityId, userId);
       } catch (error) {
         console.log(error);
         throw error;
@@ -321,15 +307,43 @@ const listingResolvers: any = {
       }
     },
 
-    async reportListing(_: any, { input }: any, context: any) {
+    async editListing(_: any, { listingId, input }: any, context: any) {
       try {
         const { userId, entityId, db } = await checkAuth(context);
-        return ListingReportService.reportListing({
+
+        const updatedListing = await ListingService.updateListing(
           db,
           entityId,
           userId,
+          listingId,
           input,
+        );
+        return updatedListing;
+      } catch (error) {
+        console.log(error);
+        throw error;
+      }
+    },
+
+    async reportListing(_: any, { input }: any, context: any) {
+      try {
+        const { userId, entityId, db } = await checkAuth(context);
+        const { listingId, reason, description } = input;
+        const report = await ReportService.reportContent({
+          db,
+          entityId,
+          reporterId: userId,
+          input: {
+            targetId: listingId,
+            module: "LISTING",
+            reason,
+            description,
+          },
         });
+        return {
+          ...report,
+          listingId: report.targetId,
+        };
       } catch (error) {
         console.log(error);
         throw error;

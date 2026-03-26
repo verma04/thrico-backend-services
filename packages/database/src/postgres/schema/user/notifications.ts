@@ -41,6 +41,7 @@ export const feedNotificationType = pgEnum("feedNotificationType", [
 export const networkNotificationType = pgEnum("networkNotificationType", [
   "CONNECTION_REQUEST",
   "CONNECTION_ACCEPTED",
+  "PROFILE_VIEW",
 ]);
 
 export const jobNotificationType = pgEnum("jobNotificationType", [
@@ -61,6 +62,12 @@ export const gamificationNotificationType = pgEnum(
   ["POINTS_EARNED", "BADGE_UNLOCKED", "RANK_UP", "LEADERBOARD"],
 );
 
+export const momentNotificationType = pgEnum("momentNotificationType", [
+  "MOMENT_LIKE",
+  "MOMENT_COMMENT",
+  "MOMENT_POSTED",
+]);
+
 export const notificationModule = pgEnum("notificationModule", [
   "COMMUNITY",
   "FEED",
@@ -68,6 +75,7 @@ export const notificationModule = pgEnum("notificationModule", [
   "JOB",
   "LISTING",
   "GAMIFICATION",
+  "MOMENT",
 ]);
 
 // ========== TABLES ==========
@@ -87,6 +95,7 @@ export const notifications = pgTable("notifications", {
   jobNotificationId: uuid("job_notification_id"),
   listingNotificationId: uuid("listing_notification_id"),
   gamificationNotificationId: uuid("gamification_notification_id"),
+  momentNotificationId: uuid("moment_notification_id"),
 });
 
 // Community Notifications
@@ -167,6 +176,19 @@ export const gamificationNotifications = pgTable("gamificationNotifications", {
   badgeName: text("badge_name"),
   badgeImageUrl: text("badge_image_url"),
   rankName: text("rank_name"),
+  isRead: boolean("is_read").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Moment Notifications
+export const momentNotifications = pgTable("momentNotifications", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  type: momentNotificationType("type").notNull(),
+  userId: uuid("user_id").notNull(),
+  senderId: uuid("sender_id").notNull(),
+  entityId: uuid("entity_id").notNull(),
+  momentId: uuid("moment_id"),
+  content: text("content").notNull(),
   isRead: boolean("is_read").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -261,6 +283,20 @@ export const gamificationNotificationsRelations = relations(
   }),
 );
 
+export const momentNotificationsRelations = relations(
+  momentNotifications,
+  ({ one }) => ({
+    user: one(userToEntity, {
+      fields: [momentNotifications.userId],
+      references: [userToEntity.id],
+    }),
+    sender: one(userToEntity, {
+      fields: [momentNotifications.senderId],
+      references: [userToEntity.id],
+    }),
+  }),
+);
+
 // Central Notifications Relations
 export const notificationsRelations = relations(notifications, ({ one }) => ({
   user: one(userToEntity, {
@@ -290,5 +326,9 @@ export const notificationsRelations = relations(notifications, ({ one }) => ({
   gamificationNotification: one(gamificationNotifications, {
     fields: [notifications.gamificationNotificationId],
     references: [gamificationNotifications.id],
+  }),
+  momentNotification: one(momentNotifications, {
+    fields: [notifications.momentNotificationId],
+    references: [momentNotifications.id],
   }),
 }));

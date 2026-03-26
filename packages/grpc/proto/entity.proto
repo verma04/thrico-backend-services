@@ -22,7 +22,7 @@ message RegisterEntityRequest {
   Phone phone = 10;
   string language = 11;
   bool agreement = 12;
-  string userId = 13;
+  string createdBy = 13;
 }
 
 message RegisterEntityResponse {
@@ -60,6 +60,8 @@ message GetEntityDetailsResponse {
   string updatedAt = 15;
 }
 
+// --- Add these messages for editing logo/profile ---
+
 message EditEntityLogoRequest {
   string entityId = 1;
   string logo = 2;
@@ -79,11 +81,32 @@ message EditEntityProfileRequest {
 message EditEntityProfileResponse {
   bool success = 1;
   string message = 2;
+  // Optionally, you can add updated fields here
 }
+
+message GetMyAccountsRequest {
+  string userId = 1;
+}
+
+message MyAccount {
+  string id = 1;         // Unique Membership ID
+  string entityId = 2;   // UUID of the Entity
+  string name = 3;       // Name of the Entity
+  string logo = 4;       // Logo URL
+  string role = 5;       // User's role in this entity (e.g. member, admin)
+}
+
+
+message GetMyAccountsResponse {
+  repeated MyAccount accounts = 1;
+}
+
+// --- Update the service definition ---
 
 service EntityService {
   rpc GetEntityDetails(GetEntityDetailsRequest) returns (GetEntityDetailsResponse);
   rpc RegisterEntity(RegisterEntityRequest) returns (RegisterEntityResponse);
   rpc EditEntityLogo(EditEntityLogoRequest) returns (EditEntityLogoResponse);
   rpc EditEntityProfile(EditEntityProfileRequest) returns (EditEntityProfileResponse);
+  rpc GetMyAccounts(GetMyAccountsRequest) returns (GetMyAccountsResponse);
 }

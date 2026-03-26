@@ -24,6 +24,7 @@ import {
 } from "./enum";
 import { geometry } from "./geomtry";
 import { entity } from "../tenant";
+import { moderationStateStatusEnum } from "../moderation";
 
 export const jobTypeEnum = pgEnum("jobTypes", [
   "FULL-TIME",
@@ -84,6 +85,9 @@ export const jobs = pgTable("jobss", {
     mode: "xy",
     srid: 4326,
   }),
+  moderationStatus: moderationStateStatusEnum("moderationStatus").default("PENDING"),
+  moderationResult: text("moderationResult"),
+  moderatedAt: timestamp("moderatedAt"),
 });
 
 export const jobsRelations = relations(jobs, ({ one, many }) => ({

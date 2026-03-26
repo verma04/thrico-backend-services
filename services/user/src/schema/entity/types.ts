@@ -71,6 +71,7 @@ const entityTypes = `#graphql
     about: aboutUser
     cover: String
     location: JSON
+    status: String
   }
 
   type aboutUser {

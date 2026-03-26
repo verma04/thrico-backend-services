@@ -1,4 +1,4 @@
-import { is, relations, sql } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
   boolean,
   jsonb,
@@ -12,6 +12,7 @@ import {
 import { addedBy, logStatus } from "./enum";
 import { user } from "./member";
 import { discussionForumStatus } from "./discussion-forum";
+import { moderationStateStatusEnum } from "../moderation";
 
 export const offerCategories = pgTable("offer_categories", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -47,6 +48,9 @@ export const offers = pgTable("offers", {
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
+  moderationStatus: moderationStateStatusEnum("moderationStatus").default("PENDING"),
+  moderationResult: text("moderationResult"),
+  moderatedAt: timestamp("moderatedAt"),
 });
 
 export const offerVerification = pgTable("offerVerification", {

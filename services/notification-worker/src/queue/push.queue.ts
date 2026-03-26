@@ -1,6 +1,6 @@
 import { log } from "@thrico/logging";
 import { RabbitMQService, PushNotificationPayload } from "@thrico/services";
-import { PushProcessor } from "src/processors/push.processor";
+import { PushProcessor } from "../processors/push.processor";
 
 const PUSH_QUEUE = "PUSH_NOTIFICATIONS";
 
@@ -29,6 +29,7 @@ export const startPushConsumer: any = () => {
           title: content.title,
         });
 
+        console.log(content);
         await PushProcessor.processPush(content);
 
         channel.ack(msg);

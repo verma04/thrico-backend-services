@@ -7,7 +7,6 @@ export const feedTypes = `#graphql
     PENDING
     REJECTED
     FLAGGED
-
     DISABLED
   }
   enum feedPrivacy {
@@ -28,16 +27,10 @@ export const feedTypes = `#graphql
     lastName: String
     about: about
     isOnline: Boolean
-    # profile: userprofile
+    profile: userProfile
     cover: String
     status: Status!
   }
-
-
-  # type userprofile {
-  #   education: [education]
-  #   experience: [experience]
-  # }
 
   input pagination {
     offset: Int
@@ -52,11 +45,6 @@ export const feedTypes = `#graphql
   type FeedEdge {
     cursor: String!
     node: feed!
-  }
-
-  type PageInfo {
-    hasNextPage: Boolean!
-    endCursor: String
   }
 
   type FeedConnection {
@@ -101,8 +89,6 @@ export const feedTypes = `#graphql
     cover: String
   }
 
-  # Status enum is repeated, removed duplicate
-
   input GetFeedStatsInput {
     feedId: ID!
   }
@@ -142,20 +128,31 @@ export const feedTypes = `#graphql
 
   input GetFeedReactionsInput {
     feedId: ID!
-    offset: Int
+    cursor: String
     limit: Int
+  }
+
+  type FeedReactionEdge {
+    cursor: String!
+    node: FeedReaction!
+  }
+
+  type FeedReactionConnection {
+    edges: [FeedReactionEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
   }
 
   type FeedReaction {
     id: ID!
     createdAt: Date!
+    reactionType: String!
     user: user!
   }
    type jobFeed {
     id: ID
     title: String
     company: JSON
-
     description: String
     location: JSON
     jobType: String
@@ -165,7 +162,7 @@ export const feedTypes = `#graphql
     id: ID
     title: String
     description: String
-    location: String
+    location: JSON
     condition: String
     category: String
     price: String
@@ -187,14 +184,13 @@ export const feedTypes = `#graphql
     isOwner: Boolean
     source: String
     media: [String]
-    # group: group
+    group: group
+
     privacy: feedPrivacy
     job: jobFeed
     offer: Offer
-    marketPlace: listing
+    listing: listing
     repostId: ID
-    # event: event
-    # story: stories
     addedBy: addedByType
     poll: poll
     forum: discussionForum
@@ -206,6 +202,11 @@ export const feedTypes = `#graphql
     pinnedAt: Date
     permissions: feedPermissions
     communityFeedData: communityFeedData
+    surveyId: ID  
+    communityfeedId: ID
+    momentId: ID
+    # moment: Moment
+    reactionType: String
   }
 
   type communityFeedData {
@@ -224,13 +225,12 @@ export const feedTypes = `#graphql
     getPersonalizedFeed: [feed]
     getMarketPlaceFeed: [feed]
     getFeedDetailsById(input: inputId): feed
-    # checkUserOnline is already in typeDefs.ts, should check conflict
-    # checkUserOnline: status # Commented out to avoid conflict if it exists
     getUserActivityFeed(input: inputId!): [feed]
     getMyFeed(input: FeedCursorInput): FeedConnection!
+
     getFeedStats(input: GetFeedStatsInput!): FeedStats!
-    getFeedReactions(input: GetFeedReactionsInput!): [FeedReaction!]!
- # Added missing query def based on resolver
+    getFeedReactions(input: GetFeedReactionsInput!): FeedReactionConnection!
+    getFeedActivityByUserId(userId: ID!, input: FeedCursorInput): FeedConnection!
   }
   input inputPollOption {
     option: String!
@@ -284,7 +284,7 @@ export const feedTypes = `#graphql
     celebration: inputCelebration
     poll: inputPoll
     forum: inputForum
-    groupId: ID! # duplicates groupID?
+    groupId: ID!
     video: Upload
     thumbnail: Upload
   }
@@ -328,12 +328,6 @@ export const feedTypes = `#graphql
     pageInfo: PageInfo!
     totalCount: Int!
   }
-  type status {
-    status: Boolean
-  } # Conflict with existing types? 'status' might be common.
-  # The user snippet had 'type status { status: Boolean }' but 'Status' enum.
-  # The 'checkUserOnline' returns 'status' type. In typeDefs.ts it returns 'checkUserOnlineResponse'.
-  # I will comment out conflicting types.
 
   input repostFeedWithThought {
     feedId: ID!
@@ -346,18 +340,28 @@ export const feedTypes = `#graphql
     isPinned: Boolean!
   }
 
+  input inputEditFeed {
+    id: ID!
+    description: String
+    media: [String]
+  }
+
+  input inputLikeFeed {
+    id: ID
+    type: String
+  }
+
   extend type Mutation {
     addFeedCommunities(input: inputGroupFeed): feed
     wishListFeed(input: inputId): status
     repostFeedWithThought(input: repostFeedWithThought!): feed
-    likeFeed(input: inputId): status
+    likeFeed(input:inputLikeFeed): status
     addFeed(input: inputAddFeed): feed
     addComment(input: inputComment): comment
     deleteFeed(input: inputId): feed
     deleteCommentFeed(input: inputDeleteFeedComment): comment
     pinFeed(input: pinFeedInput!): feed
     editFeedComment(input: EditFeedCommentInput!): comment!
-  }
- # Added based on resolver
+    editFeed(input: inputEditFeed!): feed
   }
 `;

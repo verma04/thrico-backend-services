@@ -1,6 +1,17 @@
 import { log } from "@thrico/logging";
 import { GraphQLError } from "graphql";
-import { and, eq, sql } from "drizzle-orm";
+import {
+  and,
+  eq,
+  sql,
+  desc,
+  lt,
+  or,
+  isNull,
+  SQL,
+  asc,
+  isNotNull,
+} from "drizzle-orm";
 import {
   aboutUser,
   user,
@@ -15,8 +26,13 @@ import {
   USER,
   ENTITY_THEME,
   USER_LOGIN_SESSION,
+  entity,
+  gender,
+  entitySettings,
+  status,
 } from "@thrico/database";
 import { v4 as uuidv4 } from "uuid";
+import { StorageService } from "../storage/storage.service";
 
 export class AuthService {
   static async checkAllUserAccount({
@@ -102,21 +118,11 @@ export class AuthService {
         }
       }
 
-      const findOrg = await db.query.userToEntity.findFirst({
+      const profile = await db.query.userToEntity.findFirst({
         where: and(
           eq(userToEntity?.id, id),
           eq(userToEntity?.entityId, entityId),
         ),
-      });
-
-      if (!findOrg) {
-        throw new GraphQLError("Permission denied.", {
-          extensions: { code: "FORBIDDEN" },
-        });
-      }
-
-      const profile = await db.query.userToEntity.findFirst({
-        where: and(eq(userToEntity.userId, findOrg.userId)),
         with: {
           user: {
             with: {
@@ -127,6 +133,12 @@ export class AuthService {
         },
       });
 
+      if (!profile) {
+        throw new GraphQLError("Permission denied.", {
+          extensions: { code: "FORBIDDEN" },
+        });
+      }
+
       if (!profile?.user) {
         throw new GraphQLError("User profile not found.", {
           extensions: { code: "NOT_FOUND" },
@@ -134,7 +146,13 @@ export class AuthService {
       }
 
       log.info("User retrieved", { entityId, id, userId: profile.user.id });
-      return profile.user;
+      return {
+        ...profile.user,
+        id: profile.id,
+        status: profile?.status,
+        isApproved: profile?.isApproved,
+        isRequested: profile?.isRequested,
+      };
     } catch (error) {
       log.error("Error in getUser", { error, entityId, id });
       throw error;
@@ -153,7 +171,13 @@ export class AuthService {
     input: any;
     generateJwtTokenFn: (data: any) => Promise<string>;
     sessionId?: string;
-  }): Promise<{ token: string; theme: any }> {
+  }): Promise<{
+    token: string;
+    theme: any;
+    isDeletionPending?: boolean;
+    deletionRequestedAt?: Date | null;
+    isActive?: boolean;
+  }> {
     try {
       if (!userId || !input?.entityId) {
         throw new GraphQLError("User ID and Entity ID are required.", {
@@ -240,7 +264,7 @@ export class AuthService {
       console.log({
         oldSessionDetails,
         id: sessionId,
-        userId: entity.id,
+        userId: entity.userId,
         device_id: deviceId,
         deviceToken: deviceToken,
         deviceName: deviceName,
@@ -250,7 +274,7 @@ export class AuthService {
       // Use helper or Model directly
       await USER_LOGIN_SESSION.create({
         id: sessionId,
-        userId: entity.id,
+        userId: entity.userId,
         device_id: deviceId,
         deviceToken: deviceToken,
         deviceName: deviceName,
@@ -276,6 +300,9 @@ export class AuthService {
       return {
         token,
         theme: themeData,
+        isDeletionPending: targetUserRecord.isDeletionPending,
+        deletionRequestedAt: targetUserRecord.deletionRequestedAt,
+        isActive: targetUserRecord.isActive,
       };
     } catch (error) {
       log.error("Error in switchAccount", {
@@ -312,12 +339,50 @@ export class AuthService {
       log.debug("Updating profile avatar", { entityId, userId });
 
       const { avatar } = input;
+
+      // Get old avatar to cleanup storage
+      const oldUser = await db.query.user.findFirst({
+        where: eq(user.id, userId),
+        columns: { avatar: true },
+      });
+
       const image = await uploadImageFn(entityId, [avatar]);
 
       await db
         .update(user)
         .set({ avatar: image[0].url })
         .where(eq(user.id, userId));
+
+      // Track storage usage
+      try {
+        if (image && image[0] && image[0].url) {
+          await StorageService.trackUploadedFile(
+            image[0].url,
+            entityId,
+            "USER",
+            userId,
+            db,
+          );
+        }
+      } catch (storageError) {
+        log.error("Failed to track profile avatar storage usage", {
+          storageError,
+          userId,
+          entityId,
+        });
+      }
+
+      // Cleanup old avatar from storage
+      if (oldUser?.avatar) {
+        await StorageService.unTrackFileByUrl(oldUser.avatar, db).catch(
+          (err) => {
+            log.warn("Failed to untrack old avatar", {
+              error: err,
+              url: oldUser.avatar,
+            });
+          },
+        );
+      }
 
       log.info("Profile avatar updated", {
         entityId,
@@ -405,12 +470,50 @@ export class AuthService {
       log.debug("Updating profile cover", { entityId, userId });
 
       const { cover } = input;
+
+      // Get old cover to cleanup storage
+      const oldUser = await db.query.user.findFirst({
+        where: eq(user.id, userId),
+        columns: { cover: true },
+      });
+
       const image = await uploadImageFn(entityId, [cover]);
 
       await db
         .update(user)
         .set({ cover: image[0].url })
         .where(eq(user.id, userId));
+
+      // Track storage usage
+      try {
+        if (image && image[0] && image[0].url) {
+          await StorageService.trackUploadedFile(
+            image[0].url,
+            entityId,
+            "USER",
+            userId,
+            db,
+          );
+        }
+      } catch (storageError) {
+        log.error("Failed to track profile cover storage usage", {
+          storageError,
+          userId,
+          entityId,
+        });
+      }
+
+      // Cleanup old cover from storage
+      if (oldUser?.cover) {
+        await StorageService.unTrackFileByUrl(oldUser.cover, db).catch(
+          (err) => {
+            log.warn("Failed to untrack old cover", {
+              error: err,
+              url: oldUser.cover,
+            });
+          },
+        );
+      }
 
       log.info("Profile cover updated", {
         entityId,
@@ -465,18 +568,20 @@ export class AuthService {
     sendOtpFn: (user: any) => Promise<any>;
   }) {
     try {
-      const { firstName, lastName, email } = input;
+      const { email } = input;
 
       const findUser = await USER.query("email").eq(input?.email).exec();
       if (findUser.count === 0) {
         const newUser = {
           email,
-          firstName,
-          lastName,
+          firstName: "",
+          lastName: "",
           role: "manager",
           password: uuidv4(),
           id: uuidv4(),
           loginType: "email",
+          gender: "male",
+          dob: "",
         };
         const createdUser = await USER.create(newUser);
         const output = await sendOtpFn(createdUser);
@@ -505,7 +610,7 @@ export class AuthService {
   }: {
     input: any;
     decryptOtpFn: (otp: string) => Promise<string>;
-  }) {
+  }): Promise<any> {
     try {
       const check = await OTP.query("id").eq(input.id).exec();
       if (check.count === 0) {
@@ -544,7 +649,13 @@ export class AuthService {
     input: any;
     db: any;
     generateJwtTokenFn: (data: any) => Promise<string>;
-  }): Promise<{ token: string; theme: any }> {
+  }): Promise<{
+    token: string;
+    theme: any;
+    isDeletionPending?: boolean;
+    deletionRequestedAt?: Date | null;
+    isActive?: boolean;
+  }> {
     try {
       const thricoUser = await db.query.user.findFirst({
         where: and(
@@ -617,6 +728,9 @@ export class AuthService {
       return {
         token: generate,
         theme: themeResult.toJSON()[0] ? themeResult.toJSON()[0] : null,
+        isDeletionPending: thricoUser.isDeletionPending,
+        deletionRequestedAt: thricoUser.deletionRequestedAt,
+        isActive: thricoUser.isActive,
       };
     } catch (error) {
       log.error("Error in chooseAccount", { error, userId: input.userId });
@@ -632,7 +746,13 @@ export class AuthService {
     input: any;
     db: any;
     generateJwtTokenFn: (data: any) => Promise<string>;
-  }): Promise<{ token: string; theme: any }> {
+  }): Promise<{
+    token: string;
+    theme: any;
+    isDeletionPending?: boolean;
+    deletionRequestedAt?: Date | null;
+    isActive?: boolean;
+  }> {
     try {
       const existingUserResult = await USER.query("id").eq(input.userId).exec();
       const userDetails = existingUserResult?.toJSON?.()[0];
@@ -670,6 +790,8 @@ export class AuthService {
         await tx.insert(userProfile).values({
           country: input.country || "India",
           userId: createdUser.id,
+          gender: userDetails.gender,
+          DOB: userDetails.dob,
         });
       });
 
@@ -726,6 +848,9 @@ export class AuthService {
       return {
         token,
         theme: themeData,
+        isDeletionPending: thricoUser.isDeletionPending,
+        deletionRequestedAt: thricoUser.deletionRequestedAt,
+        isActive: thricoUser.isActive,
       };
     } catch (error) {
       log.error("Error in chooseAccountSignup", {
@@ -736,60 +861,230 @@ export class AuthService {
     }
   }
 
-  static async checkUserEntity({ input, db }: { input: any; db: any }) {
+  static encodeCursor(data: any) {
+    return Buffer.from(JSON.stringify(data)).toString("base64");
+  }
+
+  static decodeCursor(cursor: string) {
     try {
-      const findOrgIndia = await db.query.user.findMany({
-        where: and(eq(user.thricoId, input.id)),
-        with: {
-          userEntity: true,
-          entity: true,
+      return JSON.parse(Buffer.from(cursor, "base64").toString("utf-8"));
+    } catch (e) {
+      log.warn("Failed to decode cursor", { cursor, error: e });
+      return null;
+    }
+  }
+
+  static async checkUserEntity({
+    input,
+    db,
+  }: {
+    input: any;
+    db: any;
+  }): Promise<any> {
+    try {
+      const { id, cursor, limit = 10, searchTerm } = input;
+      log.debug("checkUserEntity starting", { id, cursor, limit, searchTerm });
+
+      const whereConditions: SQL[] = [eq(user.thricoId, id) as SQL];
+
+      if (cursor) {
+        const decoded = this.decodeCursor(cursor);
+        if (decoded) {
+          const { lastActive, id: cursorId } = decoded;
+          if (lastActive) {
+            const condition = or(
+              sql`${userToEntity.lastActive} < ${lastActive}`,
+              isNull(userToEntity.lastActive),
+              and(
+                sql`${userToEntity.lastActive} = ${lastActive}`,
+                sql`${entity.id} < ${cursorId}`,
+              ),
+            );
+            if (condition) whereConditions.push(condition);
+          } else {
+            const condition = and(
+              isNull(userToEntity.lastActive),
+              sql`${entity.id} < ${cursorId}`,
+            );
+            if (condition) whereConditions.push(condition);
+          }
+        }
+      }
+
+      if (searchTerm) {
+        const isUuid =
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+            searchTerm,
+          );
+        const searchConditions = [
+          sql`${entity.name} ILIKE '%' || ${searchTerm} || '%'`,
+          sql`${entity.country}::text ILIKE '%' || ${searchTerm} || '%'`,
+          sql`${entity.address} ILIKE '%' || ${searchTerm} || '%'`,
+          sql`${entity.website} ILIKE '%' || ${searchTerm} || '%'`,
+        ];
+
+        if (isUuid) {
+          searchConditions.push(eq(entity.id, searchTerm));
+        }
+
+        const condition = or(...searchConditions);
+        if (condition) whereConditions.push(condition);
+      }
+
+      const results = await db
+        .select({
+          id: entity.id,
+          name: entity.name,
+          logo: entity.logo,
+          lastActive: userToEntity.lastActive,
+          country: entity.country,
+          isMember: sql<boolean>`true`,
+        })
+        .from(user)
+        .innerJoin(userToEntity, eq(user.id, userToEntity.userId))
+        .innerJoin(entity, eq(userToEntity.entityId, entity.id))
+        .where(and(...whereConditions))
+        .orderBy(
+          sql`${userToEntity.lastActive} DESC NULLS LAST`,
+          desc(entity.id),
+        )
+        .limit(limit + 1);
+
+      const hasNextPage = results.length > limit;
+      const nodes = hasNextPage ? results.slice(0, limit) : results;
+
+      return {
+        entities: nodes,
+        pageInfo: {
+          hasNextPage,
+          endCursor:
+            nodes.length > 0
+              ? this.encodeCursor({
+                  lastActive: nodes[nodes.length - 1].lastActive,
+                  id: nodes[nodes.length - 1].id,
+                })
+              : null,
         },
-      });
-
-      const arr = [...findOrgIndia].filter(
-        (value: any, index: any, self: any) =>
-          index ===
-          self.findIndex(
-            (t: any) =>
-              t.entity?.id === value.entity?.id &&
-              t.userEntity?.lastActive === value.userEntity?.lastActive,
-          ),
-      );
-
-      console.log(arr);
-      return arr
-        .filter((set: any) => set.entity && set.userEntity)
-        .map((set: any) => ({
-          ...set.entity,
-          lastActive: set.userEntity.lastActive,
-        }));
+      };
     } catch (error) {
-      log.error("Error in checkUserEntity", { error, id: input.id });
+      log.error("Error in checkUserEntity", { error, input });
       throw error;
     }
   }
 
-  static async checkUserEntitySignup({ input, db }: { input: any; db: any }) {
+  static async checkUserEntitySignup({
+    input,
+    db,
+  }: {
+    input: any;
+    db: any;
+  }): Promise<any> {
     try {
-      const findOrgIndia = await db.query.user.findMany({
-        where: and(eq(user.thricoId, input.id)),
-        with: {
-          userEntity: true,
-          entity: true,
-        },
+      const { id, cursor, limit = 10, searchTerm } = input;
+      log.debug("checkUserEntitySignup starting", {
+        id,
+        cursor,
+        limit,
+        searchTerm,
       });
 
-      const entity = await db.query.entity.findMany({});
+      const whereConditions: SQL[] = [];
 
-      return entity.map((set: any) => ({
-        id: set.id,
-        name: set.name,
-        logo: set.logo,
-        lastActive: null,
-        isMember: findOrgIndia.some((f: any) => f.entityId === set.id),
-      }));
+      const isMemberSql = sql<boolean>`CASE WHEN ${userToEntity.id} IS NOT NULL THEN true ELSE false END`;
+
+      if (cursor) {
+        const decoded = this.decodeCursor(cursor);
+        if (decoded) {
+          const { isMember, lastActive, id: cursorId } = decoded;
+          if (isMember === false) {
+            whereConditions.push(
+              or(
+                and(isNull(userToEntity.id), sql`${entity.id} < ${cursorId}`),
+                isNotNull(userToEntity.id),
+              ) as SQL,
+            );
+          } else {
+            const condition = or(
+              sql`${userToEntity.lastActive} < ${lastActive}`,
+              isNull(userToEntity.lastActive),
+              and(
+                sql`${userToEntity.lastActive} = ${lastActive}`,
+                sql`${entity.id} < ${cursorId}`,
+              ),
+            );
+            if (condition) {
+              whereConditions.push(
+                and(isNotNull(userToEntity.id), condition) as SQL,
+              );
+            } else {
+              whereConditions.push(isNotNull(userToEntity.id));
+            }
+          }
+        }
+      }
+
+      if (searchTerm) {
+        const isUuid =
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+            searchTerm,
+          );
+        const searchConditions = [
+          sql`${entity.name} ILIKE '%' || ${searchTerm} || '%'`,
+          sql`${entity.country}::text ILIKE '%' || ${searchTerm} || '%'`,
+          sql`${entity.address} ILIKE '%' || ${searchTerm} || '%'`,
+          sql`${entity.website} ILIKE '%' || ${searchTerm} || '%'`,
+        ];
+
+        if (isUuid) {
+          searchConditions.push(eq(entity.id, searchTerm));
+        }
+
+        const condition = or(...searchConditions);
+        if (condition) whereConditions.push(condition);
+      }
+
+      const entityList = await db
+        .select({
+          id: entity.id,
+          name: entity.name,
+          logo: entity.logo,
+          lastActive: userToEntity.lastActive,
+          country: entity.country,
+          isMember: isMemberSql,
+        })
+        .from(entity)
+        .leftJoin(
+          user,
+          and(eq(user.thricoId, id), eq(user.entityId, entity.id)),
+        )
+        .leftJoin(userToEntity, eq(user.id, userToEntity.userId))
+        .where(whereConditions.length > 0 ? and(...whereConditions) : undefined)
+        .orderBy(
+          asc(isMemberSql),
+          sql`${userToEntity.lastActive} DESC NULLS LAST`,
+          desc(entity.id),
+        )
+        .limit(limit + 1);
+
+      const hasNextPage = entityList.length > limit;
+      const nodes = hasNextPage ? entityList.slice(0, limit) : entityList;
+
+      return {
+        entities: nodes,
+        pageInfo: {
+          hasNextPage,
+          endCursor:
+            nodes.length > 0
+              ? this.encodeCursor({
+                  isMember: nodes[nodes.length - 1].isMember,
+                  lastActive: nodes[nodes.length - 1].lastActive,
+                  id: nodes[nodes.length - 1].id,
+                })
+              : null,
+        },
+      };
     } catch (error) {
-      log.error("Error in checkUserEntitySignup", { error, id: input.id });
+      log.error("Error in checkUserEntitySignup", { error, input });
       throw error;
     }
   }
@@ -814,7 +1109,13 @@ export class AuthService {
     }
   }
 
-  static async getOrgDetails({ entityId, db }: { entityId: string; db: any }) {
+  static async getOrgDetails({
+    entityId,
+    db,
+  }: {
+    entityId: string;
+    db: any;
+  }): Promise<any> {
     try {
       const check = await db.query.entity.findFirst({
         where: (d: any, { eq }: any) => eq(d.id, entityId),
@@ -850,7 +1151,13 @@ export class AuthService {
     }
   }
 
-  static async checkUserOnline({ id, db }: { id: string; db: any }) {
+  static async checkUserOnline({
+    id,
+    db,
+  }: {
+    id: string;
+    db: any;
+  }): Promise<any> {
     try {
       await db
         .update(userToEntity)
@@ -866,7 +1173,13 @@ export class AuthService {
     }
   }
 
-  static async getEntityTheme({ entityId, db }: { entityId: string; db: any }) {
+  static async getEntityTheme({
+    entityId,
+    db,
+  }: {
+    entityId: string;
+    db: any;
+  }): Promise<any> {
     try {
       const entityTheme = await db.query.theme.findFirst({
         where: and(eq(theme.entityId, entityId)),
@@ -889,7 +1202,7 @@ export class AuthService {
       deviceOs?: string;
       activeEntityId?: string;
     };
-  }) {
+  }): Promise<any> {
     console.log("Updating session", { sessionId, input });
     try {
       if (!sessionId) {
@@ -925,7 +1238,7 @@ export class AuthService {
     }
   }
 
-  static async logoutUser({ sessionId }: { sessionId: string }) {
+  static async logoutUser({ sessionId }: { sessionId: string }): Promise<any> {
     try {
       if (!sessionId) {
         throw new GraphQLError("Session ID is required.", {
@@ -949,6 +1262,192 @@ export class AuthService {
       return { success: true, message: "Logged out successfully" };
     } catch (error) {
       log.error("Error in logoutUser", { error, sessionId });
+      throw error;
+    }
+  }
+
+  static async getSignupProfile({ id }: { id: string }): Promise<any> {
+    try {
+      if (!id) {
+        throw new GraphQLError("ID is required", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+      const existingUserResult = await USER.query("id").eq(id).exec();
+      const userDetails = existingUserResult?.toJSON?.()[0];
+      if (!userDetails) {
+        throw new GraphQLError("Profile not found", {
+          extensions: { code: "NOT_FOUND" },
+        });
+      }
+      return {
+        id: userDetails.id,
+        email: userDetails.email,
+        firstName: userDetails.firstName,
+        lastName: userDetails.lastName,
+        avatar: userDetails.avatar || "defaultAvatar.png",
+        profile: {
+          gender: userDetails.gender,
+          DOB: userDetails.dob,
+        },
+      };
+    } catch (error) {
+      log.error("Error in getSignupProfile", { error, id });
+      throw error;
+    }
+  }
+
+  static async createProfile({
+    input,
+    db,
+    generateJwtTokenFn,
+  }: {
+    input: any;
+    db: any;
+    generateJwtTokenFn: (data: any) => Promise<string>;
+  }): Promise<{
+    token: string;
+    theme: any;
+    isDeletionPending?: boolean;
+    deletionRequestedAt?: Date | null;
+    isActive?: boolean;
+  }> {
+    try {
+      const {
+        userId,
+        entityId,
+        firstName,
+        lastName,
+        dob,
+        phone,
+        headline,
+        about,
+        location,
+        socialLinks,
+        deviceName,
+        device_id,
+        deviceToken,
+        country,
+      } = input;
+
+      // Fetch entity settings to check for autoApproveUser
+      const settings = await db.query.entitySettings.findFirst({
+        where: eq(entitySettings.entity, entityId),
+      });
+
+      const isAutoApprove = settings?.autoApproveUser ?? true;
+      const userStatus = isAutoApprove ? "APPROVED" : "PENDING";
+      const isApproved = isAutoApprove;
+      const isActive = isAutoApprove;
+
+      const existingUserResult = await USER.query("id").eq(userId).exec();
+      const userDetails = existingUserResult?.toJSON?.()[0];
+      if (!userDetails) {
+        throw new GraphQLError("User not found", {
+          extensions: { code: 404, http: { status: 404 } },
+        });
+      }
+
+      // Update global user info in DynamoDB
+      await USER.update(
+        { id: userId },
+        {
+          firstName,
+          lastName,
+          dob,
+          about,
+        },
+      );
+
+      // Use transaction to create/update Postgres records
+      await db.transaction(async (tx: any) => {
+        // Create user record in the entity context
+        const [createdUser] = await tx
+          .insert(user)
+          .values({
+            email: userDetails.email,
+            firstName,
+            lastName,
+            avatar: userDetails.avatar || "defaultAvatar.png",
+            thricoId: userId,
+            entityId: entityId,
+            location: location,
+            isActive: isActive,
+          })
+          .returning();
+
+        // Create about record
+        await tx.insert(aboutUser).values({
+          headline: headline || "Community Member",
+          about: about,
+          userId: createdUser.id,
+          social: socialLinks,
+        });
+
+        // Create profile record
+        await tx.insert(userProfile).values({
+          country: country || "India",
+          userId: createdUser.id,
+          gender: userDetails.gender,
+          DOB: dob,
+          phone: phone ? { phoneNumber: phone } : null,
+        });
+
+        // Link user to entity
+        await tx.insert(userToEntity).values({
+          userId: createdUser.id,
+          entityId: entityId,
+          lastActive: sql`now()`,
+          isApproved: isApproved,
+          status: userStatus,
+        });
+      });
+
+      // Fetch the newly created records for session generation
+      const thricoUser = await db.query.user.findFirst({
+        where: and(eq(user.thricoId, userId), eq(user.entityId, entityId)),
+      });
+
+      const entityRel = await db.query.userToEntity.findFirst({
+        where: and(
+          eq(userToEntity.userId, thricoUser.id),
+          eq(userToEntity.entityId, entityId),
+        ),
+      });
+
+      const themeResult = await EntityThemeModel.query("entity")
+        .eq(entityId)
+        .exec();
+      const themeData = themeResult?.toJSON?.()[0] || null;
+
+      const sessionId = `session-${Date.now()}`;
+      const loginSession = await LoginSessionModel.create({
+        id: sessionId,
+        userId: entityRel.id,
+        device_id: device_id,
+        deviceToken: deviceToken,
+        deviceName: deviceName,
+        activeEntityId: entityId,
+        token: uuidv4(),
+      });
+
+      const token = await generateJwtTokenFn({
+        sessionId: loginSession.toJSON().id,
+        entityId: entityId,
+        userId: entityRel.userId,
+        id: entityRel.id,
+        country: country,
+      });
+
+      return {
+        token,
+        theme: themeData,
+        isDeletionPending: thricoUser.isDeletionPending,
+        deletionRequestedAt: thricoUser.deletionRequestedAt,
+        isActive: thricoUser.isActive,
+      };
+    } catch (error) {
+      log.error("Error in createProfile", { error, userId: input.userId });
       throw error;
     }
   }

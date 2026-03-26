@@ -58,6 +58,8 @@ export const processContentCreated = async (
       error: error.message,
       contentId: payload.contentId,
     });
-    // Maybe retry? For now, just log.
+    
+    // Mark the content as FAILED due to analysis error
+    await ModerationService.markAsFailed(db, payload.contentId, payload.contentType);
   }
 };

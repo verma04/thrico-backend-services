@@ -18,33 +18,44 @@ import {
   decimal,
   customType,
 } from "drizzle-orm/pg-core";
+import { geometry } from "./geomtry";
 import { entity } from "../tenant/entity/details";
+import { cities } from "./cities";
 
 import { groups } from "./communities";
+import { moderationStateStatusEnum } from "../moderation";
 import { addedBy, communityEntityStatus } from "./enum";
 
 import { user } from "./member";
+import { vector } from "./moment";
 
 export const eventTypesEnum = pgEnum("eventTypes", [
   "VIRTUAL",
   "IN_PERSON",
   "HYBRID",
 ]);
+
+export const attendeeStatusEnum = pgEnum("attendeeStatus", [
+  "CONFIRMED",
+  "WAITLISTED",
+  "PENDING",
+  "CANCELLED",
+]);
+
 export const visibilityEnum = pgEnum("eventVisibility", ["PRIVATE", "PUBLIC"]);
 export const eventCostTypeEnum = pgEnum("eventCostTypeEnum", ["FREE", "PAID"]);
 
 export const mediaType = pgEnum("mediaType", ["VIDEO", "IMAGE"]);
 export const hostType = pgEnum("hostType", ["HOST", "CO_HOST"]);
+export const ticketTypeEnum = pgEnum("ticketType", [
+  "free",
+  "paid",
+  "donation",
+]);
+export const discountTypeEnum = pgEnum("discountType", ["percentage", "fixed"]);
 
 export const layout = pgEnum("layout", ["layout-1", "layout-2", "layout-3"]);
-export const vector = customType<{
-  data: number[];
-  driverData: string;
-}>({
-  dataType() {
-    return "vector(1536)";
-  },
-});
+
 export const events = pgTable("eventsss", {
   id: uuid("id").defaultRandom().primaryKey(),
   eventCreator: uuid("eventCreator_id"),
@@ -57,6 +68,13 @@ export const events = pgTable("eventsss", {
   status: communityEntityStatus("status").notNull(),
   venue: text("venue"),
   location: jsonb("location"),
+  locationPoint: geometry("location_point", {
+    //@ts-ignore
+    type: "point",
+    mode: "xy",
+    srid: 4326,
+  }),
+  cityId: uuid("city_id"),
   lastDateOfRegistration: date("lastDateOfRegistration").notNull(),
   startDate: date("startDate").notNull(),
   endDate: date("endDate").notNull(),
@@ -79,6 +97,9 @@ export const events = pgTable("eventsss", {
   numberOfViews: integer("numberOfViews").default(0),
   isRegistrationOpen: boolean("isRegistrationOpen").notNull().default(true),
   embedding: vector("embedding"), // This will create a vector column
+  moderationStatus: moderationStateStatusEnum("moderationStatus").default("PENDING"),
+  moderationResult: text("moderationResult"),
+  moderatedAt: timestamp("moderatedAt"),
 });
 
 export const eventsPayments = pgTable("eventsPayments", {
@@ -163,6 +184,9 @@ export const eventsMedia = pgTable("eventsMedia", {
   id: uuid("id").defaultRandom().primaryKey(),
   url: text("url"),
   mediaType: mediaType("mediaType"),
+  title: text("title"),
+  tags: jsonb("tags").$type<string[]>(),
+  isPublic: boolean("isPublic").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
   eventId: uuid("eventId"),
@@ -242,6 +266,10 @@ export const eventsRelations = relations(events, ({ one, many }) => ({
   eventsMedia: many(eventsMedia),
   eventsAgenda: many(eventsAgenda),
   speakers: many(eventSpeakers),
+  eventsTickets: many(eventsTickets),
+  eventsPromoCodes: many(eventsPromoCodes),
+  eventsRegistrationSettings: one(eventsRegistrationSettings),
+  eventsRegistrationFields: many(eventsRegistrationFields),
   entity: one(entity, {
     fields: [events.entityId],
     references: [entity.id],
@@ -249,6 +277,10 @@ export const eventsRelations = relations(events, ({ one, many }) => ({
   group: one(groups, {
     fields: [events.id],
     references: [groups.id],
+  }),
+  city: one(cities, {
+    fields: [events.cityId],
+    references: [cities.id],
   }),
 }));
 
@@ -382,6 +414,12 @@ export const eventsAttendees = pgTable(
     id: uuid("id").defaultRandom().primaryKey(),
     user: uuid("user_id").notNull(),
     eventId: uuid("eventId_id").notNull(),
+    ticketId: uuid("ticket_id").references(() => eventsTickets.id, {
+      onDelete: "set null",
+    }),
+    status: attendeeStatusEnum("status").default("CONFIRMED").notNull(),
+    checkedIn: boolean("checkedIn").default(false).notNull(),
+    responses: jsonb("responses"),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
   },
@@ -399,8 +437,12 @@ export const eventsAttendeesRelations = relations(
       references: [events.id],
     }),
     user: one(user, {
-      fields: [eventsAttendees.eventId],
+      fields: [eventsAttendees.user],
       references: [user.id],
+    }),
+    ticket: one(eventsTickets, {
+      fields: [eventsAttendees.ticketId],
+      references: [eventsTickets.id],
     }),
   }),
 );
@@ -490,3 +532,118 @@ export const eventTeamsRelations = relations(eventTeams, ({ one, many }) => ({
     references: [user.id],
   }),
 }));
+
+export const eventsTickets = pgTable("eventsTickets", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  eventId: uuid("event_id")
+    .references(() => events.id, { onDelete: "cascade" })
+    .notNull(),
+  name: text("name").notNull(),
+  type: ticketTypeEnum("type").notNull(),
+  price: numeric("price").notNull().default("0"),
+  quantity: integer("quantity").notNull().default(0),
+  sold: integer("sold").notNull().default(0),
+  description: text("description"),
+  earlyBirdPrice: numeric("earlyBirdPrice"),
+  earlyBirdDeadline: date("earlyBirdDeadline"),
+  maxPerOrder: integer("maxPerOrder").notNull().default(1),
+  isVisible: boolean("isVisible").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  status: boolean("status").default(true).notNull(),
+});
+
+export const eventsTicketsRelations = relations(eventsTickets, ({ one }) => ({
+  event: one(events, {
+    fields: [eventsTickets.eventId],
+    references: [events.id],
+  }),
+}));
+
+export const eventsPromoCodes = pgTable("eventsPromoCodes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  eventId: uuid("event_id")
+    .references(() => events.id, { onDelete: "cascade" })
+    .notNull(),
+  code: text("code").notNull(),
+  discountType: discountTypeEnum("discountType").notNull(),
+  discountValue: numeric("discountValue").notNull(),
+  usageLimit: integer("usageLimit").notNull(),
+  used: integer("used").notNull().default(0),
+  expiryDate: date("expiryDate").notNull(),
+  applicableTickets: jsonb("applicableTickets").$type<string[]>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  status: boolean("status").default(true).notNull(),
+});
+
+export const eventsPromoCodesRelations = relations(
+  eventsPromoCodes,
+  ({ one }) => ({
+    event: one(events, {
+      fields: [eventsPromoCodes.eventId],
+      references: [events.id],
+    }),
+  }),
+);
+
+export const registrationFieldTypeEnum = pgEnum("registrationFieldType", [
+  "text",
+  "email",
+  "phone",
+  "select",
+  "textarea",
+  "checkbox",
+]);
+
+export const eventsRegistrationSettings = pgTable(
+  "eventsRegistrationSettings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    eventId: uuid("event_id")
+      .references(() => events.id, { onDelete: "cascade" })
+      .notNull(),
+    isRegistrationOpen: boolean("isRegistrationOpen").default(true).notNull(),
+    enableWaitlist: boolean("enableWaitlist").default(true).notNull(),
+    requireApproval: boolean("requireApproval").default(false).notNull(),
+    confirmationSubject: text("confirmationSubject"),
+    confirmationBody: text("confirmationBody"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+);
+
+export const eventsRegistrationSettingsRelations = relations(
+  eventsRegistrationSettings,
+  ({ one }) => ({
+    event: one(events, {
+      fields: [eventsRegistrationSettings.eventId],
+      references: [events.id],
+    }),
+  }),
+);
+
+export const eventsRegistrationFields = pgTable("eventsRegistrationFields", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  eventId: uuid("event_id")
+    .references(() => events.id, { onDelete: "cascade" })
+    .notNull(),
+  label: text("label").notNull(),
+  type: registrationFieldTypeEnum("type").notNull(),
+  required: boolean("required").default(false).notNull(),
+  placeholder: text("placeholder"),
+  options: jsonb("options").$type<string[]>(),
+  displayOrder: integer("displayOrder").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const eventsRegistrationFieldsRelations = relations(
+  eventsRegistrationFields,
+  ({ one }) => ({
+    event: one(events, {
+      fields: [eventsRegistrationFields.eventId],
+      references: [events.id],
+    }),
+  }),
+);

@@ -19,10 +19,20 @@ import { groupRequest, groupMember, groupView } from "../communities";
 import { feedComment, feedReactions, media, userFeed } from "../feed";
 import { marketPlace } from "../marketPlace";
 import { entity } from "../../tenant/entity/details";
-import { gender, userEntityStatus, userPronounsStatus } from "../enum";
+export { gender, userEntityStatus, userPronounsStatus } from "../enum";
+export const nearbyDiscoveryPrivacyEnum = pgEnum("nearbyDiscoveryPrivacy", [
+  "VISIBLE",
+  "APPROXIMATE",
+  "HIDDEN",
+]);
 import { pollResults } from "../polls";
 import { discussionForumComment } from "../discussion-forum";
 import { gamificationUser } from "../gamification";
+import { vector } from "../moment";
+import { cities } from "../cities";
+
+import { gender, userEntityStatus, userPronounsStatus } from "../enum";
+import { geometry } from "../geomtry";
 
 export const user = pgTable(
   "thricoUser",
@@ -41,6 +51,9 @@ export const user = pgTable(
     isBlocked: boolean("isBlocked").default(false),
     isActive: boolean("isActive").default(true),
     loginType: text("loginType"),
+    embedding: vector("embedding", { dimensions: 1536 }),
+    isDeletionPending: boolean("isDeletionPending").default(false),
+    deletionRequestedAt: timestamp("deletionRequestedAt"),
   },
   (table) => {
     return {
@@ -101,9 +114,23 @@ export const userResume = pgTable("userResume", {
 
 export const userLocation = pgTable("userLoction", {
   id: uuid("id").defaultRandom().primaryKey(),
-  latitude: numeric("latitude", { precision: 10, scale: 8 }).notNull(), // 10 total digits, 8 after decimal
+  latitude: numeric("latitude", { precision: 10, scale: 8 }).notNull(),
   longitude: numeric("longitude", { precision: 11, scale: 8 }).notNull(),
+  location: geometry("location", {
+    //@ts-ignore
+    type: "point",
+    mode: "xy",
+    srid: 4326,
+  }),
   userId: uuid("user_ID").notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const userNearbySettings = pgTable("userNearbySettings", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: uuid("user_id").notNull(),
+  privacy: nearbyDiscoveryPrivacyEnum("privacy").default("VISIBLE").notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const userLocationRelations = relations(userLocation, ({ one }) => ({
@@ -112,6 +139,16 @@ export const userLocationRelations = relations(userLocation, ({ one }) => ({
     references: [user.id],
   }),
 }));
+
+export const userNearbySettingsRelations = relations(
+  userNearbySettings,
+  ({ one }) => ({
+    user: one(user, {
+      fields: [userNearbySettings.userId],
+      references: [user.id],
+    }),
+  }),
+);
 
 export const userProfileRelations = relations(userProfile, ({ one }) => ({
   user: one(user, {
@@ -151,6 +188,7 @@ export const userToEntity = pgTable(
       withTimezone: true,
     }),
     isOnline: boolean("isOnline").notNull().default(false),
+    cityId: uuid("city_id"),
     // isVerifiedAt: timestamp("isVerifiedAt"),
     // verifiedBy: uuid("verifiedBy"),
     // isVerified: boolean("isVerified").default(false),
@@ -191,6 +229,10 @@ export const userToEntityRelations = relations(
     entity: one(entity, {
       fields: [userToEntity.entityId],
       references: [entity.id],
+    }),
+    city: one(cities, {
+      fields: [userToEntity.cityId],
+      references: [cities.id],
     }),
   }),
 );
@@ -357,4 +399,5 @@ export const userRelations = relations(user, ({ one, many }) => ({
   groupMember: many(groupMember),
   groupRequest: many(groupRequest),
   groupViews: many(groupView),
+  nearbySettings: one(userNearbySettings),
 }));

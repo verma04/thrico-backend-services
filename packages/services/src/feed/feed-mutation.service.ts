@@ -1,5 +1,5 @@
 import { GraphQLError } from "graphql";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, sql, notInArray } from "drizzle-orm";
 import {
   feedComment,
   feedReactions,
@@ -15,16 +15,14 @@ import { GamificationEventService } from "../gamification/gamification-event.ser
 import type { FeedInput } from "./types";
 import { log } from "@thrico/logging";
 
-import { uploadFeedImage } from "./upload.utils";
 import { FeedPollService } from "./feed-poll.service";
 import { ForumService } from "../forum/forum.service";
 import { CelebrationService } from "../celebration/celebration.service";
-import { upload } from "../upload";
-import uploadVideo from "./uploadVideo";
 import { NotificationService } from "../notification/notification.service";
 import { NotificationAggregatorService } from "../notification/notification-aggregator.service";
 import { ModerationPublisher } from "../utils/moderation-publisher";
 import { CloseFriendNotificationService } from "../network/closefriend-notification.service";
+import { StorageService } from "../storage/storage.service";
 
 export class FeedMutationService {
   // Add new feed
@@ -122,22 +120,44 @@ export class FeedMutationService {
     entityId: string;
     postedOn?: "community" | null;
   }) {
-    let feedMedia: { file: string }[] = [];
+    let feedMedia: { file: string; size: number; mimetype: string }[] = [];
     let videoUrl:
       | { filename: string; url: string; size: number; mimetype: string }
       | null
       | undefined;
-    let thumbnailUrl: string | null | undefined;
+    let thumbnailUrl:
+      | { key: string; size: number; mimetype: string }
+      | null
+      | undefined;
 
     // Handle media uploads
     if (input?.media) {
-      feedMedia = await uploadFeedImage(entityId, input?.media);
+      feedMedia = await StorageService.uploadImages(
+        input?.media,
+        entityId,
+        "FEED",
+        userId,
+        db,
+      );
     }
     if (input?.thumbnail) {
-      thumbnailUrl = await upload(input?.thumbnail);
+      thumbnailUrl = await StorageService.uploadFile(
+        input?.thumbnail,
+        entityId,
+        "FEED",
+        userId,
+        db,
+        { processImage: true },
+      );
     }
     if (input?.video) {
-      videoUrl = await uploadVideo(input?.video);
+      videoUrl = await StorageService.uploadVideo(
+        input?.video,
+        entityId,
+        "FEED",
+        userId,
+        db,
+      );
 
       await GamificationEventService.triggerEvent({
         triggerId: "tr-feed-video",
@@ -147,6 +167,7 @@ export class FeedMutationService {
       });
     }
 
+    console.log("Media upload results", { feedMedia });
     try {
       const feed = await db.transaction(async (tx: any) => {
         let poll: any = null;
@@ -189,19 +210,75 @@ export class FeedMutationService {
             forumId: forum?.id || null,
             celebrationId: celebration?.id || null,
             videoUrl: videoUrl?.url || null,
-            thumbnailUrl: thumbnailUrl || null,
+            thumbnailUrl: thumbnailUrl?.key || null,
           })
           .returning({ id: userFeed.id });
 
-        // Insert media
-        if (feedMedia.length > 0) {
-          const values = feedMedia.map((set) => ({
-            feedId: newFeed[0]?.id,
-            url: set.file,
-            entity: entityId,
-            user: userId,
-          }));
-          await tx.insert(media).values(values);
+        // Track storage usage - link to the created feed record
+        try {
+          if (feedMedia.length > 0) {
+            for (const item of feedMedia) {
+              await StorageService.trackUploadedFile(
+                item.file,
+                entityId,
+                "FEED",
+                userId,
+                tx,
+                {
+                  referenceId: newFeed[0].id,
+                  sizeInBytes: item.size,
+                  mimeType: item.mimetype,
+                  metadata: { type: "image" },
+                },
+              );
+            }
+            const values = feedMedia.map((set) => ({
+              feedId: newFeed[0]?.id,
+              url: set.file,
+              entity: entityId,
+              user: userId,
+            }));
+            await tx.insert(media).values(values);
+          }
+          if (thumbnailUrl) {
+            await StorageService.trackUploadedFile(
+              thumbnailUrl.key,
+              entityId,
+              "FEED",
+              userId,
+              tx,
+              {
+                referenceId: newFeed[0].id,
+                sizeInBytes: thumbnailUrl.size,
+                mimeType: thumbnailUrl.mimetype,
+                metadata: { type: "thumbnail" },
+              },
+            );
+          }
+          if (videoUrl?.url) {
+            await StorageService.trackUploadedFile(
+              videoUrl.url,
+              entityId,
+              "FEED",
+              userId,
+              tx,
+              {
+                referenceId: newFeed[0].id,
+                sizeInBytes: videoUrl.size,
+                mimeType: videoUrl.mimetype,
+                metadata: {
+                  type: "video",
+                  mimetype: videoUrl.mimetype,
+                  size: videoUrl.size,
+                },
+              },
+            );
+          }
+        } catch (storageError) {
+          log.error("Failed to track feed storage usage", {
+            storageError,
+            feedId: newFeed[0].id,
+          });
         }
 
         return await tx.query.userFeed.findFirst({
@@ -269,11 +346,13 @@ export class FeedMutationService {
     input,
     entity,
     db,
+    type,
   }: {
     currentUserId: string;
     input: { id: string };
     entity: string;
     db: any;
+    type: string;
   }) {
     const feed = await db.query.userFeed.findFirst({
       where: eq(userFeed.id, input.id),
@@ -297,7 +376,7 @@ export class FeedMutationService {
         await tx.insert(feedReactions).values({
           feedId: input.id,
           userId: currentUserId,
-          reactionsType: "love",
+          reactionsType: type || "love",
         });
 
         await tx
@@ -476,6 +555,10 @@ export class FeedMutationService {
       });
     }
 
+    const feedMediaItems = await db.query.media.findMany({
+      where: eq(media.feedId, feedId),
+    });
+
     await db.transaction(async (tx: any) => {
       await tx.delete(media).where(eq(media.feedId, feedId));
       await tx.delete(feedReactions).where(eq(feedReactions.feedId, feedId));
@@ -483,6 +566,21 @@ export class FeedMutationService {
       await tx.delete(feedWishList).where(eq(feedWishList.feedId, feedId));
       await tx.delete(userFeed).where(eq(userFeed.id, feedId));
     });
+
+    // Track storage usage cleanup
+    try {
+      for (const item of feedMediaItems) {
+        if (item.file) await StorageService.unTrackFileByUrl(item.file, db);
+      }
+      if (feed.video) await StorageService.unTrackFileByUrl(feed.video, db);
+      if (feed.thumbnail)
+        await StorageService.unTrackFileByUrl(feed.thumbnail, db);
+    } catch (storageError) {
+      log.error("Failed to cleanup feed storage on deletion", {
+        storageError,
+        feedId,
+      });
+    }
 
     return {
       success: true,
@@ -548,14 +646,16 @@ export class FeedMutationService {
   static async editFeed({
     feedId,
     currentUserId,
+    entityId,
     input,
     db,
   }: {
     feedId: string;
     currentUserId: string;
+    entityId: string;
     input: {
       description?: string;
-      privacy?: string;
+      media?: string[];
     };
     db: any;
   }) {
@@ -575,14 +675,32 @@ export class FeedMutationService {
       });
     }
 
-    const updated = await db
-      .update(userFeed)
-      .set({
-        description: input.description,
-        privacy: input.privacy,
-      })
-      .where(eq(userFeed.id, feedId))
-      .returning();
+    await db.transaction(async (tx: any) => {
+      // Update feed description
+      if (input.description !== undefined) {
+        await tx
+          .update(userFeed)
+          .set({
+            description: input.description,
+          })
+          .where(eq(userFeed.id, feedId));
+      }
+
+      // Update media if provided
+      if (input.media !== undefined) {
+        if (input.media.length === 0) {
+          // Empty array: remove all media for this feed
+          await tx.delete(media).where(eq(media.feedId, feedId));
+        } else {
+          // Has values: delete only media whose url is NOT in the provided list
+          await tx
+            .delete(media)
+            .where(
+              and(eq(media.feedId, feedId), notInArray(media.url, input.media)),
+            );
+        }
+      }
+    });
 
     return await db.query.userFeed.findFirst({
       where: eq(userFeed.id, feedId),

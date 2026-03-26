@@ -1,6 +1,6 @@
 import { log } from "@thrico/logging";
 import { GraphQLError } from "graphql";
-import { and, eq, ne, or, sql, desc, lt, count } from "drizzle-orm";
+import { and, eq, ne, or, sql, desc, lt, count, gte } from "drizzle-orm";
 import {
   aboutUser,
   connections,
@@ -14,6 +14,7 @@ import {
   closeFriends,
   AppDatabase,
   incrementUnreadCount,
+  profileViews,
 } from "@thrico/database";
 import { GamificationEventService } from "../gamification/gamification-event.service";
 import { NotificationService } from "../notification/notification.service";
@@ -218,6 +219,8 @@ export class NetworkService {
             avatar: user.avatar,
             cover: user.cover,
             designation: aboutUser.headline,
+            experience: sql`${userProfile.experience}::jsonb`.as("experience"),
+            education: sql`${userProfile.education}::jsonb`.as("education"),
             status: this.getConnectionStatusQuery(currentUserId),
             location: user.location,
             mutualFriendsCount: sql<number>`(
@@ -271,6 +274,7 @@ export class NetworkService {
           .leftJoin(blockedUsers, this.getBlockedUsersCondition(currentUserId))
           .innerJoin(user, eq(userToEntity.userId, user.id))
           .innerJoin(aboutUser, eq(userToEntity.userId, aboutUser.userId))
+          .leftJoin(userProfile, eq(userToEntity.userId, userProfile.userId))
           .where(sql`${blockedUsers.id} IS NULL`),
       );
 
@@ -327,12 +331,25 @@ export class NetworkService {
             targetUserId: item.id,
             entityId,
           });
+          const currentCompany = Array.isArray(item.experience)
+            ? item.experience.find(
+                (exp: any) => exp.currentlyWorking || exp.isCurrentlyWorking,
+              )
+            : null;
+
+          const currentEducation =
+            Array.isArray(item.education) && item.education.length > 0
+              ? item.education[item.education.length - 1]
+              : null;
+
           return {
             ...item,
             mutualFriends: {
               count: mutualFriends.length,
               friends: mutualFriends,
             },
+            currentCompany,
+            currentEducation,
             numberOfConnections: Number(connectionsCount?.count || 0),
           };
         }),
@@ -518,6 +535,104 @@ export class NetworkService {
 
       log.info("User profile retrieved", { currentUserId, profileId: id });
 
+      // Track profile view
+      if (currentUserId !== id) {
+        try {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+
+          const existingView = await db.query.profileViews.findFirst({
+            where: and(
+              eq(profileViews.viewerId, currentUserId),
+              eq(profileViews.viewedId, id),
+              eq(profileViews.entityId, entityId),
+              gte(profileViews.viewedAt, today),
+            ),
+          });
+
+          if (!existingView) {
+            log.info(
+              "Track profile view: no existing view today, inserting new view",
+              {
+                viewerId: currentUserId,
+                viewedId: id,
+                entityId,
+              },
+            );
+
+            await db.insert(profileViews).values({
+              viewerId: currentUserId,
+              viewedId: id,
+              entityId,
+            });
+
+            log.info("Track profile view: view recorded successfully", {
+              viewerId: currentUserId,
+              viewedId: id,
+              entityId,
+            });
+
+            // Send notification to the viewed user
+            const viewer = await db.query.userToEntity.findFirst({
+              where: eq(userToEntity.id, currentUserId),
+              with: {
+                user: true,
+              },
+            });
+
+            if (viewer?.user) {
+              const viewerName = `${viewer.user.firstName} ${viewer.user.lastName}`;
+
+              await NotificationService.createNotification({
+                db,
+                userId, // Target user is the one being viewed
+                senderId: currentUserId,
+                entityId,
+                module: "NETWORK",
+                type: "PROFILE_VIEW",
+                content: `${viewerName} viewed your profile.`,
+                shouldSendPush: true,
+                pushTitle: "Profile View",
+                pushBody: `${viewerName} viewed your profile`,
+                contentId: viewer.user.id,
+                imageUrl: viewer?.user?.avatar || "",
+              });
+
+              log.info("Track profile view: notification sent successfully", {
+                viewerId: currentUserId,
+                viewedId: id,
+                targetUserId: userId,
+              });
+            } else {
+              log.warn(
+                "Track profile view: viewer user data not found, skipping notification",
+                {
+                  viewerId: currentUserId,
+                },
+              );
+            }
+          } else {
+            log.info("Track profile view: already viewed today, skipping", {
+              viewerId: currentUserId,
+              viewedId: id,
+              existingViewId: existingView.id,
+            });
+          }
+        } catch (err: any) {
+          log.error("Error tracking profile view", {
+            error: err.message,
+            stack: err.stack,
+            viewerId: currentUserId,
+            viewedId: id,
+            entityId,
+          });
+        }
+      } else {
+        log.debug("Track profile view: self-view, skipping", {
+          userId: currentUserId,
+        });
+      }
+
       const [closeFriendStatus] = await db
         .select()
         .from(closeFriends)
@@ -546,6 +661,144 @@ export class NetworkService {
         currentUserId,
         entityId,
         profileId: userId,
+      });
+      throw error;
+    }
+  }
+
+  static async getProfileViewers({
+    db,
+    currentUserId,
+    entityId,
+    limit = 10,
+    cursor,
+  }: {
+    db: any;
+    currentUserId: string;
+    entityId: string;
+    limit?: number;
+    cursor?: string;
+  }) {
+    try {
+      const calculatedOffset = cursor
+        ? parseInt(
+            Buffer.from(cursor, "base64").toString("ascii").split(":")[1],
+          )
+        : 0;
+
+      log.debug("Getting profile viewers", {
+        currentUserId,
+        entityId,
+        limit,
+        offset: calculatedOffset,
+      });
+
+      const nodes = await db
+        .selectDistinct({
+          id: user.id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          avatar: user.avatar,
+          designation: aboutUser.headline,
+          experience: sql`${userProfile.experience}::jsonb`.as("experience"),
+          education: sql`${userProfile.education}::jsonb`.as("education"),
+          viewedAt: profileViews.viewedAt,
+        })
+        .from(profileViews)
+        .innerJoin(userToEntity, eq(profileViews.viewerId, userToEntity.id))
+        .innerJoin(user, eq(userToEntity.userId, user.id))
+        .leftJoin(aboutUser, eq(userToEntity.userId, aboutUser.userId))
+        .leftJoin(userProfile, eq(userToEntity.userId, userProfile.userId))
+        .where(
+          and(
+            eq(profileViews.viewedId, currentUserId),
+            eq(profileViews.entityId, entityId),
+          ),
+        )
+        .orderBy(desc(profileViews.viewedAt))
+        .limit(limit + 1)
+        .offset(calculatedOffset);
+
+      const hasNextPage = nodes.length > limit;
+      const results = hasNextPage ? nodes.slice(0, limit) : nodes;
+
+      const edges = results.map((node: any, index: number) => {
+        const currentCompany = Array.isArray(node.experience)
+          ? node.experience.find(
+              (exp: any) => exp.currentlyWorking || exp.isCurrentlyWorking,
+            )
+          : null;
+
+        const currentEducation =
+          Array.isArray(node.education) && node.education.length > 0
+            ? node.education[node.education.length - 1]
+            : null;
+
+        return {
+          cursor: Buffer.from(
+            `offset:${calculatedOffset + index + 1}`,
+          ).toString("base64"),
+          node: {
+            ...node,
+            currentCompany,
+            currentEducation,
+          },
+        };
+      });
+
+      const [totalCount] = await db
+        .select({ count: count() })
+        .from(profileViews)
+        .where(
+          and(
+            eq(profileViews.viewedId, currentUserId),
+            eq(profileViews.entityId, entityId),
+          ),
+        );
+
+      const lastWeekDate = new Date();
+      lastWeekDate.setDate(lastWeekDate.getDate() - 7);
+
+      const lastMonthDate = new Date();
+      lastMonthDate.setDate(lastMonthDate.getDate() - 30);
+
+      const [lastWeekViews] = await db
+        .select({ count: count() })
+        .from(profileViews)
+        .where(
+          and(
+            eq(profileViews.viewedId, currentUserId),
+            eq(profileViews.entityId, entityId),
+            gte(profileViews.viewedAt, lastWeekDate),
+          ),
+        );
+
+      const [lastMonthViews] = await db
+        .select({ count: count() })
+        .from(profileViews)
+        .where(
+          and(
+            eq(profileViews.viewedId, currentUserId),
+            eq(profileViews.entityId, entityId),
+            gte(profileViews.viewedAt, lastMonthDate),
+          ),
+        );
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount: Number(totalCount?.count || 0),
+        lastWeekViews: Number(lastWeekViews?.count || 0),
+        lastMonthViews: Number(lastMonthViews?.count || 0),
+      };
+    } catch (error) {
+      log.error("Error in getProfileViewers", {
+        error,
+        currentUserId,
+        entityId,
       });
       throw error;
     }
@@ -652,8 +905,25 @@ export class NetworkService {
         )
         .limit(1);
 
+      const profile = (condition as any).user?.profile;
+      const experience = profile?.experience;
+      const education = profile?.education;
+
+      const currentCompany = Array.isArray(experience)
+        ? experience.find(
+            (exp: any) => exp.currentlyWorking || exp.isCurrentlyWorking,
+          )
+        : null;
+
+      const currentEducation =
+        Array.isArray(education) && education.length > 0
+          ? education[education.length - 1]
+          : null;
+
       return {
         ...condition,
+        currentCompany,
+        currentEducation,
         status: query[0] ? query[0].status : "NO_CONNECTION",
         isFollowing: !!followStatus,
         isCloseFriend: !!closeFriendStatus,
@@ -1750,6 +2020,9 @@ export class NetworkService {
           firstName: user.firstName,
           lastName: user.lastName,
           avatar: user.avatar,
+          designation: aboutUser.headline,
+          experience: userProfile.experience,
+          education: userProfile.education,
           blockedAt: blockedUsers.createdAt,
         })
         .from(blockedUsers)
@@ -1758,6 +2031,8 @@ export class NetworkService {
           eq(blockedUsers.blockedUserId, userToEntity.id),
         )
         .innerJoin(user, eq(userToEntity.userId, user.id))
+        .leftJoin(aboutUser, eq(userToEntity.userId, aboutUser.userId))
+        .leftJoin(userProfile, eq(userToEntity.userId, userProfile.userId))
         .where(and(...whereConditions))
         .orderBy(desc(blockedUsers.createdAt))
         .limit(limit + 1)
@@ -1771,12 +2046,29 @@ export class NetworkService {
         count: nodes.length,
       });
 
-      const edges = nodes.map((node: any, index: number) => ({
-        cursor: Buffer.from(`offset:${calculatedOffset + index + 1}`).toString(
-          "base64",
-        ),
-        node,
-      }));
+      const edges = nodes.map((node: any, index: number) => {
+        const currentCompany = Array.isArray(node.experience)
+          ? node.experience.find(
+              (exp: any) => exp.currentlyWorking || exp.isCurrentlyWorking,
+            )
+          : null;
+
+        const currentEducation =
+          Array.isArray(node.education) && node.education.length > 0
+            ? node.education[node.education.length - 1]
+            : null;
+
+        return {
+          cursor: Buffer.from(
+            `offset:${calculatedOffset + index + 1}`,
+          ).toString("base64"),
+          node: {
+            ...node,
+            currentCompany,
+            currentEducation,
+          },
+        };
+      });
 
       // Get total count
       const totalWhere = [
@@ -1827,6 +2119,7 @@ export class NetworkService {
     cursor,
     filter,
     currentUserId,
+    search,
   }: {
     db: any;
     entityId: string;
@@ -1834,6 +2127,7 @@ export class NetworkService {
     cursor?: string | null;
     filter: "TODAY" | "UPCOMING" | "THIS_MONTH" | "PAST";
     currentUserId: string;
+    search?: string;
   }) {
     try {
       const offset = cursor
@@ -1847,6 +2141,7 @@ export class NetworkService {
         limit,
         offset,
         filter,
+        search,
       });
 
       const dobDate = sql`to_date(${userProfile.DOB}, 'YYYY-MM-DD')`;
@@ -1892,6 +2187,19 @@ export class NetworkService {
         );
       }
 
+      // Add search term condition
+      if (search) {
+        whereConditions.push(
+          sql`(
+            LOWER(${user.firstName}) LIKE LOWER(${`%${search}%`}) OR
+            LOWER(${user.lastName}) LIKE LOWER(${`%${search}%`}) OR
+            LOWER(CONCAT(${user.firstName}, ' ', ${
+              user.lastName
+            })) LIKE LOWER(${`%${search}%`})
+          )`,
+        );
+      }
+
       // Order by Logic
       let orderByClause: any[] = [];
       if (filter === "PAST") {
@@ -1907,6 +2215,8 @@ export class NetworkService {
           lastName: user.lastName,
           avatar: user.avatar,
           designation: aboutUser.headline,
+          experience: userProfile.experience,
+          education: userProfile.education,
           dob: userProfile.DOB,
           userId: user.id,
           isCloseFriend: sql<boolean>`EXISTS (
@@ -2028,12 +2338,25 @@ export class NetworkService {
             }
           }
 
+          const currentCompany = Array.isArray(item.experience)
+            ? item.experience.find(
+                (exp: any) => exp.currentlyWorking || exp.isCurrentlyWorking,
+              )
+            : null;
+
+          const currentEducation =
+            Array.isArray(item.education) && item.education.length > 0
+              ? item.education[item.education.length - 1]
+              : null;
+
           return {
             ...item,
             mutualFriends: {
               count: mutualFriends.length,
               friends: mutualFriends,
             },
+            currentCompany,
+            currentEducation,
             numberOfConnections: Number(connectionsCount?.count || 0),
             status: status, // Simplified
           };
@@ -2137,6 +2460,8 @@ export class NetworkService {
           avatar: user.avatar,
           cover: user.cover,
           designation: aboutUser.headline,
+          experience: sql`${userProfile.experience}::jsonb`.as("experience"),
+          education: sql`${userProfile.education}::jsonb`.as("education"),
           isOnline:
             sql`CASE WHEN ${userToEntity.lastActive} + interval '10 minutes' > now() THEN true ELSE false END`.as(
               "is_online",
@@ -2166,6 +2491,7 @@ export class NetworkService {
         )
         .innerJoin(user, eq(userToEntity.userId, user.id))
         .leftJoin(aboutUser, eq(userToEntity.userId, aboutUser.userId))
+        .leftJoin(userProfile, eq(userToEntity.userId, userProfile.userId))
         .leftJoin(blockedUsers, this.getBlockedUsersCondition(currentUserId))
         .where(and(...whereConditions))
         .orderBy(desc(connections.createdAt))
@@ -2198,12 +2524,25 @@ export class NetworkService {
             targetUserId: item.id,
             entityId,
           });
+          const currentCompany = Array.isArray(item.experience)
+            ? item.experience.find(
+                (exp: any) => exp.currentlyWorking || exp.isCurrentlyWorking,
+              )
+            : null;
+
+          const currentEducation =
+            Array.isArray(item.education) && item.education.length > 0
+              ? item.education[item.education.length - 1]
+              : null;
+
           return {
             ...item,
             mutualFriends: {
               count: mutualFriends.length,
               friends: mutualFriends,
             },
+            currentCompany,
+            currentEducation,
             numberOfConnections: Number(connectionsCount?.count || 0),
           };
         }),
@@ -2214,7 +2553,7 @@ export class NetworkService {
         count: enrichedResults.length,
       });
 
-      const edges = nodes.map((node: any, index: number) => ({
+      const edges = enrichedResults.map((node: any, index: number) => ({
         cursor: Buffer.from(`offset:${calculatedOffset + index + 1}`).toString(
           "base64",
         ),
@@ -2350,6 +2689,8 @@ export class NetworkService {
           lastName: user.lastName,
           avatar: user.avatar,
           designation: aboutUser.headline,
+          experience: userProfile.experience,
+          education: userProfile.education,
           isCloseFriend: sql<boolean>`EXISTS (
               SELECT 1 FROM "closeFriends" cf
               WHERE cf.user_id = ${currentUserId}
@@ -2361,6 +2702,7 @@ export class NetworkService {
         .innerJoin(userToEntity, eq(connectionsRequest.sender, userToEntity.id))
         .innerJoin(user, eq(userToEntity.userId, user.id))
         .leftJoin(aboutUser, eq(userToEntity.userId, aboutUser.userId))
+        .leftJoin(userProfile, eq(userToEntity.userId, userProfile.userId))
         .leftJoin(blockedUsers, this.getBlockedUsersCondition(currentUserId))
         .where(and(...whereConditions))
         .orderBy(desc(connectionsRequest.createdAt))
@@ -2393,12 +2735,25 @@ export class NetworkService {
             targetUserId: item.senderId,
             entityId,
           });
+          const currentCompany = Array.isArray(item.experience)
+            ? item.experience.find(
+                (exp: any) => exp.currentlyWorking || exp.isCurrentlyWorking,
+              )
+            : null;
+
+          const currentEducation =
+            Array.isArray(item.education) && item.education.length > 0
+              ? item.education[item.education.length - 1]
+              : null;
+
           return {
             ...item,
             mutualFriends: {
               count: mutualFriends.length,
               friends: mutualFriends,
             },
+            currentCompany,
+            currentEducation,
             numberOfConnections: Number(connectionsCount?.count || 0),
           };
         }),
@@ -2409,7 +2764,7 @@ export class NetworkService {
         count: enrichedResults.length,
       });
 
-      const edges = nodes.map((node: any, index: number) => ({
+      const edges = enrichedResults.map((node: any, index: number) => ({
         cursor: Buffer.from(`offset:${calculatedOffset + index + 1}`).toString(
           "base64",
         ),
@@ -3117,6 +3472,8 @@ export class NetworkService {
             avatar: user.avatar,
             cover: user.cover,
             designation: aboutUser.headline,
+            experience: userProfile.experience,
+            education: userProfile.education,
             isOnline:
               sql`CASE WHEN ${userToEntity.lastActive} + interval '10 minutes' > now() THEN true ELSE false END`.as(
                 "is_online",
@@ -3132,7 +3489,8 @@ export class NetworkService {
             ),
           )
           .innerJoin(user, eq(userToEntity.userId, user.id))
-          .innerJoin(aboutUser, eq(userToEntity.userId, aboutUser.userId))
+          .leftJoin(aboutUser, eq(userToEntity.userId, aboutUser.userId))
+          .leftJoin(userProfile, eq(userToEntity.userId, userProfile.userId))
           .where(
             and(
               eq(closeFriends.userId, currentUserId),
@@ -3162,12 +3520,29 @@ export class NetworkService {
       const hasNextPage = data.length > limit;
       const nodes = hasNextPage ? data.slice(0, limit) : data;
 
-      const edges = nodes.map((node: any, index: number) => ({
-        cursor: Buffer.from(`offset:${calculatedOffset + index + 1}`).toString(
-          "base64",
-        ),
-        node,
-      }));
+      const edges = nodes.map((node: any, index: number) => {
+        const currentCompany = Array.isArray(node.experience)
+          ? node.experience.find(
+              (exp: any) => exp.currentlyWorking || exp.isCurrentlyWorking,
+            )
+          : null;
+
+        const currentEducation =
+          Array.isArray(node.education) && node.education.length > 0
+            ? node.education[node.education.length - 1]
+            : null;
+
+        return {
+          cursor: Buffer.from(
+            `offset:${calculatedOffset + index + 1}`,
+          ).toString("base64"),
+          node: {
+            ...node,
+            currentCompany,
+            currentEducation,
+          },
+        };
+      });
 
       const [totalCountResult] = await db
         .with(closeFriendsQuery)

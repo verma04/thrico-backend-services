@@ -100,6 +100,28 @@ export const moderationTypes = `#graphql
     totalCount: Int!
   }
 
+  type AiModerationLog {
+    id: ID!
+    contentId: String!
+    entityId: String!
+    classification: String
+    confidence: Float
+    model: String
+    createdAt: String!
+  }
+
+  type PaginatedAiModerationLogResponse {
+    items: [AiModerationLog!]!
+    totalCount: Int!
+  }
+
+  type AiModerationDashboard {
+    totalPosts: Int!
+    pendingModeration: Int!
+    flaggedContent: Int!
+    rejectedPosts: Int!
+  }
+
   extend type Query {
     getBannedWords(limit: Int, offset: Int): PaginatedBannedWordResponse!
     getBlockedLinks(limit: Int, offset: Int): PaginatedBlockedLinkResponse!
@@ -111,6 +133,8 @@ export const moderationTypes = `#graphql
     ): PaginatedContentReportResponse!
     getModerationSettings: ModerationSettings!
     getModerationStats: ModerationStats!
+    getAiModerationLogs(limit: Int, offset: Int): PaginatedAiModerationLogResponse!
+    getAiModerationDashboard: AiModerationDashboard!
   }
 
   extend type Mutation {

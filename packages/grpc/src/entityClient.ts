@@ -29,7 +29,7 @@ class EntityClient {
 
     this.client = new entityProto.EntityService(
       address,
-      grpc.credentials.createInsecure()
+      grpc.credentials.createInsecure(),
     );
 
     this.isConnected = true;
@@ -65,7 +65,7 @@ class EntityClient {
           } else {
             resolve(response);
           }
-        }
+        },
       );
     });
   }
@@ -84,7 +84,7 @@ class EntityClient {
           } else {
             resolve(response);
           }
-        }
+        },
       );
     });
   }
@@ -107,7 +107,7 @@ class EntityClient {
           } else {
             resolve(response);
           }
-        }
+        },
       );
     });
   }
@@ -129,7 +129,26 @@ class EntityClient {
           } else {
             resolve(response);
           }
-        }
+        },
+      );
+    });
+  }
+
+  async getMyAccounts(userId: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+      this.client.GetMyAccounts(
+        { userId },
+        (error: grpc.ServiceError | null, response: any) => {
+          if (error) {
+            log.error("gRPC GetMyAccounts error", {
+              userId,
+              error: error.message,
+            });
+            reject(error);
+          } else {
+            resolve(response.accounts);
+          }
+        },
       );
     });
   }

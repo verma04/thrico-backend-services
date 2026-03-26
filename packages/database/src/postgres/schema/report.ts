@@ -1,4 +1,4 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
   jsonb,
   pgEnum,
@@ -13,6 +13,15 @@ export const reportModuleENum = pgEnum("reportModule", [
   "FEED",
   "MEMBER",
   "DISCUSSION_FORUM",
+  "COMMUNITY",
+  "JOB",
+  "LISTING",
+  "MOMENT",
+  "OFFER",
+  "EVENT",
+  "USER",
+  "SHOP",
+  "SURVEY",
 ]);
 
 export const logStatusEnum = pgEnum("reportStatus", [
@@ -23,18 +32,20 @@ export const logStatusEnum = pgEnum("reportStatus", [
 
 export const reports = pgTable("reports", {
   id: uuid("id").defaultRandom().primaryKey(),
-  userToEntityId: uuid("userToEntityId").notNull(),
-  action: logStatusEnum("action"),
-  module: reportModuleENum("module"), // e.g., "FEED", "MEMBER", "DISCUSSION_FORUM" // e.g., "APPROVED", "REQUESTED", "REJECTED"
-  reportedBy: uuid("performedBy"), // The admin/moderator or user who triggered the action
-  reason: text("reason"), // Optional reason for the change, // Optionally store the new record state
+  targetId: uuid("targetId").notNull(),
+  module: reportModuleENum("module"),
+  reportedBy: uuid("reportedBy"),
+  reason: text("reason"),
+  description: text("description"),
+  status: logStatusEnum("status").default("PENDING"),
   createdAt: timestamp("created_at").defaultNow(),
-  entity: uuid("entity").notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
+  entityId: uuid("entity_id").notNull(),
 });
 
 export const reportsRelation = relations(reports, ({ one }) => ({
-  userToEntity: one(userToEntity, {
-    fields: [reports.userToEntityId],
+  reporter: one(userToEntity, {
+    fields: [reports.reportedBy],
     references: [userToEntity.id],
   }),
 }));

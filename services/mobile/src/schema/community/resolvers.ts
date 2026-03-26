@@ -6,12 +6,13 @@ import {
   user,
   events,
   communityActivityLog,
-  groupRequest, // Assuming this is exported from @thrico/database
+  groupRequest,
+  groupViews,
   AppDatabase,
 } from "@thrico/database";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 
-import { and, count, desc, eq, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, or, sql, lt, gte } from "drizzle-orm";
 // import moment from "moment"; // moment is not used in the snippet except for one map log line which I can keep or refactor. The snippet uses it. I'll import it.
 import moment from "moment";
 
@@ -530,6 +531,169 @@ const communitiesResolvers: any = {
       }
     },
 
+    async getCommunitiesStats(_: any, { timeRange }: { timeRange: string }, context: any) {
+      try {
+        const { db, entityId } = await checkAuth(context);
+
+        const now = new Date();
+        let startDate = new Date();
+
+        switch (timeRange) {
+          case "LAST_24_HOURS":
+            startDate.setHours(now.getHours() - 24);
+            break;
+          case "LAST_7_DAYS":
+            startDate.setDate(now.getDate() - 7);
+            break;
+          case "LAST_30_DAYS":
+            startDate.setDate(now.getDate() - 30);
+            break;
+          case "LAST_90_DAYS":
+            startDate.setDate(now.getDate() - 90);
+            break;
+          default:
+            startDate.setDate(now.getDate() - 30);
+        }
+
+        const timeDiff = now.getTime() - startDate.getTime();
+        const previousStartDate = new Date(startDate.getTime() - timeDiff);
+        const previousEndDate = startDate;
+
+        // 1. Total Communities
+        const totalCommunitiesResult = await db
+          .select({ count: count() })
+          .from(groups)
+          .where(eq(groups.entity, entityId));
+        const totalCommunities = Number(totalCommunitiesResult[0]?.count || 0);
+
+        const prevTotalCommunitiesResult = await db
+          .select({ count: count() })
+          .from(groups)
+          .where(
+            and(
+              eq(groups.entity, entityId),
+              lt(groups.createdAt, startDate)
+            )
+          );
+        const prevTotalCommunities = Number(prevTotalCommunitiesResult[0]?.count || 0);
+        const totalCommunitiesChange = prevTotalCommunities > 0
+          ? ((totalCommunities - prevTotalCommunities) / prevTotalCommunities) * 100
+          : 0;
+
+        // 2. Active Communities (Status = APPROVED)
+        const activeCommunitiesResult = await db
+          .select({ count: count() })
+          .from(groups)
+          .where(
+            and(
+              eq(groups.entity, entityId),
+              eq(groups.status, "APPROVED")
+            )
+          );
+        const activeCommunities = Number(activeCommunitiesResult[0]?.count || 0);
+
+        const prevActiveCommunitiesResult = await db
+          .select({ count: count() })
+          .from(groups)
+          .where(
+            and(
+              eq(groups.entity, entityId),
+              eq(groups.status, "APPROVED"),
+              lt(groups.createdAt, startDate)
+            )
+          );
+        const prevActiveCommunities = Number(prevActiveCommunitiesResult[0]?.count || 0);
+        const activeCommunitiesChange = prevActiveCommunities > 0
+          ? ((activeCommunities - prevActiveCommunities) / prevActiveCommunities) * 100
+          : 0;
+
+        // 3. Total Enrollments (Group Members)
+        const totalEnrollmentsResult = await db
+          .select({ count: count() })
+          .from(groupMember)
+          .innerJoin(groups, eq(groupMember.groupId, groups.id))
+          .where(eq(groups.entity, entityId));
+        const totalEnrollments = Number(totalEnrollmentsResult[0]?.count || 0);
+
+        const currEnrollmentsResult = await db
+          .select({ count: count() })
+          .from(groupMember)
+          .innerJoin(groups, eq(groupMember.groupId, groups.id))
+          .where(
+            and(
+              eq(groups.entity, entityId),
+              gte(groupMember.createdAt, startDate)
+            )
+          );
+        const currentEnrollments = Number(currEnrollmentsResult[0]?.count || 0);
+
+        const prevEnrollmentsResult = await db
+          .select({ count: count() })
+          .from(groupMember)
+          .innerJoin(groups, eq(groupMember.groupId, groups.id))
+          .where(
+            and(
+              eq(groups.entity, entityId),
+              gte(groupMember.createdAt, previousStartDate),
+              lt(groupMember.createdAt, previousEndDate)
+            )
+          );
+        const prevEnrollments = Number(prevEnrollmentsResult[0]?.count || 0);
+        const enrollmentsChange = prevEnrollments > 0
+          ? ((currentEnrollments - prevEnrollments) / prevEnrollments) * 100
+          : 0;
+
+        // 4. Total Views
+        const totalViewsResult = await db
+          .select({ count: count() })
+          .from(groupViews)
+          .innerJoin(groups, eq(groupViews.group, groups.id))
+          .where(eq(groups.entity, entityId));
+        const totalViews = Number(totalViewsResult[0]?.count || 0);
+
+        const currViewsResult = await db
+          .select({ count: count() })
+          .from(groupViews)
+          .innerJoin(groups, eq(groupViews.group, groups.id))
+          .where(
+            and(
+              eq(groups.entity, entityId),
+              gte(groupViews.createdAt, startDate)
+            )
+          );
+        const currentViews = Number(currViewsResult[0]?.count || 0);
+
+        const prevViewsResult = await db
+          .select({ count: count() })
+          .from(groupViews)
+          .innerJoin(groups, eq(groupViews.group, groups.id))
+          .where(
+            and(
+              eq(groups.entity, entityId),
+              gte(groupViews.createdAt, previousStartDate),
+              lt(groupViews.createdAt, previousEndDate)
+            )
+          );
+        const prevViews = Number(prevViewsResult[0]?.count || 0);
+        const viewsChange = prevViews > 0
+          ? ((currentViews - prevViews) / prevViews) * 100
+          : 0;
+
+        return {
+          totalCommunities,
+          activeCommunities,
+          totalEnrollments,
+          totalViews,
+          totalCommunitiesChange: parseFloat(totalCommunitiesChange.toFixed(2)),
+          activeCommunitiesChange: parseFloat(activeCommunitiesChange.toFixed(2)),
+          enrollmentsChange: parseFloat(enrollmentsChange.toFixed(2)),
+          viewsChange: parseFloat(viewsChange.toFixed(2)),
+        };
+      } catch (error) {
+        logger.error(`Error in getCommunitiesStats: ${error}`);
+        throw error;
+      }
+    },
     // ...existing queries...
   },
 
@@ -1070,24 +1234,6 @@ const communitiesResolvers: any = {
         });
       } catch (error) {
         logger.error(`Error in respondToJoinRequest: ${error}`);
-        throw error;
-      }
-    },
-
-    async reportCommunity(_: any, { input }: any, context: any) {
-      try {
-        const { db, userId, entityId } = await checkAuth(context);
-
-        return await CommunityActionsService.reportCommunity({
-          communityId: input.communityId,
-          reporterId: userId,
-          reason: input.reason,
-          description: input.description,
-          entityId,
-          db,
-        });
-      } catch (error) {
-        logger.error(`Error in reportCommunity: ${error}`);
         throw error;
       }
     },

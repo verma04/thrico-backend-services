@@ -9,19 +9,21 @@ import {
   listingReport,
   listingVerification,
   listingMessage,
+  listingConversation,
+  feedWishList,
 } from "@thrico/database";
 
-import { and, or, desc, eq, sql } from "drizzle-orm"; // Make sure 'or' is imported
+import { and, or, desc, eq, sql, inArray } from "drizzle-orm"; // Make sure 'or' is imported
 
 import slugify from "slugify";
 import { v4 as uuidv4 } from "uuid";
+import { AppDatabase } from "@thrico/database";
 
-import { type AppDatabase } from "@thrico/database";
 import { ListingNotificationPublisher } from "./listing-notification-publisher";
 import { log } from "@thrico/logging";
-import { uploadFeedImage } from "../feed/upload.utils";
 import { PaginationParams } from "../types";
 import { GamificationEventService } from "../gamification/gamification-event.service";
+import { StorageService } from "../storage/storage.service";
 
 interface ListingLocation {
   name?: string;
@@ -181,7 +183,15 @@ export class ListingService {
   ): Promise<any> {
     try {
       // Upload media files
-      const uploadedMedia = await this.handleMediaUpload(entityId, input.media);
+      // We'll pre-generate the listing ID to use as referenceId
+      const listingId = uuidv4();
+      const uploadedMedia = await this.handleMediaUpload(
+        entityId,
+        userId,
+        db,
+        input.media,
+        listingId
+      );
 
       // Get entity settings
       const settings = await this.getEntitySettings(db, entityId);
@@ -191,11 +201,12 @@ export class ListingService {
       const slug = this.generateSlug(input);
 
       // Create listing in transaction
-      const newListing = await db.transaction(async (tx) => {
+      const newListing = await db.transaction(async (tx: any) => {
         return await this.createListingTransaction(
           tx,
           {
             ...input,
+            id: listingId, // Use pre-generated ID
             entityId,
             userId,
             slug,
@@ -262,7 +273,12 @@ export class ListingService {
       // Upload new media files if provided
       let uploadedMedia: any[] = [];
       if (input.media && input.media.length > 0) {
-        uploadedMedia = await this.handleMediaUpload(entityId, input.media);
+        uploadedMedia = await this.handleMediaUpload(
+          entityId,
+          userId,
+          db,
+          input.media,
+        );
       }
 
       // Update listing in transaction
@@ -1445,14 +1461,24 @@ export class ListingService {
 
   private static async handleMediaUpload(
     entityId: string,
+    userId: string,
+    db: AppDatabase,
     media?: any[],
+    referenceId?: string,
   ): Promise<any[]> {
     if (!media || media.length === 0) {
       return [];
     }
 
     try {
-      return await uploadFeedImage(entityId, media);
+      return await StorageService.uploadImages(
+        media,
+        entityId,
+        "LISTING",
+        userId,
+        db,
+        referenceId
+      );
     } catch (error) {
       log.error("Media upload failed", error as Error);
       throw new Error("Failed to upload media");
@@ -2064,7 +2090,7 @@ export class ListingService {
           .from(listingMessage)
           .where(
             and(
-              sql`${listingMessage.conversationId} = ANY(${conversationIds})`,
+              inArray(listingMessage.conversationId, conversationIds),
               eq(listingMessage.isRead, false),
               sql`${listingMessage.senderId} != ${sellerId}`,
             ),
@@ -2150,6 +2176,95 @@ export class ListingService {
       }));
     } catch (error) {
       log.error("Error in getListingEnquiriesGroupedByBuyer", error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get global listing statistics for an entity
+   */
+  static async getListingStats(
+    db: AppDatabase,
+    entityId: string,
+    userId: string,
+  ): Promise<{
+    totalListings: number;
+    newToday: number;
+    yourEnquiry: number;
+    savedListings: number;
+    popularCategories: { name: string; count: number }[];
+  }> {
+    try {
+      // 1. Total Listings
+      const totalResult = await db
+        .select({ count: sql`count(*)` })
+        .from(marketPlace)
+        .where(eq(marketPlace.entityId, entityId));
+      const totalListings = Number(totalResult[0]?.count || 0);
+
+      // 2. New Today
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const newTodayResult = await db
+        .select({ count: sql`count(*)` })
+        .from(marketPlace)
+        .where(
+          and(
+            eq(marketPlace.entityId, entityId),
+            sql`${marketPlace.createdAt} >= ${startOfDay}`,
+          ),
+        );
+      const newToday = Number(newTodayResult[0]?.count || 0);
+
+      // 3. Your Enquiry (conversations user is involved in)
+      const enquiryResult = await db
+        .select({ count: sql`count(*)` })
+        .from(listingConversation)
+        .where(
+          or(
+            eq(listingConversation.buyerId, userId),
+            eq(listingConversation.sellerId, userId),
+          ),
+        );
+      const yourEnquiry = Number(enquiryResult[0]?.count || 0);
+
+      // 4. Saved Listings (Wishlist)
+      const savedResult = await db
+        .select({ count: sql`count(*)` })
+        .from(feedWishList)
+        .innerJoin(userFeed, eq(feedWishList.feedId, userFeed.id))
+        .where(
+          and(
+            eq(feedWishList.userId, userId),
+            eq(userFeed.source, "marketPlace"),
+          ),
+        );
+      const savedListings = Number(savedResult[0]?.count || 0);
+
+      // 5. Popular Categories
+      const popularCategories = await db
+        .select({
+          name: marketPlace.category,
+          count: sql`count(*)`,
+        })
+        .from(marketPlace)
+        .where(eq(marketPlace.entityId, entityId))
+        .groupBy(marketPlace.category)
+        .orderBy(desc(sql`count(*)`))
+        .limit(10);
+
+      return {
+        totalListings,
+        newToday,
+        yourEnquiry,
+        savedListings,
+        popularCategories: popularCategories.map((c) => ({
+          name: c.name || "Other",
+          count: Number(c.count || 0),
+        })),
+      };
+    } catch (error) {
+      log.error("Error in getListingStats", error as Error);
       throw error;
     }
   }

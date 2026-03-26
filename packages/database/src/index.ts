@@ -13,6 +13,9 @@ export * from "./postgres/schema";
 export { connectDynamo } from "./dynamodb/connection";
 export { UserActivity } from "./dynamodb/models/user-activity";
 export { AuditLog } from "./dynamodb/models/audit-log";
+export { CurrencyTransaction } from "./dynamodb/models/currency-transaction";
+export { RedemptionHistory } from "./dynamodb/models/redemption-history";
+export { GlobalCurrencyTransaction } from "./dynamodb/models/global-currency-transaction";
 export * from "./dynamodb/models/page";
 export {
   ADMIN,
@@ -27,6 +30,11 @@ export {
   CUSTOM_DOMAIN,
   ENTITY_THEME,
 } from "./dynamodb/models/admin";
+
+export {
+  ENTITY_MEMBER,
+  UserRole as EntityMemberRole,
+} from "./dynamodb/models/entity-member";
 
 export { USER, USER_OTP, USER_LOGIN_SESSION } from "./dynamodb/models/user";
 
@@ -44,3 +52,4 @@ export {
   closeRedis,
 } from "./redis/client";
 export * from "./redis/notification";
+export * from "./postgres/seed/currency.seed";

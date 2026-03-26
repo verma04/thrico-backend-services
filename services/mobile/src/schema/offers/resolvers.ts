@@ -5,7 +5,7 @@ export const offersResolvers = {
   Query: {
     async getOffers(_: any, { input }: any, context: any) {
       try {
-        const { entityId, db, userId, role } = await checkAuth(context);
+        const { entityId, db, userId } = await checkAuth(context);
         const { categoryId, cursor, limit = 10, search } = input || {};
 
         const result = await OfferService.getApprovedOffers({
@@ -16,7 +16,6 @@ export const offersResolvers = {
           categoryId,
           search,
           currentUserId: userId,
-          role,
         });
 
         console.log(result?.edges?.[0]?.node);

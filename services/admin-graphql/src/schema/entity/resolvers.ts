@@ -2,34 +2,21 @@ import { GraphQLError } from "graphql";
 import { v4 as uuidv4 } from "uuid";
 import { DatabaseRegion } from "@thrico/shared";
 import checkAuth from "../../utils/auth/checkAuth.utils";
-import {
-  entity,
-  entitySettings,
-  entitySettingsGroups,
-  razorpay,
-  stripe,
-  theme,
-  trendingConditionsGroups,
-  entitySettingsUser,
-  trendingConditionsJobs,
-  trendingConditionsListing,
-  entitySettingsListing,
-  entitySettingsEvents,
-  trendingConditionsEvents,
-  trendingConditionsStories,
-  entityStoriesSettings,
-  highlights,
-  orgSocialMedia,
-  getDb,
-} from "@thrico/database";
+import { entity, entitySettings, storageFiles } from "@thrico/database";
 
 import { log } from "@thrico/logging"; // Added import
+import {
+  ensurePermission,
+  AdminModule,
+  PermissionAction,
+} from "../../utils/auth/permissions.utils";
 import {
   ADMIN,
   DOMAIN,
   ENTITY_INDUSTRY,
   ENTITY_TYPE,
   ENTITY_THEME,
+  AuditLog,
 } from "@thrico/database";
 
 import { eq } from "drizzle-orm";
@@ -41,124 +28,6 @@ import { countryClient, entityClient, subscriptionClient } from "@thrico/grpc";
 import { seedDiscussionCategories } from "../../seed/seedDiscussionCategories";
 import { initializeWebsite as initWebsiteContent } from "../../lib/website/create-default-pages";
 import { changeDomain } from "../../queue/email-rabbit";
-import { seedDefaultGamification } from "../../lib/website/gamification-defaults.seed";
-
-const shardCountry = async ({
-  entityDomain,
-  address,
-  name,
-  entityType,
-  country,
-  website,
-  uploadedLogo,
-  id,
-  userId,
-}: any) => {
-  // Map country code to DatabaseRegion
-  let region: DatabaseRegion;
-  switch (country) {
-    case "IND":
-      region = DatabaseRegion.IND;
-      break;
-    case "USA":
-      region = DatabaseRegion.US;
-      break;
-    case "UAE":
-      region = DatabaseRegion.UAE;
-      break;
-    default:
-      region = DatabaseRegion.IND; // Default fallback
-  }
-
-  // checkDbByCountry replaced with getDb(country)
-  const db = getDb(region);
-
-  await db.transaction(async (tx: any) => {
-    const createEntity = await tx
-      .insert(entity)
-      .values({
-        id,
-        address,
-        entityType,
-        name,
-        timeZone: "sdsd",
-        logo: uploadedLogo ? uploadedLogo : "thricoLogo.png",
-        website,
-        userId,
-        favicon: uploadedLogo,
-        country,
-      })
-      .returning();
-
-    await tx.insert(theme).values({
-      entityId: createEntity[0]?.id,
-    });
-
-    await tx.insert(razorpay).values({
-      isEnabled: false,
-      entity: createEntity[0]?.id,
-    });
-    await tx.insert(entitySettings).values({
-      entity: createEntity[0]?.id,
-    });
-    await tx.insert(entitySettingsUser).values({
-      entity: createEntity[0]?.id,
-    });
-    await tx.insert(entitySettingsGroups).values({
-      entity: createEntity[0]?.id,
-      autoApprove: false,
-    });
-    await tx.insert(entitySettingsEvents).values({
-      entity: createEntity[0]?.id,
-      autoApprove: false,
-    });
-    await tx.insert(entitySettingsListing).values({
-      entity: createEntity[0]?.id,
-      autoApprove: false,
-    });
-
-    await tx.insert(entityStoriesSettings).values({
-      entity: createEntity[0]?.id,
-      autoApprove: false,
-    });
-    await tx.insert(trendingConditionsGroups).values({
-      entity: createEntity[0]?.id,
-    });
-
-    await tx.insert(trendingConditionsJobs).values({
-      entity: createEntity[0]?.id,
-    });
-    await tx.insert(trendingConditionsListing).values({
-      entity: createEntity[0]?.id,
-    });
-    await tx.insert(trendingConditionsEvents).values({
-      entity: createEntity[0]?.id,
-    });
-
-    await tx.insert(trendingConditionsStories).values({
-      entity: createEntity[0]?.id,
-    });
-    await tx.insert(stripe).values({
-      isEnabled: false,
-      entity: createEntity[0]?.id,
-    });
-    await tx.insert(orgSocialMedia).values({
-      entity: createEntity[0]?.id,
-    });
-
-    await tx.insert(highlights).values({
-      title: `Welcome to ${name} Community`, // Fixed: entity.name -> name (local var)
-      entity: createEntity[0]?.id,
-      highlightsType: "ANNOUNCEMENT",
-      isExpirable: false,
-    });
-
-    await DOMAIN.create({
-      domain: entityDomain,
-      entity: id,
-    });
-  });
-};
 
 export const entityResolvers: any = {
   Query: {
@@ -199,7 +68,7 @@ export const entityResolvers: any = {
     async getKycCountries(_: any, { input }: any, context: any) {
       try {
         // Just checking auth?
-        await checkAuth(context);
+        // await checkAuthLogin(context);
 
         const countries = await countryClient.getAllCountries();
         return countries;
@@ -210,7 +79,7 @@ export const entityResolvers: any = {
     },
     async checkDomain(_: any, { input }: any, context: any) {
       try {
-        await checkAuth(context);
+        // await checkAuth(context);
 
         const findDomain = await DOMAIN.query("domain").eq(input.domain).exec();
 
@@ -293,7 +162,9 @@ export const entityResolvers: any = {
 
     async getEntitySettings(_: any, { input }: any, context: any) {
       try {
-        const { db, entity: entityId } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.SETTINGS, PermissionAction.READ);
+        const { db, entity: entityId } = auth;
 
         const settings = await db.query.entitySettings.findFirst({
           where: (entitySettings: any, { eq }: any) =>
@@ -337,6 +208,7 @@ export const entityResolvers: any = {
           stories: "faqStories",
           wallOfFame: "faqWallOfFame",
           gamification: "faqGamification",
+          rewards: "faqRewards",
         };
 
         const faqField = faqFieldMap[module];
@@ -384,6 +256,7 @@ export const entityResolvers: any = {
           stories: "termAndConditionsStories",
           wallOfFame: "termAndConditionsWallOfFame",
           gamification: "termAndConditionsGamification",
+          rewards: "termAndConditionsRewards",
         };
 
         const termsField = termsFieldMap[module];
@@ -438,7 +311,9 @@ export const entityResolvers: any = {
 
     async getEntityTheme(_: any, { input }: any, context: any) {
       try {
-        const { entity: entityId } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.APPEARANCE, PermissionAction.READ);
+        const { entity: entityId } = auth;
 
         const theme = await ENTITY_THEME.query("entity").eq(entityId).exec();
 
@@ -451,7 +326,9 @@ export const entityResolvers: any = {
 
     async checkEntitySubscription(_: any, { input }: any, context: any) {
       try {
-        const { entity: entityId } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.SUBSCRIPTION, PermissionAction.READ);
+        const { entity: entityId } = auth;
 
         const subscription =
           await subscriptionClient.checkEntitySubscription(entityId);
@@ -464,114 +341,11 @@ export const entityResolvers: any = {
     },
   },
   Mutation: {
-    async registerEntity(_: any, { input }: any, context: any) {
-      try {
-        const {
-          domain: entityDomain,
-          address,
-          name,
-          entityType,
-          industryType,
-          country,
-          logo,
-          website,
-          designation,
-          phone,
-          language,
-          domain,
-          agreement,
-        } = input;
-
-        // checkAuth might fail if no token, but registerEntity implies new user?
-        // Or existing user creating entity?
-        // User code: const data = await checkAuth(context);
-        const data = await checkAuth(context);
-
-        let uploadedLogo;
-
-        if (logo) {
-          const result = await upload("entity-logos", [logo]);
-          uploadedLogo = result[0]?.url;
-        }
-
-        if (!data?.id) {
-          throw new GraphQLError("User ID is required to register an entity");
-        }
-
-        const id = uuidv4();
-
-        const entityLogo = uploadedLogo ? uploadedLogo : "thricoLogo.png";
-        const entityData = {
-          id,
-          address,
-          entityType,
-          industryType,
-          name,
-          designation,
-          country,
-          phone,
-          language,
-          logo: entityLogo,
-          website,
-          userId: data.id,
-          favicon: entityLogo,
-          domain: entityDomain,
-          subscriptionId: "",
-          agreement,
-        };
-
-        const result = await entityClient.registerEntity(entityData);
-        // Using id from input or result? User code implicitly used entity.id from result
-
-        await shardCountry({
-          entityDomain,
-          address,
-          name,
-          entityType,
-          country,
-          website,
-          entityLogo,
-          id: result?.id, // Using the generated UUID
-          userId: data?.id || null,
-        });
-
-        // // Seed discussion categories after entity registration
-        // // Passing data.db? checkAuth returns db, yes.
-        if (data?.db && id && data?.id) {
-          try {
-            await seedDiscussionCategories(data.db, result?.id, data.id);
-          } catch (e) {
-            console.error("Failed to seed discussion categories", e);
-          }
-        }
-
-        if (data?.db && id && data?.id) {
-          try {
-            await initWebsiteContent(data.db, result?.id, name, entityLogo, {
-              theme: entityType,
-              font: "inter",
-            });
-            await seedDefaultGamification(data.db, result?.id);
-          } catch (e) {
-            console.error("Failed to initialize website", e);
-          }
-        }
-
-        return {
-          success: true,
-        };
-      } catch (error: any) {
-        log.error("Failed to register entity", {
-          error: error.message,
-          stack: error.stack,
-          input,
-        });
-        throw new GraphQLError(error.message || "Registration failed");
-      }
-    },
     async editEntityTheme(_: any, { input }: any, context: any) {
       try {
-        const { entity: entityId } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.APPEARANCE, PermissionAction.EDIT);
+        const { entity: entityId } = auth;
 
         const existingThemeResult = await ENTITY_THEME.query("entity")
           .eq(entityId)
@@ -608,7 +382,9 @@ export const entityResolvers: any = {
 
     async updateCurrency(_: any, { input }: any, context: any) {
       try {
-        const data = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.SETTINGS, PermissionAction.EDIT);
+        const data = auth;
 
         // const orgId = await userOrg(data.id);
         // Replaced with data.entity if that's what userOrg did.
@@ -631,7 +407,9 @@ export const entityResolvers: any = {
 
     async updateEntitySettings(_: any, { input }: any, context: any) {
       try {
-        const { db, entity: entityId } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.SETTINGS, PermissionAction.EDIT);
+        const { db, entity: entityId } = auth;
 
         const updated = await db
           .update(entitySettings)
@@ -666,6 +444,7 @@ export const entityResolvers: any = {
           stories: "faqStories",
           wallOfFame: "faqWallOfFame",
           gamification: "faqGamification",
+          rewards: "faqRewards",
         };
 
         const faqField = faqFieldMap[module];
@@ -713,6 +492,7 @@ export const entityResolvers: any = {
           stories: "termAndConditionsStories",
           wallOfFame: "termAndConditionsWallOfFame",
           gamification: "termAndConditionsGamification",
+          rewards: "termAndConditionsRewards",
         };
 
         const termsField = termsFieldMap[module];
@@ -775,8 +555,14 @@ export const entityResolvers: any = {
       try {
         const user = await checkAuth(context);
 
-        // Upload the file
-        const uploadResult = await upload("entity-logos", [file]);
+        // Upload the file - utility now handles folder (entityId/purpose) and DB tracking
+        const uploadResult = await upload(
+          user.entity,
+          [file],
+          user.db,
+          user.userId,
+          "GENERAL",
+        );
         const uploadedLogo = uploadResult[0]?.url;
 
         // Update via gRPC
@@ -785,18 +571,28 @@ export const entityResolvers: any = {
           logo: uploadedLogo,
         });
 
-        // Optionally, fetch updated entity details - commented out in user code or used?
-        // User code: const entityDetails = await getEntityDetails(user.entity);
-        // It fetches it.
-        const entityDetails = await entityClient.getEntityDetails(user.entity);
-
-        // Update local DB if necessary? User code did:
-        // await user.db.update(entity).set({ logo: uploadedLogo })...
-
+        // Update local DB
         await user.db
           .update(entity)
           .set({ logo: uploadedLogo })
           .where(eq(entity.id, user.entity));
+
+        // Record Audit Log
+        try {
+          await AuditLog.create({
+            id: uuidv4(),
+            userId: user.userId,
+            action: "UPLOAD_ENTITY_LOGO",
+            resourceType: "ENTITY",
+            resourceId: user.entity,
+            timestamp: Date.now(),
+            changes: { logo: uploadedLogo },
+          });
+        } catch (auditError) {
+          log.error("Failed to record audit log:", { auditError });
+        }
+
+        const entityDetails = await entityClient.getEntityDetails(user.entity);
 
         return {
           id: entityDetails.id,

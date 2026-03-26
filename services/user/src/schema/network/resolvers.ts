@@ -1,22 +1,24 @@
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import { log } from "@thrico/logging";
 import { GraphQLError } from "graphql";
-import { NetworkService } from "@thrico/services";
+import { NetworkService, ReportService } from "@thrico/services";
 
 export const networkResolvers = {
   Query: {
     async getNetwork(_: any, { input }: any, context: any) {
       try {
-        const { id, db, entityId, userId } = await checkAuth(context);
+        const { id, db, entityId } = await checkAuth(context);
 
-        return await NetworkService.getNetwork({
+        const data = await NetworkService.getNetwork({
           db,
           currentUserId: id,
           entityId,
           limit: input?.limit || 10,
-          offset: input?.offset || 0,
+          cursor: input?.cursor,
           search: input?.search || "",
         });
+
+        return data;
       } catch (error: any) {
         log.error("Error in getNetwork", { error, input });
         throw error;
@@ -32,7 +34,7 @@ export const networkResolvers = {
           currentUserId: id,
           entityId,
           limit: input?.limit || 10,
-          offset: input?.offset || 0,
+          cursor: input?.cursor,
           search: input?.search || "",
         });
       } catch (error: any) {
@@ -41,18 +43,32 @@ export const networkResolvers = {
       }
     },
 
+    async getNetworkUserProfile(_: any, { input }: any, context: any) {
+      try {
+        const { db, id, entityId } = await checkAuth(context);
+
+        return await NetworkService.getNetworkUserProfile({
+          db,
+          currentUserId: id,
+          entityId,
+          id: input.id,
+        });
+      } catch (error: any) {
+        log.error("Error in getNetworkUserProfile", { error, input });
+        throw error;
+      }
+    },
+
     async getUserProfile(_: any, { input }: any, context: any) {
       try {
         const { db, id, entityId } = await checkAuth(context);
 
-        console.log(id);
-
-        // return await NetworkService.getUserProfile({
-        //   db,
-        //   currentUserId: id,
-        //   entityId,
-        //   id: input.id,
-        // });
+        return await NetworkService.getNetworkUserProfile({
+          db,
+          currentUserId: id,
+          entityId,
+          id: input.id,
+        });
       } catch (error: any) {
         log.error("Error in getUserProfile", { error, input });
         throw error;
@@ -68,7 +84,7 @@ export const networkResolvers = {
           currentUserId: id,
           entityId,
           limit: input?.limit || 10,
-          offset: input?.offset || 0,
+          cursor: input?.cursor,
           search: input?.search || "",
         });
       } catch (error: any) {
@@ -101,7 +117,8 @@ export const networkResolvers = {
           currentUserId: id,
           entityId,
           limit: input?.limit || 10,
-          offset: input?.offset || 0,
+          cursor: input?.cursor,
+          search: input?.search || "",
         });
 
         return blockedUsers;
@@ -111,6 +128,24 @@ export const networkResolvers = {
       }
     },
 
+    async getMemberBirthdays(_: any, { input }: any, context: any) {
+      try {
+        const { id, db, entityId } = await checkAuth(context);
+
+        return await NetworkService.getMemberBirthdays({
+          db,
+          currentUserId: id,
+          entityId,
+          limit: input?.limit || 10,
+          cursor: input?.cursor,
+          filter: input?.filter,
+          search: input?.search,
+        });
+      } catch (error: any) {
+        log.error("Error in getMemberBirthdays", { error, input });
+        throw error;
+      }
+    },
     async getCloseFriends(_: any, { input }: any, context: any) {
       try {
         const { id, db, entityId } = await checkAuth(context);
@@ -251,14 +286,23 @@ export const networkResolvers = {
       try {
         const { id, entityId, db } = await checkAuth(context);
 
-        return await NetworkService.reportProfile({
+        const { userId, reason, description } = input;
+        const report = await ReportService.reportContent({
           db,
-          reporterId: id,
-          reportedUserId: input.userId,
           entityId,
-          reason: input.reason,
-          description: input.description,
+          reporterId: id,
+          input: {
+            targetId: userId,
+            module: "MEMBER",
+            reason,
+            description,
+          },
         });
+        return {
+          ...report,
+          userId: report.targetId,
+          reportedUserId: report.targetId,
+        };
       } catch (error: any) {
         log.error("Error in reportProfile", { error, input });
         throw new GraphQLError(error.message || "Failed to report profile", {

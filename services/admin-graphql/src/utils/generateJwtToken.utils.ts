@@ -7,9 +7,33 @@ import {
 import { ADMIN } from "@thrico/database";
 import { encryptToken } from "./crypto/jwt.crypto";
 
-export default async function generateJwtToken(otpEntry: any): Promise<string> {
+async function generateJwtToken({
+  userId,
+  entityId,
+}: {
+  userId: string;
+  entityId: string;
+}): Promise<string> {
+  const adminResult = await ADMIN.query("id").eq(userId).exec();
+  const admin = adminResult[0];
+  const payload = {
+    userId: userId,
+    entityId: entityId,
+    email: admin.email,
+    role: UserRole.ADMIN,
+    region: DatabaseRegion.IND, // Defaulting to INDIA
+  };
+
+  const { accessToken } = generateTokens(payload);
+
+  const encrypted = encryptToken(`Bearer ${accessToken}`);
+
+  return encrypted;
+}
+
+async function generateJwtLoginToken(adminId: string): Promise<string> {
   // Fetch admin to get email and other details for the token
-  const adminResult = await ADMIN.query("id").eq(otpEntry.userId).exec();
+  const adminResult = await ADMIN.query("id").eq(adminId).exec();
   const admin = adminResult[0];
 
   if (!admin) {
@@ -23,11 +47,11 @@ export default async function generateJwtToken(otpEntry: any): Promise<string> {
     region: DatabaseRegion.IND, // Defaulting to INDIA
   };
 
-  console.log(payload);
   const { accessToken } = generateTokens(payload);
 
   const encrypted = encryptToken(`Bearer ${accessToken}`);
 
-  console.log(encrypted, "eneeeeee");
   return encrypted;
 }
+
+export { generateJwtToken, generateJwtLoginToken };

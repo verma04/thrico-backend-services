@@ -1,4 +1,4 @@
-import { GraphQLError } from "graphql";
+import { GraphQLError, GraphQLScalarType, Kind } from "graphql";
 import { GraphQLUpload } from "graphql-upload-minimal";
 import { ErrorCode } from "@thrico/shared";
 import { deleteSession as coreDeleteSession } from "@thrico/database";
@@ -12,6 +12,7 @@ import {
 
 // Admin Resolvers
 import { adminResolvers } from "./admin/resolvers";
+import { loginResolvers } from "./login/resolvers";
 import { faqResolvers } from "./faq/resolvers";
 import { feedResolvers } from "./feed/resolvers";
 import { pollsResolvers } from "./polls/resolvers";
@@ -35,6 +36,14 @@ import { dashboardResolvers } from "./dashboard/resolvers";
 import groupsResolvers from "./groups/resolvers";
 import { offersResolvers } from "./offers/resolvers";
 import { moderationResolvers } from "./moderation/resolvers";
+import { currencyResolvers } from "./currency/resolvers";
+import { rewardsResolvers } from "./rewards/resolvers";
+import { reportResolvers } from "./report/resolvers";
+import { momentResolvers } from "./moment/resolvers";
+import { rbacResolvers } from "./rbac/resolvers";
+import { resolvers as storageResolvers } from "./storage/resolvers";
+import { auditLogResolvers } from "./admin/auditLog.resolvers";
+import { addonPricingResolvers } from "./addon-pricing/resolvers";
 
 const mainResolvers = {
   Query: {
@@ -49,6 +58,23 @@ const mainResolvers = {
           error: error.message,
         });
         throw new GraphQLError("Failed to fetch countries", {
+          extensions: { code: ErrorCode.INTERNAL_SERVER_ERROR },
+        });
+      }
+    },
+
+    country: async (_: any, { code }: any, context: any) => {
+      try {
+        const auth = await checkAuth(context);
+        const country = await countryClient.getCountryDetails(auth.country);
+        log.info("Country details fetched successfully", { code });
+        return country;
+      } catch (error: any) {
+        log.error("Error fetching country details via gRPC", {
+          error: error.message,
+          code,
+        });
+        throw new GraphQLError("Failed to fetch country details", {
           extensions: { code: ErrorCode.INTERNAL_SERVER_ERROR },
         });
       }
@@ -137,13 +163,68 @@ const mainResolvers = {
 import GraphQLJSON from "graphql-type-json";
 import { entityResolvers } from "./entity/resolvers";
 import { shopResolvers } from "./shop/resolvers";
+import checkAuth from "../utils/auth/checkAuth.utils";
+const DateScalar = new GraphQLScalarType({
+  name: "Date",
+  description: "Date custom scalar type",
+  serialize(value: any) {
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+    return value; // Assume it's already a string
+  },
+  parseValue(value: any) {
+    return new Date(value);
+  },
+  parseLiteral(ast) {
+    if (ast.kind === Kind.STRING) {
+      return new Date(ast.value);
+    }
+    return null;
+  },
+});
 
 export const resolvers: any = {
   Upload: GraphQLUpload,
   JSON: GraphQLJSON,
+  Date: DateScalar,
+  ...adminResolvers,
+  ...faqResolvers,
+  ...feedResolvers,
+  ...pollsResolvers,
+  ...userResolvers,
+  ...listingResolvers,
+  ...discussionResolvers,
+  ...websiteResolvers,
+  ...customFormsResolvers,
+  ...surveyResolvers,
+  ...announcementsResolvers,
+  ...alumniStoriesResolvers,
+  ...gamificationResolvers,
+  ...jobsResolvers,
+  ...settingsResolvers,
+  ...mentorShipResolvers,
+  ...paymentResolvers,
+  ...eventsResolvers,
+  ...givingResolvers,
+  ...pageResolvers,
+  ...dashboardResolvers,
+  ...groupsResolvers,
+  ...offersResolvers,
+  ...moderationResolvers,
+  ...shopResolvers,
+  ...currencyResolvers,
+  ...rewardsResolvers,
+  ...reportResolvers,
+  ...momentResolvers,
+  ...storageResolvers,
+  ...addonPricingResolvers,
+  ...auditLogResolvers,
+  ...rbacResolvers,
   Query: {
     ...mainResolvers.Query,
     ...adminResolvers.Query,
+    ...loginResolvers.Query,
     ...entityResolvers.Query,
     ...faqResolvers.Query,
     ...feedResolvers.Query,
@@ -169,10 +250,19 @@ export const resolvers: any = {
     ...offersResolvers.Query,
     ...moderationResolvers.Query,
     ...shopResolvers.Query,
+    ...currencyResolvers.Query,
+    ...rewardsResolvers.Query,
+    ...reportResolvers.Query,
+    ...momentResolvers.Query,
+    ...storageResolvers.Query,
+    ...addonPricingResolvers.Query,
+    ...auditLogResolvers.Query,
+    ...rbacResolvers.Query,
   },
   Mutation: {
     ...mainResolvers.Mutation,
     ...adminResolvers.Mutation,
+    ...loginResolvers.Mutation,
     ...entityResolvers.Mutation,
     ...faqResolvers.Mutation,
     ...feedResolvers.Mutation,
@@ -186,6 +276,7 @@ export const resolvers: any = {
     ...announcementsResolvers.Mutation,
     ...alumniStoriesResolvers.Mutation,
     ...gamificationResolvers.Mutation,
+    ...addonPricingResolvers.Mutation,
     ...jobsResolvers.Mutation,
     ...settingsResolvers.Mutation,
     ...mentorShipResolvers.Mutation,
@@ -198,5 +289,10 @@ export const resolvers: any = {
     ...offersResolvers.Mutation,
     ...moderationResolvers.Mutation,
     ...shopResolvers.Mutation,
+    ...currencyResolvers.Mutation,
+    ...rewardsResolvers.Mutation,
+    ...reportResolvers.Mutation,
+    ...momentResolvers.Mutation,
+    ...rbacResolvers.Mutation,
   },
 };

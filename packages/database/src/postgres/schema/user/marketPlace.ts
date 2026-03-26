@@ -22,6 +22,7 @@ import {
   status,
 } from "./enum";
 import { geometry } from "./geomtry";
+import { moderationStateStatusEnum } from "../moderation";
 
 export const conditionEnum = pgEnum("listingConditionEnums", [
   "NEW",
@@ -63,6 +64,9 @@ export const marketPlace = pgTable("listing0", {
   }),
   lat: text("lat"),
   lng: text("lng"),
+  moderationStatus: moderationStateStatusEnum("moderationStatus").default("PENDING"),
+  moderationResult: text("moderationResult"),
+  moderatedAt: timestamp("moderatedAt"),
 });
 
 export const marketPlaceRelations = relations(marketPlace, ({ one, many }) => ({

@@ -17,6 +17,7 @@ import { user, userToEntity } from "./member";
 import { entity } from "../tenant";
 import { addedBy, logStatus } from "./enum";
 import { userFeed } from "./feed";
+import { moderationStateStatusEnum } from "../moderation";
 
 export const discussionForumStatus = pgEnum("discussionForumStatus", [
   "APPROVED",
@@ -50,6 +51,9 @@ export const discussionForum = pgTable("discussionForums", {
   isAnonymous: boolean("isAnonymous").default(false),
   addedBy: addedBy("addedBy").default("USER"),
   userId: uuid("user_id"),
+  moderationStatus: moderationStateStatusEnum("moderationStatus").default("PENDING"),
+  moderationResult: text("moderationResult"),
+  moderatedAt: timestamp("moderatedAt"),
 });
 
 export const discussionForumRelations = relations(
@@ -156,6 +160,9 @@ export const discussionForumComment = pgTable(
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
     commentedBy: addedBy("commentedBy").default("USER"),
+    moderationStatus: moderationStateStatusEnum("moderationStatus").default("PENDING"),
+    moderationResult: text("moderationResult"),
+    moderatedAt: timestamp("moderatedAt"),
   },
   (table) => {
     return {

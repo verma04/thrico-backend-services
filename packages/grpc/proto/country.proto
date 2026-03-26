@@ -2,21 +2,32 @@ syntax = "proto3";
 
 package countryapi;
 
-// Country message with code and name
+service CountryService {
+  rpc GetAllCountries (Empty) returns (CountryList) {}
+  rpc GetCountryDetails (GetCountryDetailsRequest) returns (CountryDetails) {}
+}
+
+message Empty {}
+
+message GetCountryDetailsRequest {
+  string code = 1;
+}
+
 message Country {
   string code = 1;
   string name = 2;
 }
 
-// Empty request message for GetAllCountries
-message GetAllCountriesRequest {}
-
-// Response message containing repeated countries
-message GetAllCountriesResponse {
+message CountryList {
   repeated Country countries = 1;
 }
 
-// CountryService with GetAllCountries RPC
-service CountryService {
-  rpc GetAllCountries(GetAllCountriesRequest) returns (GetAllCountriesResponse);
+message CountryDetails {
+  string code = 1;
+  string name = 2;
+  string currency = 3;
+  string taxName = 4;
+  float taxPercentage = 5;
+  string taxType = 6;
+  bool taxIncluded = 7;
 }

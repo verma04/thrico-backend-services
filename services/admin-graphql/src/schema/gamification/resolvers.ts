@@ -240,7 +240,7 @@ export const gamificationResolvers = {
         return await queryService.getLeaderboard({
           entityId: entity,
           limit: pagination?.limit || 20,
-          offset: pagination?.offset || 0,
+          cursor: pagination?.cursor,
         });
       } catch (error: any) {
         logger.error(`Error in getLeaderboard: ${error.message}`, { error });

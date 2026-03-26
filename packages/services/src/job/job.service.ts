@@ -13,9 +13,9 @@ import generateSlug from "../generateSlug";
 import { GamificationEventService } from "../gamification/gamification-event.service";
 
 import { NotificationService } from "../notification/notification.service";
-import { uploadPdf } from "./upload.utils";
 import { JobNotificationService } from "./job.notification.service";
 import { CloseFriendNotificationService } from "../network/closefriend-notification.service";
+import { StorageService } from "../storage/storage.service";
 
 export interface PageInfo {
   hasNextPage: boolean;
@@ -665,8 +665,26 @@ export class JobService {
       }
 
       let resumeUrl = "";
+      let jobRecord: any = null;
+      let uploadResult: any = null;
+
       if (resume) {
-        resumeUrl = await uploadPdf(resume);
+        // Need entityId for storage tracking
+        jobRecord = await db.query.jobs.findFirst({
+          where: eq(jobs.id, jobId),
+        });
+
+        if (jobRecord) {
+          uploadResult = await StorageService.uploadFile(
+            resume,
+            jobRecord.entityId,
+            "JOB",
+            userId,
+            db,
+            { prefix: "resumes" },
+          );
+          resumeUrl = uploadResult.key;
+        }
       }
 
       log.debug("Applying to job", { jobId, userId });
@@ -687,6 +705,7 @@ export class JobService {
         });
       }
 
+
       let application: any;
       try {
         const [app] = await db
@@ -701,6 +720,30 @@ export class JobService {
           })
           .returning();
         application = app;
+
+        // Track storage usage - link resume with the application record
+        try {
+          if (resumeUrl && uploadResult) {
+            await StorageService.trackUploadedFile(
+              resumeUrl,
+              jobRecord.entityId,
+              "JOB",
+              userId,
+              db,
+              {
+                referenceId: application.id,
+                sizeInBytes: uploadResult.size,
+                mimeType: uploadResult.mimetype,
+                metadata: { type: "resume" },
+              },
+            );
+          }
+        } catch (storageError) {
+          log.error("Failed to track job application storage usage", {
+            storageError,
+            applicationId: application.id,
+          });
+        }
       } catch (e: any) {
         if (e.code === "23505") {
           // Unique violation

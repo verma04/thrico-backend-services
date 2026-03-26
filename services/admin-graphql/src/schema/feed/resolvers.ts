@@ -4,9 +4,21 @@ import checkAuth from "../../utils/auth/checkAuth.utils";
 import {
   addFeedAdmin,
   addFeedCommentAdmin,
+  deleteFeedAdmin,
   getAllFeedEntity,
+  getFeedIntelligenceKPI,
+  getFeedInterestMatrix,
+  getFeedYieldVelocity,
+  getPromotedNodeEvents,
   likeFeedAdmin,
+  pinFeedAdmin,
 } from "../../logic/feed/admin";
+import {
+  AdminModule,
+  PermissionAction,
+  ensurePermission,
+} from "../../utils/auth/permissions.utils";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 
 export const feedResolvers = {
   Query: {
@@ -19,6 +31,93 @@ export const feedResolvers = {
         console.log(error);
         throw error;
       }
+    },
+
+    async getAdminFeed(_: any, { input }: any, context: any) {
+      try {
+        const { entity, db } = await checkAuth(context);
+        const { offset, limit } = input || {};
+        return getAllFeedEntity({ db, offset, limit, entity, source: "admin" });
+      } catch (error) {
+        console.log(error);
+        throw error;
+      }
+    },
+
+    async getJobFeed(_: any, { input }: any, context: any) {
+      try {
+        const { entity, db } = await checkAuth(context);
+        const { offset, limit } = input || {};
+        return getAllFeedEntity({ db, offset, limit, entity, source: "jobs" });
+      } catch (error) {
+        console.log(error);
+        throw error;
+      }
+    },
+
+    async getMomentsFeed(_: any, { input }: any, context: any) {
+      try {
+        const { entity, db } = await checkAuth(context);
+        const { offset, limit } = input || {};
+        return getAllFeedEntity({
+          db,
+          offset,
+          limit,
+          entity,
+          source: "moment",
+        });
+      } catch (error) {
+        console.log(error);
+        throw error;
+      }
+    },
+
+    async getListingFeed(_: any, { input }: any, context: any) {
+      try {
+        const { entity, db } = await checkAuth(context);
+        const { offset, limit } = input || {};
+        return getAllFeedEntity({
+          db,
+          offset,
+          limit,
+          entity,
+          source: "marketPlace",
+        });
+      } catch (error) {
+        console.log(error);
+        throw error;
+      }
+    },
+
+    async getPinnedFeed(_: any, { input }: any, context: any) {
+      try {
+        const { entity, db } = await checkAuth(context);
+        const { offset, limit } = input || {};
+        return getAllFeedEntity({ db, offset, limit, entity, isPinned: true });
+      } catch (error) {
+        console.log(error);
+        throw error;
+      }
+    },
+
+    async getFeedIntelligenceKPI(_: any, __: any, context: any) {
+      const { entity, db } = await checkAuth(context);
+      return getFeedIntelligenceKPI({ db, entity });
+    },
+
+    async getFeedYieldVelocity(_: any, __: any, context: any) {
+      const { entity, db } = await checkAuth(context);
+      return getFeedYieldVelocity({ db, entity });
+    },
+
+    async getFeedInterestMatrix(_: any, __: any, context: any) {
+      const { entity, db } = await checkAuth(context);
+      return getFeedInterestMatrix({ db, entity });
+    },
+
+    async getPromotedNodeEvents(_: any, __: any, context: any) {
+      const { entity, db } = await checkAuth(context);
+      return getPromotedNodeEvents({ db, entity });
     },
 
     async numberOfFeeds(_: any, {}: any, context: any) {
@@ -64,37 +163,75 @@ export const feedResolvers = {
   },
   Mutation: {
     async addFeed(_: any, { input }: any, context: any) {
-      const { db, entity } = await checkAuth(context);
-      return addFeedAdmin({ input, db, entity });
+      const auth = await checkAuth(context);
+      const { db, entity, id: adminId } = auth;
+      ensurePermission(auth, AdminModule.FEED, PermissionAction.CREATE);
+
+      const result = await addFeedAdmin({ input, db, entity });
+
+      await createAuditLog(db, {
+        adminId,
+        entityId: entity,
+        module: AdminModule.FEED,
+        action: "ADD_FEED",
+        resourceId: result.id,
+        newState: input,
+      });
+
+      return result;
     },
 
     async likeFeed(_: any, { input }: any, context: any) {
-      const { db, entity } = await checkAuth(context);
-      return likeFeedAdmin({
+      const auth = await checkAuth(context);
+      const { db, entity, id: adminId } = auth;
+      ensurePermission(auth, AdminModule.FEED, PermissionAction.EDIT);
+
+      const result = await likeFeedAdmin({
         input,
         entity,
         db,
       });
+
+      await createAuditLog(db, {
+        adminId,
+        entityId: entity,
+        module: AdminModule.FEED,
+        action: result.status ? "LIKE_FEED" : "UNLIKE_FEED",
+        resourceId: input.id,
+      });
+
+      return result;
     },
 
     async addComment(_: any, { input }: any, context: any) {
-      const { db, entity } = await checkAuth(context);
-      return addFeedCommentAdmin({
+      const auth = await checkAuth(context);
+      const { db, entity, id: adminId } = auth;
+      ensurePermission(auth, AdminModule.FEED, PermissionAction.CREATE);
+
+      const result = await addFeedCommentAdmin({
         input,
         entity,
         db,
       });
+
+      await createAuditLog(db, {
+        adminId,
+        entityId: entity,
+        module: AdminModule.FEED,
+        action: "ADD_COMMENT",
+        resourceId: result.id,
+        newState: input,
+      });
+
+      return result;
     },
 
     async deleteCommentFeed(_: any, { input }: any, context: any) {
-      const { db, entity } = await checkAuth(context);
+      const auth = await checkAuth(context);
+      const { db, entity, id: adminId } = auth;
+      ensurePermission(auth, AdminModule.FEED, PermissionAction.DELETE);
 
       try {
-        // First verify comment exists and belongs to a feed owned by this entity?
-        // Or if the comment was made by the entity?
-        // User requirements implied "delete ad comment as owner".
-        // We'll allow entity admin to delete any comment on their feed OR their own comments.
-
         const comment = await db.query.feedComment.findFirst({
           where: eq(feedComment.id, input.commentId),
           with: {
@@ -103,17 +240,9 @@ export const feedResolvers = {
         });
 
         if (comment) {
-          // Check ownership:
-          // 1. Comment added by this entity? (addedBy='ENTITY'?) - Schema doesn't save entityId in feedComment directly, just user_id or addedBy enum.
-          // 2. Feed owned by this entity?
-
-          // Checking feed ownership
-          const feed = comment.feed; // joined via `with`
+          const feed = comment.feed;
 
           if (feed && feed.entity === entity) {
-            // Authorized to delete
-
-            // Perform delete in transaction
             const deleteResult = await db.transaction(async (tx: any) => {
               await tx
                 .delete(feedComment)
@@ -129,11 +258,18 @@ export const feedResolvers = {
                 })
                 .where(eq(userFeed.id, feed.id));
 
-              return {
-                id: comment.id,
-                feedId: comment.feedId,
-              };
+              return comment;
             });
+
+            await createAuditLog(db, {
+              adminId,
+              entityId: entity,
+              module: AdminModule.FEED,
+              action: "DELETE_COMMENT",
+              resourceId: comment.id,
+              previousState: comment,
+            });
+
             return deleteResult;
           } else {
             throw new Error("Unauthorized to delete this comment");
@@ -144,6 +280,53 @@ export const feedResolvers = {
         console.log(error);
         throw error;
       }
+    },
+
+    async pinFeed(_: any, { input }: any, context: any) {
+      const auth = await checkAuth(context);
+      const { db, entity, id: adminId } = auth;
+      ensurePermission(auth, AdminModule.FEED, PermissionAction.EDIT);
+
+      const result = await pinFeedAdmin({ input, db, entity });
+
+      await createAuditLog(db, {
+        adminId,
+        entityId: entity,
+        module: AdminModule.FEED,
+        action: input.isPinned ? "PIN_FEED" : "UNPIN_FEED",
+        resourceId: input.feedId,
+        newState: input,
+      });
+
+      return result;
+    },
+
+    async deleteFeed(_: any, { input }: any, context: any) {
+      const auth = await checkAuth(context);
+      const { db, entity, id: adminId } = auth;
+      ensurePermission(auth, AdminModule.FEED, PermissionAction.DELETE);
+
+      // Perform a lookup first to capture previous state for audit log if needed
+      const existingFeed = await db.query.userFeed.findFirst({
+        where: and(eq(userFeed.id, input.id), eq(userFeed.entity, entity)),
+      });
+
+      if (!existingFeed) {
+        throw new Error("Feed not found");
+      }
+
+      const result = await deleteFeedAdmin({ input, db, entity });
+
+      await createAuditLog(db, {
+        adminId,
+        entityId: entity,
+        module: AdminModule.FEED,
+        action: "DELETE_FEED",
+        resourceId: input.id,
+        previousState: existingFeed,
+      });
+
+      return result;
     },
   },
 };

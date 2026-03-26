@@ -6,6 +6,29 @@ const dashboardTypes = gql`
     count: Int!
   }
 
+  type CommunitySignupTrend {
+    name: String!
+    signups: Int!
+    views: Int!
+  }
+
+  type CommunityActivity {
+    name: String!
+    registered: Int!
+    checkedIn: Int!
+  }
+
+  type TopCommunity {
+    id: String!
+    name: String!
+    slug: String!
+    members: Int!
+    views: Int!
+    status: CommunityEntityStatus!
+    avatar: String
+    lastActivity: String
+  }
+
   type CommunityStats {
     totalCommunities: Int!
     totalMembers: Int!
@@ -26,6 +49,11 @@ const dashboardTypes = gql`
 
   extend type Query {
     getCommunityStats(input: CommunityStatsInput): CommunityStats
+    getCommunitySignupTrend(
+      input: CommunityStatsInput
+    ): [CommunitySignupTrend!]!
+    getTopActiveCommunities(limit: Int): [TopCommunity!]!
+    getCommunityActivityTrend: [CommunityActivity!]!
   }
 `;
 

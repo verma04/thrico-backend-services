@@ -1,4 +1,6 @@
 import { adminTypeDefs } from "./admin/typeDefs";
+import { loginTypeDefs } from "./login/typeDefs";
+import { rbacTypeDefs } from "./rbac/typeDefs";
 import { givingTypes } from "./giving/types";
 import { dashboardTypes } from "./dashboard/types";
 import { pageTypes } from "./page/types";
@@ -24,6 +26,12 @@ import { eventTypes } from "./events/types";
 import { offersTypes } from "./offers/types";
 import { moderationTypes } from "./moderation/types";
 import { shopTypeDefs } from "./shop/types";
+import { currencyTypeDefs } from "./currency/types";
+import { rewardsTypes } from "./rewards/types";
+import { reportTypes } from "./report/types";
+import { momentTypes } from "./moment/types";
+import { storageTypes } from "./storage/types";
+import { addonPricingTypes } from "./addon-pricing/types";
 
 const mainTypeDefs = `#graphql
   # User Types
@@ -66,20 +74,20 @@ const mainTypeDefs = `#graphql
   # Audit Log Types
   type AuditLog {
     id: ID!
-    userId: String!
+    adminId: ID!
+    entityId: ID!
+    module: String!
     action: String!
-    resourceType: String!
-    resourceId: String!
-    timestamp: String!
-    changes: AuditChanges
+    resourceId: String
+    targetUserId: ID
+    previousState: JSON
+    newState: JSON
+    reason: String
     ipAddress: String
     userAgent: String
-    user: User
-  }
-
-  type AuditChanges {
-    before: String
-    after: String
+    createdAt: Date!
+    admin: User
+    targetUser: User
   }
 
   # Authentication
@@ -192,6 +200,16 @@ const mainTypeDefs = `#graphql
     name: String!
   }
 
+  type CountryDetails {
+    code: String!
+    name: String!
+    currency: String!
+    taxName: String!
+    taxPercentage: Float!
+    taxType: String!
+    taxIncluded: Boolean!
+  }
+
   type Package {
     packageId: String!
     name: String!
@@ -200,6 +218,7 @@ const mainTypeDefs = `#graphql
     yearlyPrice: Float!
     adminUsers: Int!
     numberOfUsers: Int!
+    numberOfEmailsPerMonth: Int
     isPopular: Boolean!
     benefits: [String!]!
     currency: String!
@@ -272,10 +291,13 @@ const mainTypeDefs = `#graphql
     user(id: ID!): User
     entities(pagination: PaginationInput, region: Region): EntityConnection!
     entity(id: ID!): Entity
-    auditLogs(pagination: PaginationInput, userId: String): AuditLogConnection!
+    auditLogs(pagination: PaginationInput, userId: String, module: String): AuditLogConnection!
+    auditLogById(id: ID!): AuditLog
+    auditLogModules: [String!]!
     
     # gRPC queries
     countries: [Country!]!
+    country: CountryDetails
     packages(country: String!, entityId: String!): [Package!]!
     entitySubscription(entityId: String!): Subscription
     pages(value: String, limit: Int): [Page!]!
@@ -333,4 +355,12 @@ export const typeDefs = [
   offersTypes,
   moderationTypes,
   shopTypeDefs,
+  currencyTypeDefs,
+  rewardsTypes,
+  reportTypes,
+  momentTypes,
+  storageTypes,
+  addonPricingTypes,
+  rbacTypeDefs,
+  loginTypeDefs,
 ];

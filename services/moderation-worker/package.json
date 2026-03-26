@@ -1,7 +1,7 @@
 {
   "name": "moderation-worker",
   "version": "1.0.0",
-  "description": "Thrico Gamification Worker - Asynchronous reward engine",
+  "description": "Thrico Moderation Worker - Asynchronous moderation engine",
   "main": "dist/server.js",
   "scripts": {
     "dev": "nodemon --exec tsx src/server.ts",

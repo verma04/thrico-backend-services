@@ -21,7 +21,7 @@ export const getRedisClient = (): RedisClientType => {
     redisClient.connect().catch(console.error);
 
     redisClient.on("error", (err) => {
-      console.error("Redis Client Error:", err);
+      // console.error("Redis Client Error:", err);
     });
   }
 

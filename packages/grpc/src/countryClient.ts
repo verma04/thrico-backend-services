@@ -8,8 +8,6 @@ import dotenv from "dotenv";
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 
 // Proto file path - different in dev vs production
-// In dev: running from src/, proto is at ../proto/country.proto
-// In prod: running from dist/packages/grpc/src, proto is at ../../../proto/country.proto
 const fs = require("fs");
 const devProtoPath = path.resolve(__dirname, "../proto/country.proto");
 const prodProtoPath = path.resolve(__dirname, "../../../proto/country.proto");
@@ -19,8 +17,6 @@ const GRPC_PORT = process.env.GRPC_PORT || "50051";
 
 const GRPC_URL = `${GRPC_HOST}:${GRPC_PORT}`;
 
-console.log("gRPC URL:", GRPC_URL);
-console.log("Proto path:", PROTO_PATH);
 // Load proto file
 const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
   keepCase: true,
@@ -32,6 +28,21 @@ const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
 
 const protoDescriptor = grpc.loadPackageDefinition(packageDefinition) as any;
 const thrico = protoDescriptor.countryapi.CountryService;
+
+export interface Country {
+  code: string;
+  name: string;
+}
+
+export interface CountryDetails {
+  code: string;
+  name: string;
+  currency: string;
+  taxName: string;
+  taxPercentage: number;
+  taxType: string;
+  taxIncluded: boolean;
+}
 
 // Country gRPC client
 class CountryClient {
@@ -46,14 +57,27 @@ class CountryClient {
     this.isConnected = true;
   }
 
-  async getAllCountries(): Promise<{ code: string; name: string }[]> {
+  async getAllCountries(): Promise<Country[]> {
     return new Promise((resolve, reject) => {
       this.client.GetAllCountries({}, (error: any, response: any) => {
         if (error) {
           log.error("gRPC GetAllCountries error", { error: error.message });
           reject(error);
         } else {
-          resolve(response.countries);
+          resolve(response.countries || []);
+        }
+      });
+    });
+  }
+
+  async getCountryDetails(code: string): Promise<CountryDetails> {
+    return new Promise((resolve, reject) => {
+      this.client.GetCountryDetails({ code }, (error: any, response: any) => {
+        if (error) {
+          log.error("gRPC GetCountryDetails error", { error: error.message, code });
+          reject(error);
+        } else {
+          resolve(response);
         }
       });
     });

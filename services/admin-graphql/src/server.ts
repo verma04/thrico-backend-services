@@ -28,6 +28,8 @@ import { connectDynamo } from "@thrico/database";
 const PORT = process.env.ADMIN_GRAPHQL_PORT || 1111;
 const CORS_ORIGIN = process.env.CORS_ORIGIN?.split(",") || [
   "http://localhost:3000",
+  "https://accounts.thrico.com",
+  "https://dashboard.thrico.com",
 ];
 
 async function startServer() {
@@ -40,14 +42,14 @@ async function startServer() {
     helmet({
       contentSecurityPolicy: process.env.NODE_ENV === "production",
       crossOriginEmbedderPolicy: false,
-    })
+    }),
   );
 
   app.use(
     cors({
-      origin: CORS_ORIGIN,
+      // origin: CORS_ORIGIN,
       credentials: true,
-    })
+    }),
   );
 
   const limiter = rateLimit({
@@ -111,7 +113,7 @@ async function startServer() {
         // Return the request object for public operations (like login, register, health)
         return req;
       },
-    })
+    }),
   );
 
   app.use(errorLogger);

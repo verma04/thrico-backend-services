@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package subscription;
 
+import "addon.proto";
+
 // =========================
 // GET PLAN OVERVIEW
 // =========================
@@ -29,6 +31,7 @@ message PlanOverviewResponse {
   string subscriptionType = 9;
 
   Package package = 10;
+  repeated addon.Addon addons = 11;
 }
 
 message Package {
@@ -193,8 +196,7 @@ message UpgradePlanSummaryResponse {
 
 message UpdateToYearlyRequest {
   string entityId = 1;
-  string packageId = 2;
-  string countryCode = 3;
+  string countryCode = 2;
 }
 
 message UpdateToYearlyResponse {
@@ -211,6 +213,32 @@ message UpdateToYearlyResponse {
   string billStatus = 11;
   double billAmount = 12;
   RazorpayOrder razorpayOrder = 13;
+  repeated addon.Addon addons = 14;
+  double taxAmount = 15;
+  double totalAmount = 16;
+  string taxName = 17;
+  double taxPercentage = 18;
+}
+
+// =========================
+// UPDATE TO YEARLY SUMMARY
+// =========================
+
+message UpdateToYearlySummaryRequest {
+  string entityId = 1;
+  string countryCode = 2;
+}
+
+message UpdateToYearlySummaryResponse {
+  double basePrice = 1;
+  double addonsPrice = 2;
+  double taxAmount = 3;
+  double totalAmount = 4;
+  string taxName = 5;
+  double taxPercentage = 6;
+  repeated addon.Addon addons = 7;
+  string planName = 8;
+  string billingCycle = 9;
 }
 
 // =========================
@@ -334,6 +362,7 @@ service SubscriptionService {
   rpc GetPlanOverview(GetPlanOverviewRequest) returns (PlanOverviewResponse);
   rpc upgradePlanSummary(UpgradePlanSummaryRequest) returns (UpgradePlanSummaryResponse);
   rpc UpdateToYearly(UpdateToYearlyRequest) returns (UpdateToYearlyResponse);
+  rpc UpdateToYearlySummary(UpdateToYearlySummaryRequest) returns (UpdateToYearlySummaryResponse);
   rpc UpgradePlan(UpgradePlanRequest) returns (UpgradePlanResponse);
   rpc UpdateEntityModules(UpdateEntityModulesRequest) returns (UpdateEntityModulesResponse);
   rpc updateBillingInvoicePdfUrl(updateBillingInvoicePdfUrlRequest) returns (updateBillingInvoicePdfUrlResponse);

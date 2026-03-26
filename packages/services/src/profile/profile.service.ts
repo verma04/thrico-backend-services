@@ -157,9 +157,22 @@ export class ProfileService {
         interestsCategories,
       } = profile.profile;
 
+      const currentCompany = Array.isArray(experience)
+        ? experience.find(
+            (exp: any) => exp.currentlyWorking || exp.isCurrentlyWorking,
+          )
+        : null;
+
+      const currentEducation =
+        Array.isArray(education) && education.length > 0
+          ? education[education.length - 1]
+          : null;
+
       const result = {
         experience,
         education,
+        currentCompany,
+        currentEducation,
         skills,
         interests,
         socialLinks,
@@ -263,11 +276,24 @@ export class ProfileService {
         interestsCategories,
       } = profile.profile;
 
+      const currentCompany = Array.isArray(experience)
+        ? experience.find(
+            (exp: any) => exp.currentlyWorking || exp.isCurrentlyWorking,
+          )
+        : null;
+
+      const currentEducation =
+        Array.isArray(education) && education.length > 0
+          ? education[education.length - 1]
+          : null;
+
       log.info("Profile details info retrieved", { userId });
 
       return {
         experience,
         education,
+        currentCompany,
+        currentEducation,
         skills,
         interests,
         socialLinks,

@@ -111,6 +111,7 @@ export const jobsTypes = `#graphql
     entity: String
     status: jobStatus!
     company: Company
+    postedBy: FeedUser
     numberOfApplicant: Int
     numberOfViews: Int
     createdAt: DateTime

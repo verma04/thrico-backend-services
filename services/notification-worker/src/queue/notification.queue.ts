@@ -1,6 +1,6 @@
 import { log } from "@thrico/logging";
 import { RabbitMQService } from "@thrico/services";
-import { CloseFriendNotificationProcessor } from "src/processors/closefriend-notification.processor";
+import { CloseFriendNotificationProcessor } from "../processors/closefriend-notification.processor";
 
 const CLOSE_FRIEND_QUEUE = "CLOSE_FRIEND_NOTIFICATIONS";
 

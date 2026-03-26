@@ -14,18 +14,30 @@ export const getAllFeedEntity = async ({
   offset = 0,
   limit = 10,
   entity,
+  source: sourceFilter,
+  isPinned: pinnedFilter,
 }: {
   db: AppDatabase;
   offset?: number;
   limit?: number;
   entity: string;
+  source?: string;
+  isPinned?: boolean;
 }) => {
   try {
+    let whereClause = eq(userFeed.entity, entity);
+    if (sourceFilter) {
+      whereClause = and(whereClause, eq(userFeed.source, sourceFilter as any)) as any;
+    }
+    if (pinnedFilter !== undefined) {
+      whereClause = and(whereClause, eq(userFeed.isPinned, pinnedFilter)) as any;
+    }
+
     const feeds = await db.query.userFeed.findMany({
-      where: eq(userFeed.entity, entity),
+      where: whereClause,
       limit: limit,
       offset: offset,
-      orderBy: [desc(userFeed.createdAt)],
+      orderBy: [desc(userFeed.isPinned), desc(userFeed.createdAt)],
       with: {
         user: {
           with: {
@@ -39,6 +51,26 @@ export const getAllFeedEntity = async ({
           },
         },
         media: true,
+        moment: {
+          with: {
+            user: {
+              with: {
+                about: true,
+              },
+            },
+          },
+        },
+        job: {
+          with: {
+            postedBy: true,
+          },
+        },
+        marketPlace: {
+          with: {
+            media: true,
+            postedBy: true,
+          },
+        },
       },
     });
 
@@ -50,6 +82,22 @@ export const getAllFeedEntity = async ({
 
     return feeds.map((feed) => ({
       ...feed,
+      // No mapping needed, FeedMedia matches the drizzle object structure
+      media: feed.media || [],
+      moment: feed.moment
+        ? {
+            ...feed.moment,
+            owner: feed.moment.user
+              ? {
+                  id: feed.moment.user.id,
+                  firstName: feed.moment.user.firstName,
+                  lastName: feed.moment.user.lastName,
+                  avatar: feed.moment.user.avatar,
+                  headline: (feed.moment.user as any).about?.headline || null,
+                }
+              : null,
+          }
+        : null,
       isLiked: false, // Default since we aren't checking for a specific user here
       isOwner: true, // Admin viewing entity feed implies ownership/control
     }));
@@ -86,6 +134,7 @@ export const addFeedAdmin = async ({
         addedBy: "ENTITY", // Admin adding feed
         privacy: "PUBLIC",
         status: "APPROVED",
+        source: "admin",
         // No userId needed if addedBy is ENTITY (based on schema check constraint?)
         // Schema check: (addedBy != 'USER' OR userId IS NOT NULL)
         // So if addedBy == 'ENTITY', userId can be null.
@@ -115,6 +164,7 @@ export const addFeedAdmin = async ({
 
     return {
       ...createdFeed,
+      media: createdFeed?.media || [],
       isOwner: true,
       isLiked: false,
     };
@@ -232,6 +282,185 @@ export const addFeedCommentAdmin = async ({
     return newComment;
   } catch (error) {
     console.error("Error adding comment:", error);
+    throw error;
+  }
+};
+
+export const pinFeedAdmin = async ({
+  input,
+  db,
+  entity,
+}: {
+  input: any;
+  db: AppDatabase;
+  entity: string;
+}) => {
+  try {
+    const { feedId, isPinned } = input;
+
+    const [updatedFeed] = await db
+      .update(userFeed)
+      .set({
+        isPinned,
+        pinnedAt: isPinned ? new Date() : null,
+      })
+      .where(and(eq(userFeed.id, feedId), eq(userFeed.entity, entity)))
+      .returning();
+
+    // Fetch complete feed to return
+    const createdFeed = await db.query.userFeed.findFirst({
+      where: eq(userFeed.id, feedId),
+      with: {
+        media: true,
+        user: true,
+      },
+    });
+
+    return {
+      ...createdFeed,
+      media: createdFeed?.media || [],
+      isOwner: true,
+      isLiked: false,
+    };
+  } catch (error) {
+    console.error("Error pinning feed:", error);
+    throw error;
+  }
+};
+
+export const deleteFeedAdmin = async ({
+  input,
+  db,
+  entity,
+}: {
+  input: any;
+  db: AppDatabase;
+  entity: string;
+}) => {
+  try {
+    const { id: feedId } = input;
+
+    // Check if feed belongs to this entity
+    const feed = await db.query.userFeed.findFirst({
+      where: and(eq(userFeed.id, feedId), eq(userFeed.entity, entity)),
+    });
+
+    if (!feed) {
+      throw new Error("Feed not found or unauthorized");
+    }
+
+    // Use transaction for safer deletion
+    const result = await db.transaction(async (tx: any) => {
+      // Manually delete media records if they don't have cascade in DB
+      await tx.delete(media).where(eq(media.feedId, feedId));
+
+      await tx.delete(userFeed).where(eq(userFeed.id, feedId));
+
+      return { status: true };
+    });
+
+    return result;
+  } catch (error) {
+    console.error("Error deleting feed:", error);
+    throw error;
+  }
+};
+
+export const getFeedIntelligenceKPI = async ({
+  db,
+  entity,
+}: {
+  db: AppDatabase;
+  entity: string;
+}) => {
+  try {
+    // Initial implementation with placeholder data that can be refined with actual analytics logic
+    return {
+      aggregateReach: 1250000,
+      activeDialogue: 42300,
+      networkVelocity: 88.5,
+      engagementYield: 12.4,
+      reachTrend: 15.2,
+      dialogueTrend: 8.4,
+      velocityTrend: -2.3,
+      yieldTrend: 4.1,
+    };
+  } catch (error) {
+    console.error("Error fetching intelligence KPIs:", error);
+    throw error;
+  }
+};
+
+export const getFeedYieldVelocity = async ({
+  db,
+  entity,
+}: {
+  db: AppDatabase;
+  entity: string;
+}) => {
+  try {
+    return [
+      { day: "Mon", signups: 400 },
+      { day: "Tue", signups: 300 },
+      { day: "Wed", signups: 600 },
+      { day: "Thu", signups: 800 },
+      { day: "Fri", signups: 500 },
+      { day: "Sat", signups: 900 },
+      { day: "Sun", signups: 700 },
+    ];
+  } catch (error) {
+    console.error("Error fetching yield velocity:", error);
+    throw error;
+  }
+};
+
+export const getFeedInterestMatrix = async ({
+  db,
+  entity,
+}: {
+  db: AppDatabase;
+  entity: string;
+}) => {
+  try {
+    return [
+      { name: "Technology", value: 45, color: "#6366f1" },
+      { name: "Entrepreneurship", value: 32, color: "#8b5cf6" },
+      { name: "Sustainability", value: 28, color: "#10b981" },
+      { name: "Digital Health", value: 24, color: "#f43f5e" },
+      { name: "FinTech", value: 20, color: "#f59e0b" },
+    ];
+  } catch (error) {
+    console.error("Error fetching interest matrix:", error);
+    throw error;
+  }
+};
+
+export const getPromotedNodeEvents = async ({
+  db,
+  entity,
+}: {
+  db: AppDatabase;
+  entity: string;
+}) => {
+  try {
+    return [
+      {
+        title: "Ecosystem Leadership Summit",
+        date: "May 24, 2024",
+        time: "09:00 AM - 05:00 PM",
+        location: "Convention Center",
+        description: "A premier gathering for ecosystem leaders to discuss future trends.",
+      },
+      {
+        title: "Innovation & AI workshop",
+        date: "June 12, 2024",
+        time: "02:00 PM - 04:00 PM",
+        location: "Virtual Event",
+        description: "Hands-on session on implementing AI in modern workflows.",
+      },
+    ];
+  } catch (error) {
+    console.error("Error fetching promoted events:", error);
     throw error;
   }
 };

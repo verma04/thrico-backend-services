@@ -15,9 +15,12 @@ import {
   jsonb,
 } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
+import { cities } from "./cities";
+import { geometry } from "./geomtry";
 
 import { entity } from "../tenant/entity/details";
 
+import { moderationStateStatusEnum } from "../moderation";
 import { events } from "./events";
 import {
   addedBy,
@@ -108,6 +111,13 @@ export const groups = pgTable("-community", {
   joiningTerms: joiningConditionEnum("joiningTerms").default("ANYONE_CAN_JOIN"),
   privacy: privacyEnum("privacy").default("PUBLIC"),
   location: jsonb("location"),
+  locationPoint: geometry("location_point", {
+    //@ts-ignore
+    type: "point",
+    mode: "xy",
+    srid: 4326,
+  }),
+  cityId: uuid("city_id"),
   requireAdminApprovalForPosts: boolean("requireAdminApprovalForPosts")
     .notNull()
     .default(false),
@@ -143,6 +153,9 @@ export const groups = pgTable("-community", {
   archivedAt: timestamp("archivedAt"),
   archivedBy: uuid("archivedBy"),
   archivedReason: text("archivedReason"),
+  moderationStatus: moderationStateStatusEnum("moderationStatus").default("PENDING"),
+  moderationResult: text("moderationResult"),
+  moderatedAt: timestamp("moderatedAt"),
 });
 
 export const groupRelations = relations(groups, ({ one, many }) => ({
@@ -168,6 +181,10 @@ export const groupRelations = relations(groups, ({ one, many }) => ({
   wishlistedBy: many(communityWishlist),
   feeds: many(communityFeed),
   reports: many(communityReport),
+  city: one(cities, {
+    fields: [groups.cityId],
+    references: [cities.id],
+  }),
 }));
 
 export const communityVerification = pgTable("communityVerification", {

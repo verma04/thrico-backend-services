@@ -4,9 +4,11 @@ import { encryptOtp } from "./crypto/otp.crypto";
 
 const sendOtp = async (check: any): Promise<any> => {
   try {
-    // Generate 4-digit OTP
-    const generateOpt = Math.floor(1000 + Math.random() * 9000);
-    const otpString = generateOpt.toString();
+    // Generate 4-digit OTP or use hardcoded 1234 for review account
+    const isReviewAccount = check.email === "review@thrico.website";
+    const otpString = isReviewAccount
+      ? "1234"
+      : Math.floor(1000 + Math.random() * 9000).toString();
 
     const encryptedOtp = await encryptOtp(otpString);
 

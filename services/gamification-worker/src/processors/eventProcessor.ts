@@ -11,6 +11,7 @@ import { UserService } from "../services/userService";
 import { PointService } from "../services/pointService";
 import { BadgeService } from "../services/badgeService";
 import { LeaderboardService } from "../services/leaderboardService";
+import { triggerCurrencyProcessing } from "./currencyTrigger";
 
 export type GamificationEvent = {
   triggerId: string;
@@ -69,6 +70,7 @@ export async function processEvent(
 
   try {
     let totalAwardedPoints = 0;
+    let pointHistoryIds: string[] = [];
 
     await db.transaction(async (tx) => {
       // 3. User Management
@@ -93,10 +95,14 @@ export async function processEvent(
       });
 
       // 4. Point Awarding
-      const { totalAwardedPoints: awarded, finalTotalPoints } =
-        await PointService.awardPoints(tx, redis, gUser, rules, event);
+      const {
+        totalAwardedPoints: awarded,
+        finalTotalPoints,
+        pointHistoryIds: ids,
+      } = await PointService.awardPoints(tx, redis, gUser, rules, event);
 
       totalAwardedPoints = awarded;
+      pointHistoryIds = ids;
 
       // 5. Action Badge Processing
       await BadgeService.processActionBadges(tx, db, gUser, actionBadges);
@@ -136,6 +142,16 @@ export async function processEvent(
         userId,
         entityId,
         totalAwardedPoints,
+      );
+
+      // 8. Publish Currency Event (Points → EC → TC)
+      await triggerCurrencyProcessing(
+        redis,
+        userId,
+        entityId,
+        totalAwardedPoints,
+        triggerId, // Action
+        pointHistoryIds,
       );
 
       log.info("User rewarded successfully", {

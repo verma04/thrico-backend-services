@@ -4,10 +4,13 @@ import sharp from "sharp";
 import AWS from "aws-sdk";
 require("aws-sdk/lib/maintenance_mode_message").suppress = true;
 const s3 = new AWS.S3({
-  endpoint: "blr1.digitaloceanspaces.com",
-  accessKeyId: process.env.SPACES_KEY,
-  secretAccessKey: process.env.SPACES_SECRET,
+  region: process.env.S3_REGION || "ap-south-1",
+  accessKeyId: process.env.S3_ACCESS_KEY || process.env.AWS_ACCESS_KEY_ID,
+  secretAccessKey:
+    process.env.S3_SECRET_KEY || process.env.AWS_SECRET_ACCESS_KEY,
 });
+
+const BUCKET_NAME = process.env.S3_BUCKET || "thrico-storage";
 const uploadFeedImage = async (id: string, images: any[]) => {
   if (!images || images.length === 0) {
     return [];
@@ -38,10 +41,9 @@ const uploadFeedImage = async (id: string, images: any[]) => {
         .toBuffer();
 
       const params = {
-        Bucket: "thrico",
+        Bucket: BUCKET_NAME,
         Key: newFilename,
         Body: sharpImage,
-        ACL: "public-read",
         ContentType: "image/webp", // Force type to webp since we converted it
       };
 

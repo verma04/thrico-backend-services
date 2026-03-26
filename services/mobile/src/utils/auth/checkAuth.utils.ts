@@ -2,7 +2,7 @@ import { GraphQLError } from "graphql";
 import * as jwt from "jsonwebtoken";
 import { log } from "@thrico/logging";
 import { decryptToken } from "../crypto/jwt.crypto";
-import { getDb } from "@thrico/database";
+import { getDb, USER_LOGIN_SESSION } from "@thrico/database";
 import { ENV, DatabaseRegion } from "@thrico/shared";
 
 // Define the type locally since the imported one doesn't exist in mobile service
@@ -46,7 +46,11 @@ const checkAuth = async (context: any): Promise<any> => {
 
         const db = getDb(userToken.country);
 
-        if (!userToken.sessionId) {
+        const sessionResult = await USER_LOGIN_SESSION.query("id")
+          .eq(userToken.sessionId)
+          .exec();
+
+        if (!sessionResult) {
           log.error("Authentication failed: Session ID missing in token", {
             userId: userToken.userId,
             country: userToken.country,

@@ -11,7 +11,8 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { entity } from "../tenant/entity";
-import { reportStatusEnum, user } from "../user";
+import { user } from "../user/member/user";
+import { reportStatusEnum } from "../user/enum";
 
 export const contentStatusEnum = pgEnum("content_status", [
   "PENDING",
@@ -28,6 +29,16 @@ export const moderationDecisionEnum = pgEnum("moderation_decision", [
   "BLOCK",
   "SUSPEND",
 ]);
+
+export const moderationStateStatusEnum = pgEnum("moderation_state_status", [
+  "PENDING",
+  "PROCESSING",
+  "APPROVED",
+  "REJECTED",
+  "FLAGGED",
+  "FAILED",
+]);
+
 
 export const userRiskProfiles = pgTable("user_risk_profiles", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -62,6 +73,41 @@ export const moderationLogs = pgTable("moderation_logs", {
 
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+export const aiModerationLogs = pgTable("ai_moderation_logs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  contentId: text("content_id").notNull(),
+  entityId: uuid("entity_id").references(() => entity.id),
+  classification: text("classification"), // safe, offensive, toxic, etc
+  confidence: decimal("confidence", { precision: 5, scale: 4 }), // 0.0000 to 1.0000
+  model: text("model_used"), // e.g. llama3
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const moderationJobsStatusEnum = pgEnum("moderation_job_status", [
+  "PENDING",
+  "PROCESSING",
+  "DONE",
+  "FAILED",
+]);
+
+export const moderationJobs = pgTable("moderation_jobs", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  contentId: text("content_id").notNull(),
+  status: moderationJobsStatusEnum("status").default("PENDING"),
+  attempts: integer("attempts").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const aiTokenUsage = pgTable("ai_token_usage", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  entityId: uuid("entity_id").references(() => entity.id),
+  module: text("module").default("moderation"), // e.g. moderation
+  tokens: integer("tokens").default(0),
+  model: text("model").notNull(), // e.g. llama3
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 
 export const severityEnum = pgEnum("severity", ["LOW", "MEDIUM", "HIGH"]);
 export const linkTypeEnum = pgEnum("link_type", ["DOMAIN", "URL", "PATTERN"]);

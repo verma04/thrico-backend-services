@@ -177,6 +177,31 @@ export const DEFAULT_GAMIFICATION_CONFIG = {
       description: "Vote on a poll",
       dailyCap: 30,
     },
+    // Moments
+    {
+      module: "moments",
+      action: "tr-moment-create",
+      trigger: "RECURRING",
+      points: 20,
+      description: "Create a moment",
+      dailyCap: 60,
+    },
+    {
+      module: "moments",
+      action: "tr-moment-like",
+      trigger: "RECURRING",
+      points: 2,
+      description: "Like a moment",
+      dailyCap: 50,
+    },
+    {
+      module: "moments",
+      action: "tr-moment-comment",
+      trigger: "RECURRING",
+      points: 5,
+      description: "Comment on a moment",
+      dailyCap: 50,
+    },
   ],
 
   badges: [
@@ -260,6 +285,16 @@ export const DEFAULT_GAMIFICATION_CONFIG = {
       icon: "🤝",
       description: "Connect with 10 people",
       condition: "Accept 10 connection requests",
+    },
+    {
+      name: "Moment Maker",
+      type: "ACTION",
+      module: "moments",
+      action: "tr-moment-create",
+      targetValue: 3,
+      icon: "🎬",
+      description: "Create 3 moments",
+      condition: "Create 3 moments",
     },
 
     // Points badges

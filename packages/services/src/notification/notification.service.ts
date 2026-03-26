@@ -9,6 +9,7 @@ import {
   jobNotifications,
   listingNotifications,
   gamificationNotifications,
+  momentNotifications,
   user,
   userFeed,
   userToEntity,
@@ -65,6 +66,7 @@ export class NotificationService {
           job: jobNotifications,
           listing: listingNotifications,
           gamification: gamificationNotifications,
+          moment: momentNotifications,
         })
         .from(notifications)
         .leftJoin(
@@ -94,6 +96,10 @@ export class NotificationService {
             gamificationNotifications.id,
           ),
         )
+        .leftJoin(
+          momentNotifications,
+          eq(notifications.momentNotificationId, momentNotifications.id),
+        )
         .where(
           and(
             eq(notifications.userId, currentUserId),
@@ -116,6 +122,7 @@ export class NotificationService {
         } else if (row.network) senderId = row.network.senderId;
         else if (row.job) senderId = row.job.senderId;
         else if (row.listing) senderId = row.listing.senderId;
+        else if (row.moment) senderId = row.moment.senderId;
 
         if (senderId) senderIds.add(senderId);
       });
@@ -186,6 +193,11 @@ export class NotificationService {
             badgeImageUrl: row.gamification.badgeImageUrl,
             rankName: row.gamification.rankName,
           };
+        } else if (row.moment) {
+          content = row.moment.content;
+          type = row.moment.type;
+          senderId = row.moment.senderId;
+          additionalData = { momentId: row.moment.momentId };
         }
 
         const sender = senderId ? senderMap.get(senderId) : null;
@@ -370,6 +382,7 @@ export class NotificationService {
     communityId,
     jobId,
     listingId,
+    momentId,
     imageUrl,
     points,
     badgeName,
@@ -394,12 +407,14 @@ export class NotificationService {
       | "NETWORK"
       | "JOB"
       | "LISTING"
-      | "GAMIFICATION";
+      | "GAMIFICATION"
+      | "MOMENT";
     type: string;
     feedId?: string;
     communityId?: string;
     jobId?: string;
     listingId?: string;
+    momentId?: string;
     imageUrl?: string;
     points?: number;
     badgeName?: string;
@@ -438,6 +453,7 @@ export class NotificationService {
         jobNotifications,
         listingNotifications,
         gamificationNotifications,
+        momentNotifications,
         notifications: centralNotifications,
       } = await import("@thrico/database");
 
@@ -561,6 +577,21 @@ export class NotificationService {
             .returning();
           moduleNotificationId = gamificationNotif.id;
           break;
+        case "MOMENT":
+          const [momentNotif] = await db
+            .insert(momentNotifications)
+            .values({
+              type,
+              userId,
+              senderId: senderId!,
+              entityId,
+              momentId: momentId || contentId,
+              content,
+              isRead: false,
+            })
+            .returning();
+          moduleNotificationId = momentNotif.id;
+          break;
 
         default:
           throw new GraphQLError(`Unknown notification module: ${module}`);
@@ -603,7 +634,13 @@ export class NotificationService {
             notificationId: centralNotification.id,
             module,
             type,
-            id: contentId || communityId || jobId || listingId || feedId,
+            id:
+              contentId ||
+              communityId ||
+              jobId ||
+              listingId ||
+              feedId ||
+              momentId,
             image: imageUrl,
           },
         }).catch((err: any) => {
@@ -662,6 +699,7 @@ export class NotificationService {
       const sessions = await USER_LOGIN_SESSION.scan("userId")
         .eq(userId)
         .exec();
+      // console.log(sessions, "sessions", userId, entityId);
 
       // Filter sessions by active entity or fallback
       const targetSessions = sessions.filter(
@@ -669,7 +707,9 @@ export class NotificationService {
           s.deviceToken && (!s.activeEntityId || s.activeEntityId === entityId),
       );
 
-      const tokens = targetSessions.map((s: any) => s.deviceToken);
+      const tokens = [
+        ...new Set(targetSessions.map((s: any) => s.deviceToken)),
+      ];
 
       log.info("Target device tokens retrieved", {
         userId,
@@ -728,6 +768,8 @@ export class NotificationService {
       });
 
       const tokens = await this.getTargetDeviceTokens({ userId, entityId });
+
+      console.log(tokens, "tokens");
 
       if (tokens.length === 0) {
         log.info("No active device tokens found for user in entity context", {

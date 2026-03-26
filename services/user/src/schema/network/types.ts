@@ -1,9 +1,11 @@
 export const networkTypes = `#graphql
+  scalar JSON
   type networkUser {
     id: ID
     firstName: String
     avatar: String
     lastName: String
+   
     user: profileCreation
     status: connectionStatus
     isOnline: Boolean
@@ -15,6 +17,8 @@ export const networkTypes = `#graphql
     isFollowing: Boolean
     numberOfConnections: Int
     isCloseFriend: Boolean
+    currentCompany: JSON
+    currentEducation: JSON
   }
 
   enum connectionStatus {
@@ -35,6 +39,9 @@ export const networkTypes = `#graphql
     avatar: String
     designation: String
     mutualFriends: mutualFriends
+    isCloseFriend: Boolean
+    currentCompany: JSON
+    currentEducation: JSON
   }
 
   type about {
@@ -46,8 +53,13 @@ export const networkTypes = `#graphql
   }
 
   type profile {
-    experience: String
-    education: String
+    experience: JSON
+    education: JSON
+    DOB: String
+       socialLinks: JSON
+         skills: JSON
+    currentCompany: JSON
+    currentEducation: JSON
   }
 
   type network {
@@ -57,10 +69,37 @@ export const networkTypes = `#graphql
     createdAt: Date
   }
 
-  input paginationInput {
+  input NetworkCursorInput {
+    cursor: String
     limit: Int
-    offset: Int
     search: String
+  }
+
+  type PageInfo {
+    hasNextPage: Boolean!
+    endCursor: String
+  }
+
+  type NetworkUserEdge {
+    cursor: String!
+    node: networkUser!
+  }
+
+  type NetworkUserConnection {
+    edges: [NetworkUserEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
+  }
+
+  type ConnectionRequestEdge {
+    cursor: String!
+    node: connectionRequest!
+  }
+
+  type ConnectionRequestConnection {
+    edges: [ConnectionRequestEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
   }
 
   type paginationInfo {
@@ -73,11 +112,6 @@ export const networkTypes = `#graphql
      totalCount:Int
      totalPages:Int
      currentPage:Int
-  }
-
-  type networkResponse {
-    data: [networkUser]
-    pagination: paginationInfo
   }
 
   type connectionRequestResponse {
@@ -111,12 +145,21 @@ export const networkTypes = `#graphql
     lastName: String
     avatar: String
     blockedAt: Date
+    currentCompany: JSON
+    currentEducation: JSON
   }
 
-  type blockedUsersResponse {
-    data: [blockedUser]
-    pagination: paginationInfo
+  type BlockedUserEdge {
+    cursor: String!
+    node: blockedUser!
   }
+
+  type BlockedUserConnection {
+    edges: [BlockedUserEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
+  }
+
 
   input followUserInput {
     userId: ID!
@@ -141,18 +184,22 @@ export const networkTypes = `#graphql
     email: String
     about: about
     profile: profile
+    cover: String
+    location: JSON
+
   }
 
   # feed type is defined in feed/types.ts
   
   extend type Query {
-    getNetwork(input: paginationInput): networkResponse
-    getMyConnection(input: paginationInput): networkResponse
+    getNetwork(input: NetworkCursorInput): NetworkUserConnection!
+    getMyConnection(input: NetworkCursorInput): NetworkUserConnection!
+    getNetworkUserProfile(input: inputId): networkUser
     getUserProfile(input: inputId): networkUser
-    getConnectionRequests(input: paginationInput): connectionRequestResponse
+    getConnectionRequests(input: NetworkCursorInput): ConnectionRequestConnection!
+    getBlockedUsers(input: NetworkCursorInput): BlockedUserConnection!
     getConnectionStats: connectionStats
-    getBlockedUsers(input: paginationInput): blockedUsersResponse
-    getCloseFriends(input: paginationInput): networkResponse
+    getCloseFriends(input: NetworkCursorInput): NetworkUserConnection!
   }
 
   extend type Mutation {
@@ -168,5 +215,34 @@ export const networkTypes = `#graphql
     unfollowUser(input: followUserInput): followResponse
     addToCloseFriend(input: inputId): followResponse
     removeFromCloseFriend(input: inputId): followResponse
+  }
+
+  enum BirthdayFilter {
+    TODAY
+    UPCOMING
+    THIS_MONTH
+    PAST
+  }
+
+  input BirthdayCursorInput {
+    cursor: String
+    limit: Int
+    filter: BirthdayFilter!
+    search: String
+  }
+
+  type BirthdayEdge {
+    cursor: String!
+    node: networkUser!
+  }
+
+  type BirthdayConnection {
+    edges: [BirthdayEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
+  }
+
+  extend type Query {
+    getMemberBirthdays(input: BirthdayCursorInput): BirthdayConnection!
   }
 `;

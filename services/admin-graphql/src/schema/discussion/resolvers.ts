@@ -24,13 +24,13 @@ export const discussionResolvers = {
           whereClause = (discussionCategory: any, { eq }: any) =>
             and(
               eq(discussionCategory.entity, entity),
-              eq(discussionCategory.isActive, true)
+              eq(discussionCategory.isActive, true),
             );
         } else if (status === "INACTIVE") {
           whereClause = (discussionCategory: any, { eq }: any) =>
             and(
               eq(discussionCategory.entity, entity),
-              eq(discussionCategory.isActive, false)
+              eq(discussionCategory.isActive, false),
             );
         } else {
           // ALL
@@ -60,25 +60,25 @@ export const discussionResolvers = {
           whereClause = (discussionForum: any, { eq }: any) =>
             and(
               eq(discussionForum.entityId, entity),
-              eq(discussionForum.status, "APPROVED")
+              eq(discussionForum.status, "APPROVED"),
             );
         } else if (status === "PENDING") {
           whereClause = (discussionForum: any, { eq }: any) =>
             and(
               eq(discussionForum.entityId, entity),
-              eq(discussionForum.status, "PENDING")
+              eq(discussionForum.status, "PENDING"),
             );
         } else if (status === "REJECTED") {
           whereClause = (discussionForum: any, { eq }: any) =>
             and(
               eq(discussionForum.entityId, entity),
-              eq(discussionForum.status, "REJECTED")
+              eq(discussionForum.status, "REJECTED"),
             );
         } else if (status === "DISABLED") {
           whereClause = (discussionForum: any, { eq }: any) =>
             and(
               eq(discussionForum.entityId, entity),
-              eq(discussionForum.status, "DISABLED")
+              eq(discussionForum.status, "DISABLED"),
             );
         } else {
           // ALL
@@ -100,12 +100,12 @@ export const discussionResolvers = {
         return forums.map((set: any) => {
           const yourVote = Array.isArray(set.discussionForumVotes)
             ? set.discussionForumVotes.find(
-                (vote: any) => vote?.votedBy === "ENTITY"
+                (vote: any) => vote?.votedBy === "ENTITY",
               )
             : set.discussionForumVotes &&
-              (set.discussionForumVotes as any).votedBy === "ENTITY"
-            ? set.discussionForumVotes
-            : undefined;
+                (set.discussionForumVotes as any).votedBy === "ENTITY"
+              ? set.discussionForumVotes
+              : undefined;
 
           return {
             ...set,
@@ -129,7 +129,7 @@ export const discussionResolvers = {
           where: (discussionForum: any, { eq, and }: any) =>
             and(
               eq(discussionForum.id, discussionForumId),
-              eq(discussionForum.entityId, entity)
+              eq(discussionForum.entityId, entity),
             ),
           with: {
             verification: true,
@@ -147,12 +147,12 @@ export const discussionResolvers = {
         // Find the current entity's vote if any
         const yourVote = Array.isArray(forum.discussionForumVotes)
           ? forum.discussionForumVotes.find(
-              (vote: any) => vote?.votedBy === "ENTITY"
+              (vote: any) => vote?.votedBy === "ENTITY",
             )
           : forum.discussionForumVotes &&
-            (forum.discussionForumVotes as any).votedBy === "ENTITY"
-          ? forum.discussionForumVotes
-          : undefined;
+              (forum.discussionForumVotes as any).votedBy === "ENTITY"
+            ? forum.discussionForumVotes
+            : undefined;
 
         return {
           ...forum,
@@ -261,7 +261,7 @@ export const discussionResolvers = {
     async changeDiscussionForumVerification(
       _: any,
       { input }: any,
-      context: any
+      context: any,
     ) {
       const { db, id, entity } = await checkAuth(context);
       const { action, reason, discussionForumId } = input;
@@ -324,7 +324,7 @@ export const discussionResolvers = {
           where: (discussionForum: any, { eq, and }: any) =>
             and(
               eq(discussionForum.entityId, entity),
-              eq(discussionForum.title, input.title)
+              eq(discussionForum.title, input.title),
             ),
         });
 
@@ -377,7 +377,7 @@ export const discussionResolvers = {
             and(
               eq(discussionForum.entityId, entity),
               eq(discussionForum.title, input.title),
-              ne(discussionForum.id, input.id)
+              ne(discussionForum.id, input.id),
             ),
         });
 
@@ -399,8 +399,8 @@ export const discussionResolvers = {
           .where(
             and(
               eq(discussionForum.id, input.id),
-              eq(discussionForum.entityId, entity)
-            )
+              eq(discussionForum.entityId, entity),
+            ),
           )
           .returning();
 
@@ -429,7 +429,7 @@ export const discussionResolvers = {
           where: (discussionCategory: any, { eq, and }: any) =>
             and(
               eq(discussionCategory.entity, entity),
-              eq(discussionCategory.name, input.name)
+              eq(discussionCategory.name, input.name),
             ),
         });
         if (isExist) {
@@ -461,7 +461,7 @@ export const discussionResolvers = {
             and(
               eq(discussionCategory.entity, entity),
               eq(discussionCategory.name, input.name),
-              ne(discussionCategory.id, input.id)
+              ne(discussionCategory.id, input.id),
             ),
         });
         if (isExist) {
@@ -479,8 +479,8 @@ export const discussionResolvers = {
           .where(
             and(
               eq(discussionCategory.id, input.id),
-              eq(discussionCategory.entity, entity)
-            )
+              eq(discussionCategory.entity, entity),
+            ),
           )
           .returning();
 
@@ -494,7 +494,7 @@ export const discussionResolvers = {
     async changeStatusDiscussionForumCategory(
       _: any,
       { input }: any,
-      context: any
+      context: any,
     ) {
       try {
         const { db, entity } = await checkAuth(context);
@@ -507,8 +507,8 @@ export const discussionResolvers = {
           .where(
             and(
               eq(discussionCategory.id, input.id),
-              eq(discussionCategory.entity, entity)
-            )
+              eq(discussionCategory.entity, entity),
+            ),
           )
           .returning();
 
@@ -572,7 +572,7 @@ export const discussionResolvers = {
           where: (discussionForum: any, { eq, and }: any) =>
             and(
               eq(discussionForum.id, discussionForumId),
-              eq(discussionForum.entityId, entity)
+              eq(discussionForum.entityId, entity),
             ),
         });
         if (!forum) {
@@ -585,9 +585,9 @@ export const discussionResolvers = {
             where: (discussionForumComment: any, { eq, and }: any) =>
               and(
                 eq(discussionForumComment.id, commentId),
-                eq(discussionForumComment.discussionForumId, discussionForumId)
+                eq(discussionForumComment.discussionForumId, discussionForumId),
               ),
-          }
+          },
         );
 
         if (!commentToDelete) {
@@ -649,7 +649,7 @@ export const discussionResolvers = {
         where: (discussionVotes: any, { eq, and }: any) =>
           and(
             eq(discussionVotes.discussionForumId, discussionForumId),
-            eq(discussionVotes.votedBy, "ENTITY")
+            eq(discussionVotes.votedBy, "ENTITY"),
           ),
       });
 
@@ -730,7 +730,7 @@ export const discussionResolvers = {
         where: (discussionVotes: any, { eq, and }: any) =>
           and(
             eq(discussionVotes.discussionForumId, discussionForumId),
-            eq(discussionVotes.votedBy, "ENTITY")
+            eq(discussionVotes.votedBy, "ENTITY"),
           ),
       });
 

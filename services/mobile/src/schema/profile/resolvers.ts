@@ -4,7 +4,7 @@ import {
   NetworkService,
   ProfileService,
   UserService,
-  upload,
+  StorageService,
 } from "@thrico/services";
 import {
   aboutUser,
@@ -329,6 +329,26 @@ const profileResolvers: any = {
         throw error;
       }
     },
+
+    async getProfileViewers(_: any, { input }: any, context: any) {
+      try {
+        const { db, id, entityId } = await checkAuth(context);
+        const { limit, cursor } = input || {};
+
+        const set = await NetworkService.getProfileViewers({
+          db,
+          currentUserId: id,
+          entityId,
+          limit,
+          cursor,
+        });
+        console.log(set);
+        return set;
+      } catch (error) {
+        logger.error(`Error in getProfileViewers: ${error}`);
+        throw error;
+      }
+    },
   },
 
   Mutation: {
@@ -370,13 +390,20 @@ const profileResolvers: any = {
 
     async updateProfileDetails(_: any, { input }: any, context: any) {
       try {
-        const { userId, db } = await checkAuth(context);
+        const { userId, db, entityId } = await checkAuth(context);
 
         logger.info(`Updating profile details for user ${userId}`);
 
         let avatar;
         if (input.profileImage) {
-          avatar = await upload(input.profileImage);
+          avatar = await StorageService.uploadFile(
+            input.profileImage,
+            entityId,
+            "USER",
+            userId,
+            db,
+            { processImage: true },
+          );
         }
 
         if (avatar) {
@@ -440,13 +467,20 @@ const profileResolvers: any = {
 
     async updateProfileCover(_: any, { input }: any, context: any) {
       try {
-        const { userId, db } = await checkAuth(context);
+        const { userId, db, entityId } = await checkAuth(context);
 
         logger.info(`Updating profile cover for user ${userId}`);
 
         let cover;
         if (input.cover) {
-          cover = await upload(input.cover);
+          cover = await StorageService.uploadFile(
+            input.cover,
+            entityId,
+            "USER",
+            userId,
+            db,
+            { processImage: true },
+          );
         }
         if (cover) {
           await db

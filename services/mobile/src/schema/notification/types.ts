@@ -32,6 +32,7 @@ export const notificationTypes = `#graphql
     JOB: Int
     LISTING: Int
     GAMIFICATION: Int
+    MOMENT: Int
   }
 
   type ClearNotificationsResponse {
@@ -48,6 +49,7 @@ export const notificationTypes = `#graphql
    enum notificationTypeNetwork {
     CONNECTION_REQUEST
   CONNECTION_ACCEPTED
+  PROFILE_VIEW
   }
   type notification {
     id: ID
@@ -73,6 +75,7 @@ export const notificationTypes = `#graphql
     getJobNotifications(input: cursorPaginationInput): PaginatedJobNotifications
     getListingNotifications(input: cursorPaginationInput): PaginatedListingNotifications
     getGamificationNotifications(input: cursorPaginationInput): PaginatedGamificationNotifications
+    getMomentNotifications(input: cursorPaginationInput): PaginatedMomentNotifications
 
 
   }
@@ -164,6 +167,21 @@ export const notificationTypes = `#graphql
 
   type PaginatedListingNotifications {
     result: [ListingNotification]
+    nextCursor: String
+  }
+ 
+  type MomentNotification {
+    id: ID
+    type: String
+    createdAt: Date
+    momentId: ID
+    content: String
+    sender: user
+    isRead: Boolean
+  }
+ 
+  type PaginatedMomentNotifications {
+    result: [MomentNotification]
     nextCursor: String
   }
 

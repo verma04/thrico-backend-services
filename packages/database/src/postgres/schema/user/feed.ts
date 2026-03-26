@@ -24,6 +24,8 @@ import { discussionForum } from "./discussion-forum";
 import { offers } from "./offers";
 import { celebration } from "./celebration";
 import { surveys } from "./survey";
+import { moments } from "./moment";
+import { moderationStateStatusEnum } from "../moderation";
 
 // Define the feed priority enum if it doesn't exist in communities
 export const userFeedPriorityEnum = pgEnum("userFeedPriority", [
@@ -47,6 +49,7 @@ export const source = pgEnum("source", [
   "celebration",
   "forum",
   "survey",
+  "moment",
 ]);
 
 export const userFeedStatusEnum = pgEnum("userFeedStatusEnum", [
@@ -97,6 +100,10 @@ export const userFeed = pgTable(
     postedOn: posted("postedOn"),
     isPinned: boolean("is_pinned").default(false),
     pinnedAt: timestamp("pinned_at"),
+    momentId: uuid("moment_id"),
+    moderationStatus: moderationStateStatusEnum("moderation_status").default("PENDING"),
+    moderationResult: text("moderation_result"),
+    moderatedAt: timestamp("moderated_at"),
   },
   (table) => ({
     addedByCheck: check(
@@ -202,6 +209,9 @@ export const feedComment = pgTable("commentFeed", {
     .notNull()
     .references(() => userFeed.id, { onDelete: "cascade" }),
   addedBy: addedBy("addedBy").default("USER"),
+  moderationStatus: moderationStateStatusEnum("moderation_status").default("PENDING"),
+  moderationResult: text("moderation_result"),
+  moderatedAt: timestamp("moderated_at"),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -301,5 +311,9 @@ export const feedRelations = relations(userFeed, ({ one, many }) => ({
   survey: one(surveys, {
     fields: [userFeed.surveyId],
     references: [surveys.id],
+  }),
+  moment: one(moments, {
+    fields: [userFeed.momentId],
+    references: [moments.id],
   }),
 }));

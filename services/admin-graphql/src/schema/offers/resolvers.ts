@@ -115,11 +115,11 @@ export const offersResolvers = {
   Mutation: {
     async createOffer(_: any, { input }: any, context: any) {
       try {
-        const { entity, db } = await checkAuth(context);
+        const { entity, db, userId } = await checkAuth(context);
 
         let imageUrl = input.image;
         if (input.image && typeof input.image !== "string") {
-          imageUrl = await upload(input.image);
+          imageUrl = await upload(input.image, entity, db, userId, "OFFER");
         }
 
         const [newOffer] = await db
@@ -155,12 +155,12 @@ export const offersResolvers = {
 
     async updateOffer(_: any, { id, input }: any, context: any) {
       try {
-        const { entity, db } = await checkAuth(context);
+        const { entity, db, userId } = await checkAuth(context);
 
         const updateData = { ...input };
 
         if (input.image && typeof input.image !== "string") {
-          updateData.image = await upload(input.image);
+          updateData.image = await upload(input.image, entity, db, userId, "OFFER");
         }
 
         if (input.validityStart)

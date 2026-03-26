@@ -8,12 +8,12 @@ import {
   aboutUser,
   userToEntity,
 } from "@thrico/database";
-import { upload } from "../upload";
 import { GamificationEventService } from "../gamification/gamification-event.service";
 import {
   CloseFriendNotificationService,
   Module,
 } from "../network/closefriend-notification.service";
+import { StorageService } from "../storage/storage.service";
 
 export class StoryService {
   static async createStory({
@@ -54,12 +54,26 @@ export class StoryService {
       log.debug("Creating story", { userId, entityId });
 
       let imageUrl: string | undefined;
+      let uploadSize = 0;
+      let uploadMimeType = "image/webp";
+      let imageWasString = false;
 
       if (typeof image !== "string") {
-        imageUrl = await upload(image);
+        const uploadResult = await StorageService.uploadFile(
+          image,
+          entityId,
+          "FEED",
+          userId,
+          db,
+          { processImage: true },
+        );
+        imageUrl = uploadResult.key;
+        uploadSize = uploadResult.size;
+        uploadMimeType = uploadResult.mimetype;
         log.debug("Image uploaded", { userId, imageUrl });
       } else {
         imageUrl = image;
+        imageWasString = true;
       }
 
       const [story] = await db
@@ -73,6 +87,30 @@ export class StoryService {
           expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
         })
         .returning();
+
+      // Track storage usage - link to the created story record
+      try {
+        if (imageUrl && !imageWasString) {
+          await StorageService.trackUploadedFile(
+            imageUrl,
+            entityId,
+            "FEED",
+            userId,
+            db,
+            {
+              referenceId: story.id,
+              sizeInBytes: uploadSize,
+              mimeType: uploadMimeType,
+              metadata: { type: "story" },
+            },
+          );
+        }
+      } catch (storageError) {
+        log.error("Failed to track story storage usage", {
+          storageError,
+          storyId: story.id,
+        });
+      }
 
       log.info("Story created", { userId, storyId: story.id, entityId });
 
@@ -335,6 +373,12 @@ export class StoryService {
             extensions: { code: "FORBIDDEN" },
           },
         );
+      }
+
+      if (deleted.image) {
+        await StorageService.unTrackFileByUrl(deleted.image, db).catch(err => {
+          log.warn("Failed to untrack story image", { error: err, url: deleted.image });
+        });
       }
 
       log.info("Story deleted", { storyId, userId });

@@ -5,14 +5,19 @@ import {
   blockedLinks,
   contentReports,
   moderationSettings,
+  aiModerationLogs,
   user,
+  userFeed,
 } from "@thrico/database";
+import { ensurePermission, AdminModule, PermissionAction } from "../../utils/auth/permissions.utils";
 
 export const moderationResolvers = {
   Query: {
     async getBannedWords(_: any, { limit, offset }: any, context: any) {
       try {
-        const { entity, db } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.MODERATION, PermissionAction.READ);
+        const { entity, db } = auth;
         const whereClause = eq(bannedWords.entityId, entity);
 
         const items = await db.query.bannedWords.findMany({
@@ -39,7 +44,9 @@ export const moderationResolvers = {
 
     async getBlockedLinks(_: any, { limit, offset }: any, context: any) {
       try {
-        const { entity, db } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.MODERATION, PermissionAction.READ);
+        const { entity, db } = auth;
         const whereClause = eq(blockedLinks.entityId, entity);
 
         const items = await db.query.blockedLinks.findMany({
@@ -70,7 +77,9 @@ export const moderationResolvers = {
       context: any,
     ) {
       try {
-        const { entity, db } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.MODERATION, PermissionAction.READ);
+        const { entity, db } = auth;
         let whereClause = eq(contentReports.entityId, entity);
 
         if (status) {
@@ -171,6 +180,59 @@ export const moderationResolvers = {
         throw error;
       }
     },
+
+    async getAiModerationLogs(_: any, { limit, offset }: any, context: any) {
+      try {
+        const { entity, db } = await checkAuth(context);
+        const whereClause = eq(aiModerationLogs.entityId, entity);
+
+        const items = await db.query.aiModerationLogs.findMany({
+          where: whereClause,
+          orderBy: [desc(aiModerationLogs.createdAt)],
+          limit: limit || 100,
+          offset: offset || 0,
+        });
+
+        const [countResult] = await db
+          .select({ count: sql<number>`count(*)` })
+          .from(aiModerationLogs)
+          .where(whereClause);
+
+        return {
+          items,
+          totalCount: Number(countResult?.count || 0),
+        };
+      } catch (error) {
+        console.error("Failed to get AI moderation logs:", error);
+        throw error;
+      }
+    },
+
+    async getAiModerationDashboard(_: any, __: any, context: any) {
+      try {
+        const { entity, db } = await checkAuth(context);
+
+        const [feedStats] = await db
+          .select({
+            total: sql<number>`count(*)`,
+            pending: sql<number>`count(*) filter (where moderation_status = 'PENDING' or moderation_status = 'PROCESSING')`,
+            flagged: sql<number>`count(*) filter (where moderation_status = 'FLAGGED')`,
+            rejected: sql<number>`count(*) filter (where moderation_status = 'REJECTED')`,
+          })
+          .from(userFeed)
+          .where(eq(userFeed.entity, entity));
+
+        return {
+          totalPosts: Number(feedStats?.total || 0),
+          pendingModeration: Number(feedStats?.pending || 0),
+          flaggedContent: Number(feedStats?.flagged || 0),
+          rejectedPosts: Number(feedStats?.rejected || 0),
+        };
+      } catch (error) {
+        console.error("Failed to get AI moderation dashboard stats:", error);
+        throw error;
+      }
+    },
   },
 
   Mutation: {
@@ -180,7 +242,9 @@ export const moderationResolvers = {
       context: any,
     ) {
       try {
-        const { entity, db } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.MODERATION, PermissionAction.CREATE);
+        const { entity, db } = auth;
         const [result] = await db
           .insert(bannedWords)
           .values({
@@ -199,7 +263,9 @@ export const moderationResolvers = {
 
     async updateBannedWord(_: any, { id, ...updates }: any, context: any) {
       try {
-        const { entity, db } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.MODERATION, PermissionAction.EDIT);
+        const { entity, db } = auth;
         const [result] = await db
           .update(bannedWords)
           .set({ ...updates, updatedAt: new Date() })
@@ -214,7 +280,9 @@ export const moderationResolvers = {
 
     async deleteBannedWord(_: any, { id }: any, context: any) {
       try {
-        const { entity, db } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.MODERATION, PermissionAction.DELETE);
+        const { entity, db } = auth;
         await db
           .delete(bannedWords)
           .where(and(eq(bannedWords.id, id), eq(bannedWords.entityId, entity)));

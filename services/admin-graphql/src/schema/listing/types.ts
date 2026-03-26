@@ -45,7 +45,7 @@ export const listingTypes = `#graphql
     numberOfViews: Int!
     interests: [String]
     categories: [String]
-    location: JSON! 
+    location: Location! 
     verification: ListingVerification
     media: [MarketPlaceMedia!]!
     currency: String!

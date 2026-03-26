@@ -297,9 +297,9 @@ export class ForumService {
       });
 
       if (!forum) {
-        throw new GraphQLError("Discussion forum not found.", {
-          extensions: { code: "BAD_USER_INPUT" },
-        });
+        // throw new GraphQLError("Discussion forum not found.", {
+        //   extensions: { code: "BAD_USER_INPUT" },
+        // });
       }
 
       const yourVote = Array.isArray(forum.discussionForumVotes)
@@ -669,9 +669,9 @@ export class ForumService {
       });
 
       if (!forum) {
-        throw new GraphQLError("Discussion forum not found.", {
-          extensions: { code: "NOT_FOUND" },
-        });
+        // throw new GraphQLError("Discussion forum not found.", {
+        //   extensions: { code: "NOT_FOUND" },
+        // });
       }
 
       const newComment = await db.transaction(async (tx: any) => {
@@ -875,9 +875,9 @@ export class ForumService {
       });
 
       if (!forum) {
-        throw new GraphQLError("Discussion forum not found.", {
-          extensions: { code: "NOT_FOUND" },
-        });
+        // throw new GraphQLError("Discussion forum not found.", {
+        //   extensions: { code: "NOT_FOUND" },
+        // });
       }
 
       const existingVote = await db.query.discussionVotes.findFirst({
@@ -997,9 +997,9 @@ export class ForumService {
       });
 
       if (!forum) {
-        throw new GraphQLError("Discussion forum not found.", {
-          extensions: { code: "NOT_FOUND" },
-        });
+        // throw new GraphQLError("Discussion forum not found.", {
+        //   extensions: { code: "NOT_FOUND" },
+        // });
       }
 
       const existingVote = await db.query.discussionVotes.findFirst({

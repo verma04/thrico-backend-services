@@ -17,9 +17,9 @@ const approvalResolvers = {
       try {
         const { entity, db } = await checkAuth(context);
 
-        const { status } = input;
+        const status = input?.status;
         console.log(status);
-        if (status === "ALL") {
+        if (!status || status === "ALL") {
           const group = await db.query.groups.findMany({
             where: (groups: any, { eq }: any) => eq(groups.entity, entity),
             orderBy: (groups: any, { desc }: any) => [desc(groups.createdAt)],

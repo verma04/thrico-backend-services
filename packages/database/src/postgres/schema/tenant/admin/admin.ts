@@ -11,6 +11,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import { entity } from "../entity/details";
+import { roles } from "./rbac";
 
 export const users = pgTable("admin", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -20,12 +21,17 @@ export const users = pgTable("admin", {
   email: text("email").notNull().unique(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
+  roleId: uuid("role_id"),
 });
 
 export const usersRelations = relations(users, ({ one, many }) => ({
   otp: one(otp),
   entity: one(entity),
   profileInfo: one(profileInfo),
+  role: one(roles, {
+    fields: [users.roleId],
+    references: [roles.id],
+  }),
   posts: many(loginSession),
 }));
 

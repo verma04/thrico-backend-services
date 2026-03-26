@@ -39,6 +39,16 @@ const UserSchema = new dynamoose.Schema(
       default: "",
     },
 
+    gender: {
+      type: String,
+    },
+    dob: {
+      type: String,
+    },
+    about: {
+      type: String,
+    },
+
     entity: {
       type: Array, // JSON data, map it to an Object (phone could be an array or object of numbers)
       default: [], // Optional: Default value for phone

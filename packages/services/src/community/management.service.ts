@@ -9,14 +9,14 @@ import {
   entitySettingsGroups,
   user, // Assuming this is what was meant by entitySettings or I will check details.ts result
 } from "@thrico/database";
-import { upload } from "../upload";
 import { BaseCommunityService } from "./base.service";
 import generateSlug from "../generateSlug";
 import { GamificationEventService } from "../gamification/gamification-event.service";
 import { CommunityQueryService } from "./query.service";
 import { CommunityNotificationPublisher } from "./notification-publisher";
 import { UserService } from "../user/user.service";
-
+import { StorageService } from "../storage/storage.service";
+import { v4 as uuidv4 } from "uuid";
 export class CommunityManagementService {
   static readonly DEFAULT_COMMUNITY_RULES = [
     {
@@ -137,7 +137,23 @@ export class CommunityManagementService {
         customRules,
       } = input;
 
-      let coverUrl = cover ? await upload(cover) : "default_communities.png";
+      const communityId = uuidv4();
+      let coverUrl = "default_communities.png";
+      let uploadResult: any;
+      if (cover) {
+        uploadResult = await StorageService.uploadFile(
+          cover,
+          entityId,
+          "COMMUNITY",
+          userId,
+          db,
+          {
+            processImage: true,
+            referenceId: communityId,
+          },
+        );
+        coverUrl = uploadResult.key;
+      }
 
       let slug = generateSlug(title);
       let communityRules;
@@ -153,6 +169,7 @@ export class CommunityManagementService {
         const [newGroup] = await tx
           .insert(groups)
           .values({
+            id: communityId,
             cover: coverUrl,
             slug,
             title,
@@ -215,6 +232,30 @@ export class CommunityManagementService {
 
         return newGroup;
       });
+
+      // Track storage usage - link cover image with the community record
+      try {
+        if (cover && uploadResult) {
+          await StorageService.trackUploadedFile(
+            coverUrl,
+            entityId,
+            "COMMUNITY",
+            userId,
+            db,
+            {
+              referenceId: communityId,
+              sizeInBytes: uploadResult.size,
+              mimeType: uploadResult.mimetype,
+              metadata: { type: "community_cover" },
+            },
+          );
+        }
+      } catch (storageError) {
+        log.error("Failed to track community storage usage", {
+          storageError,
+          communityId,
+        });
+      }
 
       await GamificationEventService.triggerEvent({
         triggerId: "tr-com-create",
@@ -568,8 +609,15 @@ export class CommunityManagementService {
 
       // Handle cover upload if provided
       if (input.cover) {
-        const coverUrl = await upload(input.cover);
-        updateValues.cover = coverUrl;
+        const uploadResult = await StorageService.uploadFile(
+          input.cover,
+          entityId,
+          "COMMUNITY",
+          userId,
+          db,
+          { processImage: true },
+        );
+        updateValues.cover = uploadResult.key;
       }
 
       // Update the community
@@ -638,7 +686,15 @@ export class CommunityManagementService {
       // Upload new cover image
       let newCoverUrl = null;
       if (coverImage) {
-        newCoverUrl = await upload(coverImage);
+        const uploadResult = await StorageService.uploadFile(
+          coverImage,
+          entityId,
+          "COMMUNITY",
+          userId,
+          db,
+          { processImage: true },
+        );
+        newCoverUrl = uploadResult.key;
       }
 
       // Update community cover

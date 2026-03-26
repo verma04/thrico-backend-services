@@ -877,6 +877,23 @@ const communitiesTypes = `#graphql
     viewerRank: Int
     totalParticipants: Int!
   }
+  enum TimeRange {
+    LAST_24_HOURS
+    LAST_7_DAYS
+    LAST_30_DAYS
+    LAST_90_DAYS
+  }
+
+  type CommunitiesStats {
+    totalCommunities: Int!
+    activeCommunities: Int!
+    totalEnrollments: Int!
+    totalViews: Int!
+    totalCommunitiesChange: Float!
+    activeCommunitiesChange: Float!
+    enrollmentsChange: Float!
+    viewsChange: Float!
+  }
   # =============== UPDATED QUERY AND MUTATION TYPES ===============
 
   type Query {
@@ -958,6 +975,7 @@ const communitiesTypes = `#graphql
     getCommunityLeaderboard(
       input: GetCommunityLeaderboardInput!
     ): CommunityLeaderboardResponse!
+    getCommunitiesStats(timeRange: TimeRange!): CommunitiesStats!
   }
   type reactions {
     type: String
@@ -1157,7 +1175,6 @@ input inputDeleteCommunityRating {
       input: respondToJoinRequestInput!
     ): joinRequestActionResponse
     # Community reporting mutations
-    reportCommunity(input: ReportCommunityInput!): CommunityReportResponse!
     withdrawJoinRequest(
       input: withdrawJoinRequestInput!
     ): WithdrawJoinRequestResponse

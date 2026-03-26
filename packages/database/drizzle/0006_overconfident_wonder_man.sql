@@ -1,1 +1,0 @@
-ALTER TYPE "feedNotificationType" ADD VALUE 'FEED_POST';

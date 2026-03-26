@@ -13,12 +13,15 @@ import {
 } from "@thrico/database";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import generateSlug from "../../utils/slug.utils";
+import { ensurePermission, AdminModule, PermissionAction } from "../../utils/auth/permissions.utils";
 
 export const jobsResolvers = {
   Query: {
     async getJob(_: any, { input }: any, context: any) {
       try {
-        const { entity, db } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.JOBS, PermissionAction.READ);
+        const { entity, db } = auth;
 
         const { status } = input || {}; // status: "ALL" | "APPROVED" | "PENDING" | "REJECTED" | "DISABLED"
 
@@ -61,7 +64,9 @@ export const jobsResolvers = {
       context: any,
     ) {
       try {
-        const { entity, db } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.JOBS, PermissionAction.READ);
+        const { entity, db } = auth;
 
         const now = new Date();
         let startDate = new Date();
@@ -234,7 +239,9 @@ export const jobsResolvers = {
   },
   Mutation: {
     async changeJobStatus(_: any, { input }: any, context: any) {
-      const { db, id, entity } = await checkAuth(context);
+      const auth = await checkAuth(context);
+      ensurePermission(auth, AdminModule.JOBS, PermissionAction.EDIT);
+      const { db, id, entity } = auth;
       const { action, reason, jobId } = input;
 
       try {
@@ -307,7 +314,9 @@ export const jobsResolvers = {
     },
 
     async changeJobVerification(_: any, { input }: any, context: any) {
-      const { db, id, entity } = await checkAuth(context);
+      const auth = await checkAuth(context);
+      ensurePermission(auth, AdminModule.JOBS, PermissionAction.EDIT);
+      const { db, id, entity } = auth;
       const { action, reason, jobId } = input;
 
       try {
@@ -377,7 +386,9 @@ export const jobsResolvers = {
 
     async addJob(_: any, { input }: any, context: any) {
       try {
-        const { id, db, entity } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.JOBS, PermissionAction.CREATE);
+        const { id, db, entity } = auth;
 
         const checkAutoApprove = await db.query.entitySettings.findFirst({
           where: (entitySettings: any, { eq }: any) =>
@@ -464,6 +475,13 @@ export const jobsResolvers = {
 
     async addJobCompany(_: any, { input }: any, context: any) {
       throw new GraphQLError("Not Implemented");
+    },
+  },
+
+  Job: {
+    postedBy: (job: any) => {
+      // It can come as 'postedBy' (if joined) or 'userId' (if from raw db row)
+      return job.postedBy || job.user || null;
     },
   },
 };

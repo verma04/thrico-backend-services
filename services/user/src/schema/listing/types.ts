@@ -9,11 +9,24 @@ export const listingTypes = `#graphql
     totalRatings: Int!
     ratingDistribution: JSON
   }
+
+  type CategoryStat {
+    name: String!
+    count: Int!
+  }
+
+  type ListingStats {
+    totalListings: Int!
+    newToday: Int!
+    yourEnquiry: Int!
+    savedListings: Int!
+    popularCategories: [CategoryStat!]!
+  }
   type listing {
     id: ID
     title: String
     description: String
-    location: String
+    location: JSON
     condition: String
     category: String
     price: String
@@ -23,7 +36,7 @@ export const listingTypes = `#graphql
   }
   input inputAddListing {
     title: String!
-    location: String!
+    location: JSON!
     condition: String!
     sku: String
     category: String
@@ -49,24 +62,15 @@ export const listingTypes = `#graphql
     canReport: Boolean
   }
 
-  input inputGetAllListings {
-    page: Int
-    limit: Int
-    search: String
+  type ListingEdge {
+    cursor: String!
+    node: marketPlaceList!
   }
 
-  type paginationInfo {
-    currentPage: Int
-    totalPages: Int
-    totalCount: Int
-    limit: Int
-    hasNextPage: Boolean
-    hasPreviousPage: Boolean
-  }
-
-  type PageInfo {
-    hasNextPage: Boolean!
-    endCursor: String
+  type ListingConnection {
+    edges: [ListingEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
   }
 
   type SellerProfile {
@@ -86,17 +90,14 @@ export const listingTypes = `#graphql
     totalCount: Int!
   }
 
-  type ListingEdge {
-    cursor: String!
-    node: marketPlaceList!
+  input ListingCursorInput {
+    cursor: String
+    limit: Int
+    search: String
   }
 
-  type marketPlaceListWithPagination {
-    listings: [marketPlaceList]
-    pagination: paginationInfo
-  }
   input PaginationInput {
-    page: Int
+    cursor: String
     limit: Int
   }
 
@@ -113,7 +114,7 @@ export const listingTypes = `#graphql
 
   input GetMyListingsInput {
     status: ListingStatus
-    page: Int
+    cursor: String
     limit: Int
     search: String
   }
@@ -165,37 +166,32 @@ export const listingTypes = `#graphql
 
   input GetListingEnquiriesInput {
     listingId: ID!
-    page: Int
+    cursor: String
     limit: Int
   }
   type Query {
     getListingDetailsById(input: GetListingByIdInput!): ListingDetails!
-    getUserListingEnquiries(input: PaginationInput): EnquiryListResponse!
-    getSellerReceivedEnquiries(input: PaginationInput): EnquiryListResponse!
+    getUserListingEnquiries(input: PaginationInput): EnquiryConnection!
+    getSellerReceivedEnquiries(input: PaginationInput): EnquiryConnection!
     getListingConversationMessages(
       conversationId: ID!
       input: PaginationInput
-    ): ConversationMessagesResponse!
-    getAllListing(input: inputGetAllListings): marketPlaceListWithPagination
-    getFeaturedListings(
-      input: inputGetAllListings
-    ): marketPlaceListWithPagination!
-    getTrendingListings(
-      input: inputGetAllListings
-    ): marketPlaceListWithPagination!
-    getMyListings(input: GetMyListingsInput): marketPlaceListWithPagination!
+    ): ConversationMessagesConnection!
+    getAllListing(input: ListingCursorInput): ListingConnection
+    getFeaturedListings(input: ListingCursorInput): ListingConnection!
+    getTrendingListings(input: ListingCursorInput): ListingConnection!
+    getMyListings(input: GetMyListingsInput): ListingConnection!
     hasContactedSeller(listingId: ID!): HasContactedResponse!
     getListingStatus(listingId: ID!): ListingStatusInfo!
     getRelatedListingsByListingId(
       input: GetRelatedListingsInput!
     ): RelatedListingsResponse!
-    getListingsByUserId(
-      input: GetUserListingsInput!
-    ): UserListingsConnection!
-    getListingEnquiries(input: GetListingEnquiriesInput!): EnquiryListResponse!
+    getListingsByUserId(input: GetUserListingsInput!): UserListingsConnection!
+    getListingEnquiries(input: GetListingEnquiriesInput!): EnquiryConnection!
     getListingEnquiryStats(listingId: ID!): EnquiryStatistics!
     getListingEnquiriesGroupedByBuyer(listingId: ID!): [BuyerEnquiryGroup!]!
-    mapViewAllListings(input: PaginationInput): MapViewListingsWithPagination!
+    mapViewAllListings(input: PaginationInput): MapViewListingConnection!
+    getListingStats: ListingStats!
   }
   # Report Types
   input ReportListingInput {
@@ -204,7 +200,7 @@ export const listingTypes = `#graphql
     description: String
   }
 
-  type ReportResponse {
+  type ListingReportResponse {
     success: Boolean!
     reportId: ID!
     message: String!
@@ -237,8 +233,9 @@ export const listingTypes = `#graphql
   }
   type Mutation {
     addListing(input: inputAddListing): listing
+    editListing(listingId: ID!, input: inputAddListing): listing
     contactSeller(input: ContactSellerInput!): ContactSellerResponse!
-    reportListing(input: ReportListingInput!): ReportResponse!
+    reportListing(input: ReportListingInput!): ListingReportResponse!
 
     markListingAsSold(input: MarkAsSoldInput!): ListingActionResponse!
     deleteListing(input: DeleteListingInput!): ListingActionResponse!
@@ -260,9 +257,15 @@ export const listingTypes = `#graphql
     isMine: Boolean!
   }
 
-  type ConversationMessagesResponse {
-    messages: [ConversationMessage!]!
-    pagination: paginationInfo!
+  type ConversationMessageEdge {
+    cursor: String!
+    node: ConversationMessage!
+  }
+
+  type ConversationMessagesConnection {
+    edges: [ConversationMessageEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
   }
 
   type EnquiryListing {
@@ -300,9 +303,15 @@ export const listingTypes = `#graphql
     lastName: String!
     avatar: String!
   }
-  type EnquiryListResponse {
-    enquiries: [ListingEnquiry!]!
-    pagination: paginationInfo!
+  type EnquiryEdge {
+    cursor: String!
+    node: ListingEnquiry!
+  }
+
+  type EnquiryConnection {
+    edges: [EnquiryEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
   }
 
   type ContactSellerResponse {
@@ -332,7 +341,7 @@ export const listingTypes = `#graphql
     id: ID
     title: String
     price: String
-    location: String
+    location: JSON
     latitude: Float
     longitude: Float
     media: [String]
@@ -341,8 +350,14 @@ export const listingTypes = `#graphql
     isSold: Boolean
   }
 
-  type MapViewListingsWithPagination {
-    listings: [MapViewListing!]!
-    pagination: paginationInfo!
+  type MapViewListingEdge {
+    cursor: String!
+    node: MapViewListing!
+  }
+
+  type MapViewListingConnection {
+    edges: [MapViewListingEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
   }
 `;

@@ -21,6 +21,12 @@ export const feedTypes = `#graphql
     isOnline: Boolean
     cover: String
   }
+
+  type FeedMedia {
+  
+    url: String
+
+  }
   
   type Feed {
     isLiked: Boolean
@@ -34,16 +40,21 @@ export const feedTypes = `#graphql
     isWishList: Boolean
     isOwner: Boolean
     source: String
-    media: JSON
-    # group: Group
+    media: [FeedMedia]
+  
     privacy: feedPrivacy
     addedBy: addedByType
     poll: polls
+    moment: AdminMoment
+    job: Job
+    marketPlace: MarketPlaceListing
+    isPinned: Boolean
+    pinnedAt: Date
   }
 
   input InputAddFeed {
     description: String!
-    media: [Upload]
+    # media: [Upload]
   }
   
   input InputId {
@@ -64,6 +75,11 @@ export const feedTypes = `#graphql
     commentId: ID!
   }
 
+  input PinFeedInput {
+    feedId: ID!
+    isPinned: Boolean!
+  }
+
   type Status {
     status: Boolean
   }
@@ -77,10 +93,49 @@ export const feedTypes = `#graphql
     feedId: ID
   }
 
+  type FeedIntelligenceKPI {
+    aggregateReach: Float
+    activeDialogue: Int
+    networkVelocity: Float
+    engagementYield: Float
+    reachTrend: Float
+    dialogueTrend: Float
+    velocityTrend: Float
+    yieldTrend: Float
+  }
+
+  type FeedYieldVelocity {
+    day: String
+    signups: Int
+  }
+
+  type FeedInterestMatrix {
+    name: String
+    value: Int
+    color: String
+  }
+
+  type PromotedNodeEvent {
+    title: String
+    date: String
+    time: String
+    location: String
+    description: String
+  }
+
   extend type Query {
     getAllFeed(input: PaginationInput): [Feed]
+    getAdminFeed(input: PaginationInput): [Feed]
+    getJobFeed(input: PaginationInput): [Feed]
+    getMomentsFeed(input: PaginationInput): [Feed]
+    getListingFeed(input: PaginationInput): [Feed]
+    getPinnedFeed(input: PaginationInput): [Feed]
     numberOfFeeds: Int
     getFeedComment(input: InputId): [Comment]
+    getFeedIntelligenceKPI: FeedIntelligenceKPI
+    getFeedYieldVelocity: [FeedYieldVelocity]
+    getFeedInterestMatrix: [FeedInterestMatrix]
+    getPromotedNodeEvents: [PromotedNodeEvent]
   }
 
   extend type Mutation {
@@ -88,5 +143,7 @@ export const feedTypes = `#graphql
     addFeed(input: InputAddFeed): Feed
     addComment(input: InputComment): Comment
     deleteCommentFeed(input: InputDeleteFeedComment): Comment
+    pinFeed(input: PinFeedInput): Feed
+    deleteFeed(input: InputId): Status
   }
 `;
