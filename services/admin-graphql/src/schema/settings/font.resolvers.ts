@@ -1,6 +1,7 @@
 import { ENTITY_FONT } from "@thrico/database";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import { GraphQLError } from "graphql";
+import { log } from "@thrico/logging";
 
 export const fontResolvers = {
   Query: {
@@ -26,7 +27,7 @@ export const fontResolvers = {
         const { name, weights, styles, subsets } = input;
         const findDomain = await ENTITY_FONT.query("entity").eq(entity).exec();
 
-        console.log(name, weights, styles, subsets);
+        log.info("Updating font with data:", { name, weights, styles, subsets });
         if (findDomain.count !== 0) {
           const updateFont = await ENTITY_FONT.update(
             { entity },
@@ -39,7 +40,7 @@ export const fontResolvers = {
               },
             }
           );
-          console.log(updateFont);
+          log.info("Update font result:", updateFont?.toJSON ? updateFont.toJSON() : updateFont);
         } else {
           const newFont = await ENTITY_FONT.create({
             entity,
@@ -49,10 +50,10 @@ export const fontResolvers = {
             subsets: subsets,
           });
 
-          console.log(newFont.toJSON());
+          log.info("New font created:", newFont.toJSON());
         }
       } catch (error) {
-        console.log(error);
+        log.error("Catch error:", error);
         throw error;
       }
     },

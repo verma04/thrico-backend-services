@@ -33,4 +33,5 @@ export interface FeedInput {
   privacy?: string | null;
   source?: string | null;
   status?: string | null;
+  isAiContent?: boolean | null;
 }

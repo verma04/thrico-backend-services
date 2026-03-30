@@ -223,6 +223,7 @@ export const feedTypes = `#graphql
     momentId: ID
     moment: Moment
     reactionType: String
+    isAiContent: Boolean
     }
 
   type communityFeedData {
@@ -290,6 +291,7 @@ export const feedTypes = `#graphql
     forum: inputForum
     video: Upload
     thumbnail: Upload
+    isAiContent: Boolean
   }
 
   input inputGroupFeed {
@@ -305,6 +307,7 @@ export const feedTypes = `#graphql
     groupId: ID! # duplicates groupID?
     video: Upload
     thumbnail: Upload
+    isAiContent: Boolean
   }
   input inputComment {
     comment: String!
@@ -368,6 +371,7 @@ export const feedTypes = `#graphql
     id: ID!
     description: String
     media: [String]
+    isAiContent: Boolean
   }
   input inputLikeFeed {
   id:ID

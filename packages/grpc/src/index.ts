@@ -9,3 +9,5 @@ export * from "./countryService";
 export * from "./server";
 export * from "./gamificationClient";
 export * from "./addonClient";
+export * from "./emailTopupClient";
+export * from "./emailTopupService";

@@ -78,6 +78,8 @@ import { nearbyUsersTypes } from "./schema/nearby-users/types";
 import { nearbyUsersResolvers } from "./schema/nearby-users/resolvers";
 import { reportTypes } from "./schema/report/types";
 import { reportResolvers } from "./schema/report/resolvers";
+import { contactTypes } from "./schema/contact/types";
+import { contactResolvers } from "./schema/contact/resolvers";
 
 const PORT = process.env.MOBILE_GRAPHQL_PORT || 3333;
 
@@ -164,6 +166,7 @@ async function startServer() {
       subscriptionTypes,
       nearbyUsersTypes,
       reportTypes,
+      contactTypes,
     ],
     resolvers: [
       resolvers,
@@ -192,6 +195,7 @@ async function startServer() {
       subscriptionResolvers,
       nearbyUsersResolvers,
       reportResolvers,
+      contactResolvers,
     ],
   });
 

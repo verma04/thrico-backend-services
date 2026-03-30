@@ -24,13 +24,20 @@ export class FFmpegService {
           "-c:v libx264",
           "-preset fast",
           "-crf 23",
+          "-pix_fmt yuv420p",
           "-c:a aac",
           "-b:a 128k",
         ])
         .save(outputPath)
         .on("end", () => resolve())
-        .on("error", (err) => {
-          logger.error("FFmpeg optimization error", { error: err.message });
+        .on("error", (err, stdout, stderr) => {
+          logger.error("FFmpeg optimization error", {
+            message: err.message,
+            stdout,
+            stderr,
+            inputPath,
+            outputPath,
+          });
           reject(err);
         });
     });
@@ -43,20 +50,31 @@ export class FFmpegService {
   ): Promise<string> {
     logger.info(`Converting to HLS: ${inputPath} -> ${outputDir}`);
     const playlistPath = path.join(outputDir, `${baseName}.m3u8`);
+    const segmentPath = path.join(outputDir, `${baseName}_%03d.ts`);
+
     return new Promise((resolve, reject) => {
       ffmpeg(inputPath)
         .outputOptions([
           "-profile:v baseline",
           "-level 3.0",
+          "-pix_fmt yuv420p",
           "-start_number 0",
           "-hls_time 4",
           "-hls_list_size 0",
           "-f hls",
+          "-hls_segment_filename",
+          segmentPath,
         ])
         .save(playlistPath)
         .on("end", () => resolve(playlistPath))
-        .on("error", (err) => {
-          logger.error("FFmpeg HLS error", { error: err.message });
+        .on("error", (err, stdout, stderr) => {
+          logger.error("FFmpeg HLS error", {
+            message: err.message,
+            stdout,
+            stderr,
+            inputPath,
+            playlistPath,
+          });
           reject(err);
         });
     });
@@ -106,10 +124,12 @@ export class FFmpegService {
           size: "720x1280",
         })
         .on("end", () => resolve())
-        .on("error", (err) => {
+        .on("error", (err, stdout, stderr) => {
           logger.error("FFmpeg thumbnails error", {
             timestamps,
-            error: err.message,
+            message: err.message,
+            stdout,
+            stderr,
           });
           reject(err);
         });

@@ -1,0 +1,102 @@
+syntax = "proto3";
+
+package emailtopup;
+
+message GetEmailTopupsRequest {
+  string countryCode = 1;
+}
+
+message EmailTopup {
+  string topupId = 1;
+  string countryCode = 2;
+  string name = 3;
+  int32 numberOfEmails = 4;
+  float price = 5;
+  bool status = 6;
+  int32 order = 7;
+}
+
+message GetEmailTopupsResponse {
+  repeated EmailTopup topups = 1;
+}
+
+message BuyEmailTopupRequest {
+  string entityId = 1;
+  string topupId = 2;
+  string countryCode = 3;
+}
+
+message BuyEmailTopupResponse {
+  string billingId = 1;
+  string razorpayOrderId = 2;
+  float amount = 3;
+  string currency = 4;
+}
+
+message GetEmailQuotaRequest {
+  string entityId = 1;
+}
+
+message GetEmailQuotaResponse {
+  string entityId = 1;
+  int32 balance = 2;
+  int32 usedThisMonth = 3;
+  int32 totalUsed = 4;
+}
+
+message DeductEmailQuotaRequest {
+  string entityId = 1;
+  int32 count = 2;
+}
+
+message DeductEmailQuotaResponse {
+  bool success = 1;
+  string message = 2;
+  int32 remainingQuota = 3;
+}
+
+message GetEmailOverviewRequest {
+  string entityId = 1;
+}
+
+message EmailOverviewSubscription {
+  string subscriptionId = 1;
+  string planName = 2;
+  string planType = 3;
+  string billingCycle = 4;
+  float price = 5;
+  string startDate = 6;
+  string endDate = 7;
+  string status = 8;
+  string subscriptionType = 9;
+}
+
+message EmailOverviewUsage {
+  int32 numberOfEmailsPerMonth = 1;
+  int32 emailsSent = 2;
+  int32 remaining = 3;
+  int32 usagePercent = 4;
+}
+
+message EmailOverviewRecentEmail {
+  string logId = 1;
+  int32 count = 2;
+  string action = 3;
+  string description = 4;
+  string timestamp = 5;
+}
+
+message GetEmailOverviewResponse {
+  string domain = 1;
+  EmailOverviewSubscription subscription = 2;
+  EmailOverviewUsage usage = 3;
+  repeated EmailOverviewRecentEmail recentEmails = 4;
+}
+
+service EmailTopupService {
+  rpc GetEmailTopups (GetEmailTopupsRequest) returns (GetEmailTopupsResponse);
+  rpc BuyEmailTopup (BuyEmailTopupRequest) returns (BuyEmailTopupResponse);
+  rpc GetEmailQuota (GetEmailQuotaRequest) returns (GetEmailQuotaResponse);
+  rpc DeductEmailQuota (DeductEmailQuotaRequest) returns (DeductEmailQuotaResponse);
+  rpc GetEmailOverview (GetEmailOverviewRequest) returns (GetEmailOverviewResponse);
+}

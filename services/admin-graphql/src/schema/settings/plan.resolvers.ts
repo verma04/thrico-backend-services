@@ -11,6 +11,7 @@ import {
   PermissionAction,
 } from "../../utils/auth/permissions.utils";
 import { createAuditLog } from "../../utils/audit/auditLog.utils";
+import { log } from "@thrico/logging";
 
 export const planResolvers = {
   Query: {
@@ -27,7 +28,7 @@ export const planResolvers = {
 
         return packages;
       } catch (error) {
-        console.log(error);
+        log.error("Catch error:", error);
         throw error;
       }
     },
@@ -60,7 +61,7 @@ export const planResolvers = {
 
         return data;
       } catch (error) {
-        console.log(error);
+        log.error("Catch error:", error);
         throw error;
       }
     },
@@ -76,7 +77,7 @@ export const planResolvers = {
 
         return invoicesResult?.invoices;
       } catch (error) {
-        console.log(error);
+        log.error("Catch error:", error);
         throw error;
       }
     },
@@ -94,7 +95,7 @@ export const planResolvers = {
 
         return summary;
       } catch (error) {
-        console.log(error);
+        log.error("Catch error:", error);
         throw error;
       }
     },
@@ -127,7 +128,7 @@ export const planResolvers = {
 
         return result?.razorpayOrder;
       } catch (error) {
-        console.log(error);
+        log.error("Catch error:", error);
         throw error;
       }
     },
@@ -155,7 +156,7 @@ export const planResolvers = {
 
         return result;
       } catch (error) {
-        console.log(error);
+        log.error("Catch error:", error);
         throw error;
       }
     },
@@ -186,7 +187,7 @@ export const planResolvers = {
 
         return result;
       } catch (error) {
-        console.log(error);
+        log.error("Catch error:", error);
         throw error;
       }
     },
@@ -210,7 +211,7 @@ export const planResolvers = {
         // Current implementation is a placeholder
         return { success: true };
       } catch (error) {
-        console.log(error);
+        log.error("Catch error:", error);
         throw error;
       }
     },
@@ -228,7 +229,7 @@ export const planResolvers = {
 
         return request;
       } catch (error) {
-        console.log(error);
+        log.error("Catch error:", error);
         throw error;
       }
     },
@@ -259,7 +260,7 @@ export const planResolvers = {
 
         return result?.razorpayOrder;
       } catch (error) {
-        console.log(error);
+        log.error("Catch error:", error);
         throw error;
       }
     },

@@ -81,6 +81,7 @@ export class FeedQueryService {
       addedBy: userFeed.addedBy,
       videoUrl: userFeed.videoUrl,
       thumbnailUrl: userFeed.thumbnailUrl,
+      isAiContent: userFeed.isAiContent,
       groupId: userFeed.groupId,
       jobId: userFeed.jobId,
       marketPlaceId: userFeed.marketPlaceId,
@@ -200,6 +201,7 @@ export class FeedQueryService {
       addedBy: userFeed.addedBy,
       videoUrl: userFeed.videoUrl,
       thumbnailUrl: userFeed.thumbnailUrl,
+      isAiContent: userFeed.isAiContent,
       groupId: userFeed.groupId,
       jobId: userFeed.jobId,
       marketPlaceId: userFeed.marketPlaceId,
@@ -367,6 +369,7 @@ export class FeedQueryService {
             totalComments: moments.totalComments,
             totalReshares: moments.totalReshares,
             totalViews: moments.totalViews,
+            isAiContent: moments.isAiContent,
             // Owner info via LEFT JOIN
             owner: {
               id: user.id,
@@ -769,6 +772,7 @@ export class FeedQueryService {
             totalComments: moments.totalComments,
             totalReshares: moments.totalReshares,
             totalViews: moments.totalViews,
+            isAiContent: moments.isAiContent,
             owner: {
               id: user.id,
               firstName: user.firstName,

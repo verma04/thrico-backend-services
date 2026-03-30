@@ -6,6 +6,7 @@ import { log } from '@thrico/logging';
 const SERVICE_PROTO_PATH = path.join(__dirname, '../proto/service.proto');
 const COUNTRY_PROTO_PATH = path.join(__dirname, '../proto/country.proto');
 const ADDON_PROTO_PATH = path.join(__dirname, '../proto/addon.proto');
+const EMAIL_TOPUP_PROTO_PATH = path.join(__dirname, '../proto/emailTopup.proto');
 
 // Load service proto file
 const servicePackageDefinition = protoLoader.loadSync(SERVICE_PROTO_PATH, {
@@ -34,19 +35,31 @@ const addonPackageDefinition = protoLoader.loadSync(ADDON_PROTO_PATH, {
   oneofs: true,
 });
 
+// Load email topup proto file
+const emailTopupPackageDefinition = protoLoader.loadSync(EMAIL_TOPUP_PROTO_PATH, {
+  keepCase: true,
+  longs: String,
+  enums: String,
+  defaults: true,
+  oneofs: true,
+});
+
 const serviceProtoDescriptor = grpc.loadPackageDefinition(servicePackageDefinition) as any;
 const countryProtoDescriptor = grpc.loadPackageDefinition(countryPackageDefinition) as any;
 const addonProtoDescriptor = grpc.loadPackageDefinition(addonPackageDefinition) as any;
+const emailTopupProtoDescriptor = grpc.loadPackageDefinition(emailTopupPackageDefinition) as any;
 
 const thrico = serviceProtoDescriptor.thrico;
 const thricoCountry = countryProtoDescriptor.countryapi;
 const addonProto = addonProtoDescriptor.addon;
+const emailTopupProto = emailTopupProtoDescriptor.emailtopup;
 
 export interface GrpcServiceImplementations {
   userService: any;
   entityService: any;
   countryService: any;
   addonService: any;
+  emailTopupService: any;
 }
 
 export function createGrpcServer(
@@ -75,6 +88,9 @@ export function createGrpcServer(
 
   // Add AddonService
   server.addService(addonProto.AddonService.service, implementations.addonService);
+
+  // Add EmailTopupService
+  server.addService(emailTopupProto.EmailTopupService.service, implementations.emailTopupService);
 
   // Bind server
   const address = `0.0.0.0:${port}`;

@@ -21,6 +21,6 @@ export const config = {
     url: process.env.DATABASE_URL || "",
   },
   worker: {
-    maxConcurrentJobs: parseInt(process.env.MAX_CONCURRENT_JOBS || "3", 10),
+    maxConcurrentJobs: parseInt(process.env.MAX_CONCURRENT_JOBS || "1", 10),
   },
 };

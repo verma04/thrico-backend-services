@@ -29,13 +29,16 @@ const emailTypes = `#graphql
   type DKIMRecord {
     name: String!
     value: String!
+    verified: Boolean
   }
 
   type EmailDomainDNS {
     txtRecord: String
     txtValue: String
+    txtVerified: Boolean
     dkimRecords: [DKIMRecord]
     spfRecord: String
+    spfVerified: Boolean
   }
 
   type EmailDomain {
@@ -48,8 +51,8 @@ const emailTypes = `#graphql
     status: EmailDomainStatus!
     dnsRecords: EmailDomainDNS
     verifiedAt: String
-    createdAt: String
-    updatedAt: String
+    createdAt: Date
+    updatedAt: Date
   }
 
   type EmailDomainVerificationResult {
@@ -68,9 +71,10 @@ const emailTypes = `#graphql
     name: String!
     subject: String!
     html: String!
+    json: String
     isActive: Boolean
-    createdAt: String
-    updatedAt: String
+    createdAt: Date
+    updatedAt: Date
   }
 
   # ─────────────────────────────────────────────
@@ -100,7 +104,7 @@ const emailTypes = `#graphql
     status: EmailSubscriptionStatus!
     startDate: String
     endDate: String
-    createdAt: String
+    createdAt: Date
   }
 
   # ─────────────────────────────────────────────
@@ -112,6 +116,23 @@ const emailTypes = `#graphql
     entity: String!
     extraEmails: Int!
     purchasedAt: String
+  }
+
+  type EmailTopupPricing {
+    topupId: String!
+    countryCode: String!
+    name: String!
+    numberOfEmails: Int!
+    price: Float!
+    status: Boolean!
+    order: Int!
+  }
+
+  type BuyEmailTopupResult {
+    billingId: String!
+    razorpayOrderId: String!
+    amount: Float!
+    currency: String!
   }
 
   # ─────────────────────────────────────────────
@@ -126,7 +147,13 @@ const emailTypes = `#graphql
     senderAddress: String!
     sesMessageId: String
     status: String
-    sentAt: String
+    sentAt: Date
+  }
+
+  type EmailUserGroup {
+    name: String!
+    emails: [String!]!
+    count: Int!
   }
 
   # ─────────────────────────────────────────────
@@ -162,6 +189,7 @@ const emailTypes = `#graphql
     name: String!
     subject: String!
     html: String!
+    json: String
   }
 
   input UpdateEmailTemplateInput {
@@ -169,13 +197,14 @@ const emailTypes = `#graphql
     name: String
     subject: String
     html: String
+    json: String
     isActive: Boolean
   }
 
   input SendEmailInput {
-    to: String!
-    subject: String!
-    html: String!
+    to: [String!]!
+    subject: String
+    html: String
     templateId: ID
   }
 
@@ -185,6 +214,17 @@ const emailTypes = `#graphql
 
   input AddEmailTopupInput {
     extraEmails: Int!
+  }
+
+  input BuyEmailTopupInput {
+    topupId: String!
+  }
+
+  input VerifyEmailTopupPaymentInput {
+    topupId: String!
+    razorpayOrderId: String!
+    razorpayPaymentId: String!
+    razorpaySignature: String!
   }
 
   input EmailLogFilterInput {
@@ -205,6 +245,9 @@ const emailTypes = `#graphql
     getEmailSubscription: EmailSubscriptionType
     getEmailLogs(input: EmailLogFilterInput): [EmailLogEntry]
     getEmailOverview: EmailOverview
+    getEmailTopups: [EmailTopupPricing]!
+    getEmailTopupHistory: [EmailTopup]!
+    getEmailUserGroups: [EmailUserGroup!]!
   }
 
   # ─────────────────────────────────────────────
@@ -221,6 +264,8 @@ const emailTypes = `#graphql
     deleteEmailTemplate(id: ID!): success!
     setEmailSubscription(input: SetEmailSubscriptionInput!): EmailSubscriptionType!
     addEmailTopup(input: AddEmailTopupInput!): EmailTopup!
+    buyEmailTopup(input: BuyEmailTopupInput!): BuyEmailTopupResult!
+    verifyEmailTopupPayment(input: VerifyEmailTopupPaymentInput!): SendEmailResult!
   }
 `;
 

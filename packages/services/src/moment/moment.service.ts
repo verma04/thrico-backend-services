@@ -129,6 +129,7 @@ export class MomentService {
     db: any,
     thumbnailUrl?: string,
     shareInFeed: boolean = false,
+    isAiContent: boolean = false,
   ) {
     try {
       let key = "";
@@ -207,6 +208,7 @@ export class MomentService {
           thumbnailUrl: thumbnailPath,
           caption,
           status: "PROCESSING",
+          isAiContent,
         })
         .returning();
 
@@ -220,6 +222,7 @@ export class MomentService {
         userId: moment.userId,
         caption: moment.caption,
         shareInFeed,
+        isAiContent: moment.isAiContent,
       });
 
       // Track storage usage - link to the created moment via referenceId
@@ -1255,7 +1258,7 @@ export class MomentService {
 
   static async updateMoment(
     momentId: string,
-    input: { caption?: string; thumbnailUrl?: string },
+    input: { caption?: string; thumbnailUrl?: string; isAiContent?: boolean },
     userId: string,
     db: any,
   ) {

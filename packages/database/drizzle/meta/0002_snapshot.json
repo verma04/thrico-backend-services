@@ -1,6 +1,6 @@
 {
-  "id": "5535cba8-3e46-4131-9a9e-410b8d51ee0a",
-  "prevId": "35aa5170-dba9-4aa3-8c50-c6502b69fcfc",
+  "id": "c7efb148-b051-43a5-bb46-9a6a9a607be1",
+  "prevId": "102fd3a9-88a1-4c7f-97fa-5063ea914d05",
   "version": "5",
   "dialect": "pg",
   "tables": {
@@ -239,6 +239,12 @@
           "primaryKey": false,
           "notNull": false,
           "default": "CURRENT_TIMESTAMP"
+        },
+        "role_id": {
+          "name": "role_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -282,6 +288,261 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "modulePermissions": {
+      "name": "modulePermissions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "role_id": {
+          "name": "role_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "module": {
+          "name": "module",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "can_read": {
+          "name": "can_read",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "can_create": {
+          "name": "can_create",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "can_edit": {
+          "name": "can_edit",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "can_delete": {
+          "name": "can_delete",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "modulePermissions_role_id_roles_id_fk": {
+          "name": "modulePermissions_role_id_roles_id_fk",
+          "tableFrom": "modulePermissions",
+          "tableTo": "roles",
+          "columnsFrom": [
+            "role_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "modulePermissions_role_id_module_unique": {
+          "name": "modulePermissions_role_id_module_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "role_id",
+            "module"
+          ]
+        }
+      }
+    },
+    "roles": {
+      "name": "roles",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_system": {
+          "name": "is_system",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "roles_name_entity_id_unique": {
+          "name": "roles_name_entity_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "name",
+            "entity_id"
+          ]
+        }
+      }
+    },
+    "admin_audit_logs": {
+      "name": "admin_audit_logs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "admin_id": {
+          "name": "admin_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "module": {
+          "name": "module",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resource_id": {
+          "name": "resource_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "target_user_id": {
+          "name": "target_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "previous_state": {
+          "name": "previous_state",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "new_state": {
+          "name": "new_state",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ip_address": {
+          "name": "ip_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "user_agent": {
+          "name": "user_agent",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
         }
       },
       "indexes": {},
@@ -2071,6 +2332,388 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
+    "emailDomain": {
+      "name": "emailDomain",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "domain": {
+          "name": "domain",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "verification_token": {
+          "name": "verification_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "dkim_tokens": {
+          "name": "dkim_tokens",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "spf_record": {
+          "name": "spf_record",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "emailDomainStatus",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "verified_at": {
+          "name": "verified_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "emailLog": {
+      "name": "emailLog",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "to": {
+          "name": "to",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject": {
+          "name": "subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sender_address": {
+          "name": "sender_address",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ses_message_id": {
+          "name": "ses_message_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'sent'"
+        },
+        "sent_at": {
+          "name": "sent_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "emailSubscription": {
+      "name": "emailSubscription",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plan": {
+          "name": "plan",
+          "type": "emailSubscriptionPlan",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'free'"
+        },
+        "number_of_emails_per_month": {
+          "name": "number_of_emails_per_month",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1000
+        },
+        "status": {
+          "name": "status",
+          "type": "emailSubscriptionStatus",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "start_date": {
+          "name": "start_date",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "end_date": {
+          "name": "end_date",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "emailTemplate": {
+      "name": "emailTemplate",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject": {
+          "name": "subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "html": {
+          "name": "html",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_active": {
+          "name": "is_active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "emailTopup": {
+      "name": "emailTopup",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "extra_emails": {
+          "name": "extra_emails",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "purchased_at": {
+          "name": "purchased_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "emailUsage": {
+      "name": "emailUsage",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "emails_sent": {
+          "name": "emails_sent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "number_of_emails_per_month": {
+          "name": "number_of_emails_per_month",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1000
+        },
+        "period_start": {
+          "name": "period_start",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "period_end": {
+          "name": "period_end",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
     "userAuditLogs": {
       "name": "userAuditLogs",
       "schema": "",
@@ -2296,6 +2939,19 @@
           "type": "vector(1536)",
           "primaryKey": false,
           "notNull": false
+        },
+        "isDeletionPending": {
+          "name": "isDeletionPending",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": false
+        },
+        "deletionRequestedAt": {
+          "name": "deletionRequestedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -2447,11 +3103,61 @@
           "primaryKey": false,
           "notNull": true
         },
+        "location": {
+          "name": "location",
+          "type": "geometry",
+          "primaryKey": false,
+          "notNull": false
+        },
         "user_ID": {
           "name": "user_ID",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "userNearbySettings": {
+      "name": "userNearbySettings",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "privacy": {
+          "name": "privacy",
+          "type": "nearbyDiscoveryPrivacy",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'VISIBLE'"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "CURRENT_TIMESTAMP"
         }
       },
       "indexes": {},
@@ -2854,6 +3560,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
+        },
+        "city_id": {
+          "name": "city_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -3485,6 +4197,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "location_point": {
+          "name": "location_point",
+          "type": "geometry",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "city_id": {
+          "name": "city_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "lastDateOfRegistration": {
           "name": "lastDateOfRegistration",
           "type": "date",
@@ -3613,6 +4337,25 @@
         "embedding": {
           "name": "embedding",
           "type": "vector(1536)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "moderationStatus": {
+          "name": "moderationStatus",
+          "type": "moderation_state_status",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'PENDING'"
+        },
+        "moderationResult": {
+          "name": "moderationResult",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "moderatedAt": {
+          "name": "moderatedAt",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         }
@@ -6771,6 +7514,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "location_point": {
+          "name": "location_point",
+          "type": "geometry",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "city_id": {
+          "name": "city_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "requireAdminApprovalForPosts": {
           "name": "requireAdminApprovalForPosts",
           "type": "boolean",
@@ -6912,6 +7667,25 @@
         "archivedReason": {
           "name": "archivedReason",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "moderationStatus": {
+          "name": "moderationStatus",
+          "type": "moderation_state_status",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'PENDING'"
+        },
+        "moderationResult": {
+          "name": "moderationResult",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "moderatedAt": {
+          "name": "moderatedAt",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         }
@@ -7091,6 +7865,25 @@
           "primaryKey": false,
           "notNull": false,
           "default": "'USER'"
+        },
+        "moderation_status": {
+          "name": "moderation_status",
+          "type": "moderation_state_status",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'PENDING'"
+        },
+        "moderation_result": {
+          "name": "moderation_result",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "moderated_at": {
+          "name": "moderated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
         },
         "updated_at": {
           "name": "updated_at",
@@ -7545,6 +8338,32 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
+        },
+        "moderation_status": {
+          "name": "moderation_status",
+          "type": "moderation_state_status",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'PENDING'"
+        },
+        "moderation_result": {
+          "name": "moderation_result",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "moderated_at": {
+          "name": "moderated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "is_ai_content": {
+          "name": "is_ai_content",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": false
         }
       },
       "indexes": {},
@@ -8337,6 +9156,25 @@
           "type": "geometry",
           "primaryKey": false,
           "notNull": false
+        },
+        "moderationStatus": {
+          "name": "moderationStatus",
+          "type": "moderation_state_status",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'PENDING'"
+        },
+        "moderationResult": {
+          "name": "moderationResult",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "moderatedAt": {
+          "name": "moderatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -9028,6 +9866,25 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "moderationStatus": {
+          "name": "moderationStatus",
+          "type": "moderation_state_status",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'PENDING'"
+        },
+        "moderationResult": {
+          "name": "moderationResult",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "moderatedAt": {
+          "name": "moderatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -9477,6 +10334,12 @@
         "skills": {
           "name": "skills",
           "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "city_id": {
+          "name": "city_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         }
@@ -11886,6 +12749,73 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
+    "momentNotifications": {
+      "name": "momentNotifications",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "type": {
+          "name": "type",
+          "type": "momentNotificationType",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sender_id": {
+          "name": "sender_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "moment_id": {
+          "name": "moment_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_read": {
+          "name": "is_read",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
     "networkNotifications": {
       "name": "networkNotifications",
       "schema": "",
@@ -12022,6 +12952,12 @@
         },
         "gamification_notification_id": {
           "name": "gamification_notification_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "moment_notification_id": {
+          "name": "moment_notification_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -12490,6 +13426,25 @@
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
+        },
+        "moderationStatus": {
+          "name": "moderationStatus",
+          "type": "moderation_state_status",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'PENDING'"
+        },
+        "moderationResult": {
+          "name": "moderationResult",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "moderatedAt": {
+          "name": "moderatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -12619,6 +13574,25 @@
           "primaryKey": false,
           "notNull": false,
           "default": "'USER'"
+        },
+        "moderationStatus": {
+          "name": "moderationStatus",
+          "type": "moderation_state_status",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'PENDING'"
+        },
+        "moderationResult": {
+          "name": "moderationResult",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "moderatedAt": {
+          "name": "moderatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -14325,6 +15299,25 @@
           "primaryKey": false,
           "notNull": false,
           "default": "CURRENT_TIMESTAMP"
+        },
+        "moderationStatus": {
+          "name": "moderationStatus",
+          "type": "moderation_state_status",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'PENDING'"
+        },
+        "moderationResult": {
+          "name": "moderationResult",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "moderatedAt": {
+          "name": "moderatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {},
@@ -15066,6 +16059,25 @@
         "created_by": {
           "name": "created_by",
           "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "moderationStatus": {
+          "name": "moderationStatus",
+          "type": "moderation_state_status",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'PENDING'"
+        },
+        "moderationResult": {
+          "name": "moderationResult",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "moderatedAt": {
+          "name": "moderatedAt",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         }
@@ -17313,6 +18325,13 @@
           "type": "real",
           "primaryKey": false,
           "notNull": false
+        },
+        "is_ai_content": {
+          "name": "is_ai_content",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": false
         }
       },
       "indexes": {
@@ -17325,6 +18344,242 @@
         }
       },
       "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "cities": {
+      "name": "cities",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "country": {
+          "name": "country",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "boundary_polygon": {
+          "name": "boundary_polygon",
+          "type": "geometry",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "contact": {
+      "name": "contact",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "subject": {
+          "name": "subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "message": {
+          "name": "message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'PENDING'"
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "ai_moderation_logs": {
+      "name": "ai_moderation_logs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "content_id": {
+          "name": "content_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "classification": {
+          "name": "classification",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "confidence": {
+          "name": "confidence",
+          "type": "numeric(5, 4)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "model_used": {
+          "name": "model_used",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "ai_moderation_logs_entity_id_entity_id_fk": {
+          "name": "ai_moderation_logs_entity_id_entity_id_fk",
+          "tableFrom": "ai_moderation_logs",
+          "tableTo": "entity",
+          "columnsFrom": [
+            "entity_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "ai_token_usage": {
+      "name": "ai_token_usage",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "module": {
+          "name": "module",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'moderation'"
+        },
+        "tokens": {
+          "name": "tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "default": 0
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "ai_token_usage_entity_id_entity_id_fk": {
+          "name": "ai_token_usage_entity_id_entity_id_fk",
+          "tableFrom": "ai_token_usage",
+          "tableTo": "entity",
+          "columnsFrom": [
+            "entity_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
@@ -17604,6 +18859,50 @@
           "onUpdate": "no action"
         }
       },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "moderation_jobs": {
+      "name": "moderation_jobs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "content_id": {
+          "name": "content_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "moderation_job_status",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'PENDING'"
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "default": 0
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
@@ -17935,17 +19234,11 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "userToEntityId": {
-          "name": "userToEntityId",
+        "targetId": {
+          "name": "targetId",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
-        },
-        "action": {
-          "name": "action",
-          "type": "reportStatus",
-          "primaryKey": false,
-          "notNull": false
         },
         "module": {
           "name": "module",
@@ -17953,8 +19246,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "performedBy": {
-          "name": "performedBy",
+        "reportedBy": {
+          "name": "reportedBy",
           "type": "uuid",
           "primaryKey": false,
           "notNull": false
@@ -17965,6 +19258,19 @@
           "primaryKey": false,
           "notNull": false
         },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "reportStatus",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'PENDING'"
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -17972,11 +19278,104 @@
           "notNull": false,
           "default": "now()"
         },
-        "entity": {
-          "name": "entity",
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "entity_id": {
+          "name": "entity_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "storage_files": {
+      "name": "storage_files",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "module": {
+          "name": "module",
+          "type": "storageModule",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "file_key": {
+          "name": "file_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "file_url": {
+          "name": "file_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mime_type": {
+          "name": "mime_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "size_in_bytes": {
+          "name": "size_in_bytes",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "default": 0
+        },
+        "uploaded_by": {
+          "name": "uploaded_by",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reference_id": {
+          "name": "reference_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "CURRENT_TIMESTAMP"
         }
       },
       "indexes": {},
@@ -18021,6 +19420,67 @@
         "refunded": "refunded",
         "captured": "captured",
         "Failed": "Failed"
+      }
+    },
+    "emailDomainStatus": {
+      "name": "emailDomainStatus",
+      "values": {
+        "pending": "pending",
+        "verified": "verified",
+        "failed": "failed"
+      }
+    },
+    "emailSubscriptionPlan": {
+      "name": "emailSubscriptionPlan",
+      "values": {
+        "free": "free",
+        "pro": "pro",
+        "enterprise": "enterprise"
+      }
+    },
+    "emailSubscriptionStatus": {
+      "name": "emailSubscriptionStatus",
+      "values": {
+        "active": "active",
+        "inactive": "inactive",
+        "expired": "expired"
+      }
+    },
+    "gender": {
+      "name": "gender",
+      "values": {
+        "male": "male",
+        "female": "female",
+        "other": "other"
+      }
+    },
+    "nearbyDiscoveryPrivacy": {
+      "name": "nearbyDiscoveryPrivacy",
+      "values": {
+        "VISIBLE": "VISIBLE",
+        "APPROXIMATE": "APPROXIMATE",
+        "HIDDEN": "HIDDEN"
+      }
+    },
+    "userStatus": {
+      "name": "userStatus",
+      "values": {
+        "APPROVED": "APPROVED",
+        "BLOCKED": "BLOCKED",
+        "PENDING": "PENDING",
+        "REJECTED": "REJECTED",
+        "FLAGGED": "FLAGGED",
+        "DISABLED": "DISABLED",
+        "SUSPENDED": "SUSPENDED"
+      }
+    },
+    "userPronounsStatus": {
+      "name": "userPronounsStatus",
+      "values": {
+        "they/them": "they/them",
+        "she/her": "she/her",
+        "he/him": "he/him",
+        "other": "other"
       }
     },
     "attendeeStatus": {
@@ -18550,6 +20010,14 @@
         "LISTING_LIKE": "LISTING_LIKE"
       }
     },
+    "momentNotificationType": {
+      "name": "momentNotificationType",
+      "values": {
+        "MOMENT_LIKE": "MOMENT_LIKE",
+        "MOMENT_COMMENT": "MOMENT_COMMENT",
+        "MOMENT_POSTED": "MOMENT_POSTED"
+      }
+    },
     "networkNotificationType": {
       "name": "networkNotificationType",
       "values": {
@@ -18566,7 +20034,8 @@
         "NETWORK": "NETWORK",
         "JOB": "JOB",
         "LISTING": "LISTING",
-        "GAMIFICATION": "GAMIFICATION"
+        "GAMIFICATION": "GAMIFICATION",
+        "MOMENT": "MOMENT"
       }
     },
     "highlightsType": {
@@ -18686,14 +20155,6 @@
         "WEB": "WEB"
       }
     },
-    "gender": {
-      "name": "gender",
-      "values": {
-        "male": "male",
-        "female": "female",
-        "other": "other"
-      }
-    },
     "joiningTerms": {
       "name": "joiningTerms",
       "values": {
@@ -18755,26 +20216,6 @@
         "PENDING": "PENDING",
         "RESOLVED": "RESOLVED",
         "DISMISSED": "DISMISSED"
-      }
-    },
-    "userStatus": {
-      "name": "userStatus",
-      "values": {
-        "APPROVED": "APPROVED",
-        "BLOCKED": "BLOCKED",
-        "PENDING": "PENDING",
-        "REJECTED": "REJECTED",
-        "FLAGGED": "FLAGGED",
-        "DISABLED": "DISABLED"
-      }
-    },
-    "userPronounsStatus": {
-      "name": "userPronounsStatus",
-      "values": {
-        "they/them": "they/them",
-        "she/her": "she/her",
-        "he/him": "he/him",
-        "other": "other"
       }
     },
     "badge_type": {
@@ -18896,6 +20337,26 @@
         "SUSPEND": "SUSPEND"
       }
     },
+    "moderation_job_status": {
+      "name": "moderation_job_status",
+      "values": {
+        "PENDING": "PENDING",
+        "PROCESSING": "PROCESSING",
+        "DONE": "DONE",
+        "FAILED": "FAILED"
+      }
+    },
+    "moderation_state_status": {
+      "name": "moderation_state_status",
+      "values": {
+        "PENDING": "PENDING",
+        "PROCESSING": "PROCESSING",
+        "APPROVED": "APPROVED",
+        "REJECTED": "REJECTED",
+        "FLAGGED": "FLAGGED",
+        "FAILED": "FAILED"
+      }
+    },
     "severity": {
       "name": "severity",
       "values": {
@@ -18909,7 +20370,36 @@
       "values": {
         "FEED": "FEED",
         "MEMBER": "MEMBER",
-        "DISCUSSION_FORUM": "DISCUSSION_FORUM"
+        "DISCUSSION_FORUM": "DISCUSSION_FORUM",
+        "COMMUNITY": "COMMUNITY",
+        "JOB": "JOB",
+        "LISTING": "LISTING",
+        "MOMENT": "MOMENT",
+        "OFFER": "OFFER",
+        "EVENT": "EVENT",
+        "USER": "USER",
+        "SHOP": "SHOP",
+        "SURVEY": "SURVEY"
+      }
+    },
+    "storageModule": {
+      "name": "storageModule",
+      "values": {
+        "FEED": "FEED",
+        "MEMBER": "MEMBER",
+        "DISCUSSION_FORUM": "DISCUSSION_FORUM",
+        "COMMUNITY": "COMMUNITY",
+        "JOB": "JOB",
+        "LISTING": "LISTING",
+        "MOMENT": "MOMENT",
+        "OFFER": "OFFER",
+        "EVENT": "EVENT",
+        "USER": "USER",
+        "SHOP": "SHOP",
+        "SURVEY": "SURVEY",
+        "MESSAGING": "MESSAGING",
+        "GENERAL": "GENERAL",
+        "OFFERS": "OFFERS"
       }
     }
   },

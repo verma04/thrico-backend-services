@@ -211,6 +211,7 @@ export class FeedMutationService {
             celebrationId: celebration?.id || null,
             videoUrl: videoUrl?.url || null,
             thumbnailUrl: thumbnailUrl?.key || null,
+            isAiContent: input.isAiContent ?? false,
           })
           .returning({ id: userFeed.id });
 
@@ -656,6 +657,7 @@ export class FeedMutationService {
     input: {
       description?: string;
       media?: string[];
+      isAiContent?: boolean;
     };
     db: any;
   }) {
@@ -677,11 +679,12 @@ export class FeedMutationService {
 
     await db.transaction(async (tx: any) => {
       // Update feed description
-      if (input.description !== undefined) {
+      if (input.description !== undefined || input.isAiContent !== undefined) {
         await tx
           .update(userFeed)
           .set({
-            description: input.description,
+            ...(input.description !== undefined && { description: input.description }),
+            ...(input.isAiContent !== undefined && { isAiContent: input.isAiContent }),
           })
           .where(eq(userFeed.id, feedId));
       }

@@ -4,7 +4,7 @@
   "description": "Entity Admin GraphQL API",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "nodemon --exec tsx src/server.ts",
+    "dev": "NODE_OPTIONS='--max-old-space-size=4096' nodemon --exec tsx src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "clean": "rm -rf dist *.tsbuildinfo"
@@ -29,6 +29,7 @@
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "moment": "^2.30.1",
+    "razorpay": "^2.9.2",
     "redis": "^5.10.0",
     "uuid": "^9.0.1"
   },

@@ -44,6 +44,60 @@ export const dashboardTypes = gql`
     engagementRateChange: Float
   }
 
+  type CommunityKPIs {
+    # Core Community Vitals
+    dailyActiveUsers: StatValue!
+    monthlyActiveUsers: StatValue!
+    engagementRate: StatValue!
+    retentionRate: StatValue!
+    newMembers: StatValue!
+    churnRate: StatValue!
+    healthIndex: StatValue!
+    communityNPS: StatValue!
+
+    # Content & Feed
+    totalPosts: StatValue!
+    contributionFrequency: StatValue!
+    interactionReciprocity: StatValue!
+    contentReach: StatValue!
+    contentTypeBreakdown: [ContentTypeStat!]!
+    
+    # Acquisition & Retention
+    memberActivationRate: StatValue!
+    communityAdvocacyIndex: StatValue!
+    superfanRatio: StatValue!
+    
+    # Moderation Overview
+    moderationStats: [ModerationStat!]!
+    
+    # Module Performance
+    modulePerformance: [ModulePerformanceStat!]!
+  }
+
+  type StatValue {
+    value: Float!
+    change: Float # Percentage change from previous period
+    trend: [Float!] # Sparkline data points
+  }
+
+  type ContentTypeStat {
+    type: String!
+    count: Int!
+    percentage: Float!
+  }
+
+  type ModerationStat {
+    type: String!
+    count: Int!
+    status: String!
+  }
+
+  type ModulePerformanceStat {
+    module: String!
+    value: String!
+    subtext: String!
+  }
+
   type ModuleActivity {
     name: String!
     userCount: Int!
@@ -65,6 +119,7 @@ export const dashboardTypes = gql`
     dashboards(entityId: String!): [Dashboard!]!
     dashboard(id: ID!): Dashboard
     getDashboardStats(timeRange: TimeRange!): DashboardStats!
+    getCommunityKPIs(timeRange: TimeRange!): CommunityKPIs!
     getModuleActivity(timeRange: TimeRange!): [ModuleActivity!]!
     getPlatformModuleActivity(timeRange: TimeRange!): PlatformModuleActivity!
   }

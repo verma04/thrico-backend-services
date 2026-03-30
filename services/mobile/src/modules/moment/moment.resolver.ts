@@ -279,7 +279,7 @@ export const momentResolvers = {
       try {
         const { db, userId, entityId } =
           context.user || (await checkAuth(context));
-        const { fileUrl, caption, thumbnailUrl, shareInFeed = true } = input;
+        const { fileUrl, caption, thumbnailUrl, shareInFeed = true, isAiContent = false } = input;
         const data = await MomentService.confirmUpload(
           fileUrl,
           caption,
@@ -288,6 +288,7 @@ export const momentResolvers = {
           db,
           thumbnailUrl,
           shareInFeed,
+          isAiContent,
         );
         console.log(data);
         return data;
@@ -304,7 +305,7 @@ export const momentResolvers = {
           id: userId,
           entityId,
         } = context.user || (await checkAuth(context));
-        const { fileUrl, caption, thumbnailUrl, shareInFeed } = input;
+        const { fileUrl, caption, thumbnailUrl, shareInFeed, isAiContent = false } = input;
         return await MomentService.confirmUpload(
           fileUrl,
           caption,
@@ -313,6 +314,7 @@ export const momentResolvers = {
           db,
           thumbnailUrl,
           shareInFeed,
+          isAiContent,
         );
       } catch (error) {
         log.error("Error in momentUpload", { error, input });

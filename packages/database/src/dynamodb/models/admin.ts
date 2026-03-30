@@ -91,7 +91,7 @@ const OTPSchema = new dynamoose.Schema(
   },
 );
 
-export const Domain = dynamoose.model("customDomain", domainSchema);
+
 
 const LoginSessionSchema = new dynamoose.Schema(
   {

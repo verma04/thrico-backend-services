@@ -6,6 +6,9 @@ import {
   emailSubscription,
   emailTopup,
   emailLog,
+  user,
+  userToEntity,
+  userVerification,
 } from "@thrico/database";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import { GraphQLError } from "graphql";
@@ -21,6 +24,12 @@ import {
   sendEmailViaSES,
   deleteDomainIdentity,
 } from "../../utils/ses/ses.service";
+import {
+  verifyDomainDNS,
+  DNSVerificationReport,
+} from "../../utils/dns/dns.service";
+import { log } from "@thrico/logging";
+import { emailTopupClient, subscriptionClient } from "@thrico/grpc";
 
 // ─────────────────────────────────────────────
 // Helpers
@@ -86,20 +95,14 @@ async function getOrCreateUsage(db: any, entityId: string) {
 /**
  * Increment usage count.
  */
-async function incrementUsage(db: any, usageId: string) {
-  await db
-    .update(emailUsage)
-    .set({
-      emailsSent: sql`${emailUsage.emailsSent} + 1`,
-      updatedAt: new Date(),
-    })
-    .where(eq(emailUsage.id, usageId));
-}
 
 /**
  * Get the sender address for an entity—custom domain or fallback.
  */
-async function getSenderAddress(db: any, entityId: string): Promise<string | null> {
+async function getSenderAddress(
+  db: any,
+  entityId: string,
+): Promise<string | null> {
   const domain = await db.query.emailDomain.findFirst({
     where: and(
       eq(emailDomain.entity, entityId),
@@ -125,11 +128,13 @@ export const emailResolvers: any = {
       try {
         const auth = await checkAuth(context);
         ensurePermission(auth, AdminModule.DOMAIN, PermissionAction.READ);
-        const { entity: entityId, db } = auth;
+        const { entity: entityId, db, id: adminId } = auth;
 
         const domain = await db.query.emailDomain.findFirst({
           where: eq(emailDomain.entity, entityId),
         });
+
+        console.log(domain);
 
         if (!domain) return null;
 
@@ -139,43 +144,53 @@ export const emailResolvers: any = {
           const dkimTokens = domain.dkimTokens
             ? JSON.parse(domain.dkimTokens)
             : [];
+
+          // Perform real-time DNS check
+          const dnsStatus = await verifyDomainDNS(
+            domain.domain,
+            domain.verificationToken,
+            dkimTokens,
+          );
+
           dnsRecords = {
             txtRecord: `_amazonses.${domain.domain}`,
             txtValue: domain.verificationToken,
-            dkimRecords: dkimTokens.map((token: string) => ({
-              name: `${token}._domainkey.${domain.domain}`,
-              value: `${token}.dkim.amazonses.com`,
-            })),
+            txtVerified: dnsStatus.txtVerified,
+            dkimRecords: dnsStatus.dkimRecords,
             spfRecord: domain.spfRecord || "v=spf1 include:amazonses.com ~all",
+            spfVerified: dnsStatus.spfVerified,
           };
+
+          // If all verified, update DB status
+          if (dnsStatus.allVerified && domain.status !== "verified") {
+            await db
+              .update(emailDomain)
+              .set({
+                status: "verified",
+                verifiedAt: new Date(),
+                updatedAt: new Date(),
+              })
+              .where(eq(emailDomain.id, domain.id));
+
+            await createAuditLog(db, {
+              adminId,
+              entityId,
+              module: AdminModule.DOMAIN,
+              action: "EMAIL_DOMAIN_VERIFIED",
+              resourceId: domain.id,
+              newState: { status: "verified" },
+              ipAddress: context.ip,
+              userAgent: context.userAgent,
+            });
+            domain.status = "verified";
+          }
         }
+
+        log.info("Email domain details", { domain, dnsRecords });
 
         return { ...domain, dnsRecords };
       } catch (error) {
-        console.error("getEmailDomain error:", error);
-        throw error;
-      }
-    },
-
-    async verifyEmailDomain(_: any, __: any, context: any) {
-      try {
-        const auth = await checkAuth(context);
-        ensurePermission(auth, AdminModule.DOMAIN, PermissionAction.READ);
-        const { entity: entityId, db } = auth;
-
-        const domain = await db.query.emailDomain.findFirst({
-          where: eq(emailDomain.entity, entityId),
-        });
-
-        if (!domain) {
-          throw new GraphQLError("No email domain found", {
-            extensions: { code: "NOT_FOUND" },
-          });
-        }
-
-        return await checkDomainVerificationStatus(domain.domain);
-      } catch (error) {
-        console.error("verifyEmailDomain error:", error);
+        log.error("getEmailDomain error:", error);
         throw error;
       }
     },
@@ -192,7 +207,7 @@ export const emailResolvers: any = {
           orderBy: desc(emailTemplate.createdAt),
         });
       } catch (error) {
-        console.error("getEmailTemplates error:", error);
+        log.error("getEmailTemplates error:", error);
         throw error;
       }
     },
@@ -218,7 +233,7 @@ export const emailResolvers: any = {
 
         return template;
       } catch (error) {
-        console.error("getEmailTemplate error:", error);
+        log.error("getEmailTemplate error:", error);
         throw error;
       }
     },
@@ -228,54 +243,26 @@ export const emailResolvers: any = {
       try {
         const auth = await checkAuth(context);
         ensurePermission(auth, AdminModule.DOMAIN, PermissionAction.READ);
-        const { entity: entityId, db } = auth;
+        const { entity: entityId } = auth;
 
-        const usage = await getOrCreateUsage(db, entityId);
-        const remaining = Math.max(0, usage.numberOfEmailsPerMonth - usage.emailsSent);
-        const usagePercent =
-          usage.numberOfEmailsPerMonth > 0
-            ? Math.round((usage.emailsSent / usage.numberOfEmailsPerMonth) * 100)
-            : 0;
+        const result = await emailTopupClient.getEmailQuota(entityId);
 
-        return { ...usage, remaining, usagePercent };
+        return {
+          entity: entityId,
+          numberOfEmailsPerMonth: result.balance + result.usedThisMonth,
+          emailsSent: result.usedThisMonth,
+          remaining: result.balance,
+          usagePercent:
+            result.balance + result.usedThisMonth > 0
+              ? Math.round(
+                  (result.usedThisMonth /
+                    (result.balance + result.usedThisMonth)) *
+                    100,
+                )
+              : 0,
+        };
       } catch (error) {
-        console.error("getEmailUsage error:", error);
-        throw error;
-      }
-    },
-
-    // ── Subscription ──────────────────────────
-    async getEmailSubscription(_: any, __: any, context: any) {
-      try {
-        const auth = await checkAuth(context);
-        ensurePermission(
-          auth,
-          AdminModule.SUBSCRIPTION,
-          PermissionAction.READ,
-        );
-        const { entity: entityId, db } = auth;
-
-        let sub = await db.query.emailSubscription.findFirst({
-          where: eq(emailSubscription.entity, entityId),
-        });
-
-        // Auto-create free subscription if none exists
-        if (!sub) {
-          const [newSub] = await db
-            .insert(emailSubscription)
-            .values({
-              entity: entityId,
-              plan: "free",
-              numberOfEmailsPerMonth: PLAN_LIMITS.free,
-              status: "active",
-            })
-            .returning();
-          sub = newSub;
-        }
-
-        return sub;
-      } catch (error) {
-        console.error("getEmailSubscription error:", error);
+        log.error("getEmailUsage error:", error);
         throw error;
       }
     },
@@ -297,7 +284,7 @@ export const emailResolvers: any = {
           offset,
         });
       } catch (error) {
-        console.error("getEmailLogs error:", error);
+        log.error("getEmailLogs error:", error);
         throw error;
       }
     },
@@ -309,37 +296,171 @@ export const emailResolvers: any = {
         ensurePermission(auth, AdminModule.DOMAIN, PermissionAction.READ);
         const { entity: entityId, db } = auth;
 
-        const [domain, sub, usage, recentEmails] = await Promise.all([
-          db.query.emailDomain.findFirst({
-            where: eq(emailDomain.entity, entityId),
-          }),
-          db.query.emailSubscription.findFirst({
-            where: eq(emailSubscription.entity, entityId),
-          }),
-          getOrCreateUsage(db, entityId),
-          db.query.emailLog.findMany({
-            where: eq(emailLog.entity, entityId),
-            orderBy: desc(emailLog.sentAt),
-            limit: 10,
-          }),
-        ]);
+        const response = await emailTopupClient.getEmailOverview(entityId);
 
-        const remaining = usage
-          ? Math.max(0, usage.numberOfEmailsPerMonth - usage.emailsSent)
-          : 0;
-        const usagePercent =
-          usage && usage.numberOfEmailsPerMonth > 0
-            ? Math.round((usage.emailsSent / usage.numberOfEmailsPerMonth) * 100)
-            : 0;
-
+        // Map the gRPC response fields (mapped to proto) to the GraphQL schema fields
         return {
-          domain,
-          subscription: sub,
-          usage: usage ? { ...usage, remaining, usagePercent } : null,
-          recentEmails,
+          domain: response.domain ? { domain: response.domain } : null,
+          subscription: response.subscription
+            ? {
+                id: response.subscription.subscriptionId,
+                entity: entityId,
+                plan: response.subscription.planName?.toLowerCase(), // Map gRPC 'planName' to lowercase GraphQL enum
+                status: response.subscription.status?.toLowerCase(), // Map status to lowercase if needed
+                numberOfEmailsPerMonth: response.usage.numberOfEmailsPerMonth,
+                startDate: response.subscription.startDate,
+                endDate: response.subscription.endDate,
+              }
+            : null,
+          usage: {
+            id: `usage-${entityId}`,
+            entity: entityId,
+            emailsSent: response.usage.emailsSent,
+            numberOfEmailsPerMonth: response.usage.numberOfEmailsPerMonth,
+            remaining: response.usage.remaining,
+            usagePercent: response.usage.usagePercent,
+          },
+          recentEmails: (response.recentEmails || []).map((log: any) => ({
+            id: log.logId,
+            entity: entityId,
+            status: log.action,
+            subject: log.description,
+            sentAt: log.timestamp,
+            // These fields are required by EmailLogEntry but limited in proto
+            senderAddress: "",
+            to: "",
+          })),
         };
       } catch (error) {
-        console.error("getEmailOverview error:", error);
+        log.error("getEmailOverview error:", error);
+        throw error;
+      }
+    },
+
+    async getEmailTopups(_: any, { countryCode }: any, context: any) {
+      try {
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.SUBSCRIPTION, PermissionAction.READ);
+
+        const response = await emailTopupClient.getEmailTopups(auth?.country);
+        return response.topups || [];
+      } catch (error) {
+        log.error("getEmailTopups error:", error);
+        throw error;
+      }
+    },
+
+    async getEmailTopupHistory(_: any, __: any, context: any) {
+      try {
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.SUBSCRIPTION, PermissionAction.READ);
+        const { entity: entityId, db } = auth;
+
+        return await db.query.emailTopup.findMany({
+          where: eq(emailTopup.entity, entityId),
+          orderBy: desc(emailTopup.createdAt),
+        });
+      } catch (error) {
+        log.error("getEmailTopupHistory error:", error);
+        throw error;
+      }
+    },
+
+    async getEmailUserGroups(_: any, __: any, context: any) {
+      try {
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.USERS, PermissionAction.READ);
+        const { entity: entityId, db } = auth;
+
+        // 1. All Users
+        const allUsersResult = await db
+          .select({ email: user.email })
+          .from(userToEntity)
+          .innerJoin(user, eq(userToEntity.userId, user.id))
+          .where(eq(userToEntity.entityId, entityId));
+
+        const allEmails = [
+          ...new Set(allUsersResult.map((u: any) => u.email).filter(Boolean)),
+        ] as string[];
+
+        // 2. Verified Users (those in userVerification table with isVerified: true)
+        const verifiedUsersResult = await db
+          .select({ email: user.email })
+          .from(userToEntity)
+          .innerJoin(user, eq(userToEntity.userId, user.id))
+          .innerJoin(
+            userVerification,
+            eq(userVerification.userId, userToEntity.id),
+          )
+          .where(
+            and(
+              eq(userToEntity.entityId, entityId),
+              eq(userVerification.isVerified, true),
+            ),
+          );
+
+        const verifiedEmails = [
+          ...new Set(
+            verifiedUsersResult.map((u: any) => u.email).filter(Boolean),
+          ),
+        ] as string[];
+
+        // 3. Pending Users (status: PENDING)
+        const pendingUsersResult = await db
+          .select({ email: user.email })
+          .from(userToEntity)
+          .innerJoin(user, eq(userToEntity.userId, user.id))
+          .where(
+            and(
+              eq(userToEntity.entityId, entityId),
+              eq(userToEntity.status, "PENDING"),
+            ),
+          );
+
+        const pendingEmails = [
+          ...new Set(
+            pendingUsersResult.map((u: any) => u.email).filter(Boolean),
+          ),
+        ] as string[];
+
+        // 4. Rejected Users (status: REJECTED)
+        const rejectedUsersResult = await db
+          .select({ email: user.email })
+          .from(userToEntity)
+          .innerJoin(user, eq(userToEntity.userId, user.id))
+          .where(
+            and(
+              eq(userToEntity.entityId, entityId),
+              eq(userToEntity.status, "REJECTED"),
+            ),
+          );
+
+        const rejectedEmails = [
+          ...new Set(
+            rejectedUsersResult.map((u: any) => u.email).filter(Boolean),
+          ),
+        ] as string[];
+
+        return [
+          {
+            name: "Verified Users",
+            emails: verifiedEmails,
+            count: verifiedEmails.length,
+          },
+          { name: "All Users", emails: allEmails, count: allEmails.length },
+          {
+            name: "Pending Users",
+            emails: pendingEmails,
+            count: pendingEmails.length,
+          },
+          {
+            name: "Rejected Users",
+            emails: rejectedEmails,
+            count: rejectedEmails.length,
+          },
+        ];
+      } catch (error) {
+        log.error("getEmailUserGroups error:", error);
         throw error;
       }
     },
@@ -347,175 +468,6 @@ export const emailResolvers: any = {
 
   Mutation: {
     // ── Add Domain ────────────────────────────
-    async addEmailDomain(_: any, { input }: any, context: any) {
-      try {
-        const auth = await checkAuth(context);
-        ensurePermission(auth, AdminModule.DOMAIN, PermissionAction.CREATE);
-        const { entity: entityId, db, id: adminId } = auth;
-
-        // Check if entity already has an email domain
-        const existing = await db.query.emailDomain.findFirst({
-          where: eq(emailDomain.entity, entityId),
-        });
-
-        if (existing) {
-          throw new GraphQLError(
-            "You already have an email domain configured. Delete it first to add a new one.",
-            { extensions: { code: "CONFLICT" } },
-          );
-        }
-
-        // Register with SES
-        const sesResult = await verifyDomainIdentity(input.domain);
-
-        // Save to DB
-        const [newDomain] = await db
-          .insert(emailDomain)
-          .values({
-            entity: entityId,
-            domain: input.domain,
-            verificationToken: sesResult.verificationToken,
-            dkimTokens: JSON.stringify(sesResult.dkimTokens),
-            spfRecord: sesResult.spfRecord,
-            status: "pending",
-          })
-          .returning();
-
-        await createAuditLog(db, {
-          adminId,
-          entityId,
-          module: AdminModule.DOMAIN,
-          action: "ADD_EMAIL_DOMAIN",
-          resourceId: newDomain.id,
-          newState: newDomain,
-          ipAddress: context.ip,
-          userAgent: context.userAgent,
-        });
-
-        // Build DNS records for response
-        const dnsRecords = {
-          txtRecord: sesResult.txtRecord,
-          txtValue: sesResult.txtValue,
-          dkimRecords: sesResult.dkimRecords,
-          spfRecord: sesResult.spfRecord,
-        };
-
-        return { ...newDomain, dnsRecords };
-      } catch (error) {
-        console.error("addEmailDomain error:", error);
-        throw error;
-      }
-    },
-
-    // ── Delete Domain ─────────────────────────
-    async deleteEmailDomain(_: any, { id }: any, context: any) {
-      try {
-        const auth = await checkAuth(context);
-        ensurePermission(auth, AdminModule.DOMAIN, PermissionAction.DELETE);
-        const { entity: entityId, db, id: adminId } = auth;
-
-        const existing = await db.query.emailDomain.findFirst({
-          where: and(
-            eq(emailDomain.id, id),
-            eq(emailDomain.entity, entityId),
-          ),
-        });
-
-        if (!existing) {
-          throw new GraphQLError("Email domain not found", {
-            extensions: { code: "NOT_FOUND" },
-          });
-        }
-
-        // Remove from SES
-        try {
-          await deleteDomainIdentity(existing.domain);
-        } catch (sesErr) {
-          console.error("SES delete error (non-blocking):", sesErr);
-        }
-
-        // Remove from DB
-        await db.delete(emailDomain).where(eq(emailDomain.id, id));
-
-        await createAuditLog(db, {
-          adminId,
-          entityId,
-          module: AdminModule.DOMAIN,
-          action: "DELETE_EMAIL_DOMAIN",
-          resourceId: id,
-          previousState: existing,
-          ipAddress: context.ip,
-          userAgent: context.userAgent,
-        });
-
-        return { success: true };
-      } catch (error) {
-        console.error("deleteEmailDomain error:", error);
-        throw error;
-      }
-    },
-
-    // ── Check Verification ────────────────────
-    async checkEmailDomainVerification(_: any, __: any, context: any) {
-      try {
-        const auth = await checkAuth(context);
-        ensurePermission(auth, AdminModule.DOMAIN, PermissionAction.EDIT);
-        const { entity: entityId, db, id: adminId } = auth;
-
-        const domain = await db.query.emailDomain.findFirst({
-          where: eq(emailDomain.entity, entityId),
-        });
-
-        if (!domain) {
-          throw new GraphQLError("No email domain found", {
-            extensions: { code: "NOT_FOUND" },
-          });
-        }
-
-        const verificationResult = await checkDomainVerificationStatus(
-          domain.domain,
-        );
-
-        if (verificationResult.verified && domain.status !== "verified") {
-          await db
-            .update(emailDomain)
-            .set({
-              status: "verified",
-              verifiedAt: new Date(),
-              updatedAt: new Date(),
-            })
-            .where(eq(emailDomain.id, domain.id));
-
-          await createAuditLog(db, {
-            adminId,
-            entityId,
-            module: AdminModule.DOMAIN,
-            action: "EMAIL_DOMAIN_VERIFIED",
-            resourceId: domain.id,
-            previousState: { status: domain.status },
-            newState: { status: "verified" },
-            ipAddress: context.ip,
-            userAgent: context.userAgent,
-          });
-        } else if (
-          !verificationResult.verified &&
-          verificationResult.status === "Failed"
-        ) {
-          await db
-            .update(emailDomain)
-            .set({
-              status: "failed",
-              updatedAt: new Date(),
-            })
-            .where(eq(emailDomain.id, domain.id));
-        }
-
-        return verificationResult;
-      } catch (error) {
-        console.error("checkEmailDomainVerification error:", error);
-        throw error;
-      }
-    },
 
     // ── Send Email ────────────────────────────
     async sendEmail(_: any, { input }: any, context: any) {
@@ -525,26 +477,34 @@ export const emailResolvers: any = {
         const { entity: entityId, db, id: adminId } = auth;
 
         // 1. Check subscription is active
-        const sub = await db.query.emailSubscription.findFirst({
-          where: and(
-            eq(emailSubscription.entity, entityId),
-            eq(emailSubscription.status, "active"),
-          ),
-        });
+        // const sub = await db.query.emailSubscription.findFirst({
+        //   where: and(
+        //     eq(emailSubscription.entity, entityId),
+        //     eq(emailSubscription.status, "active"),
+        //   ),
+        // });
 
-        if (!sub) {
-          throw new GraphQLError(
-            "No active email subscription. Please subscribe to a plan first.",
-            { extensions: { code: "FORBIDDEN" } },
-          );
-        }
+        // if (!sub) {
+        //   throw new GraphQLError(
+        //     "No active email subscription. Please subscribe to a plan first.",
+        //     { extensions: { code: "FORBIDDEN" } },
+        //   );
+        // }
 
-        // 2. Check usage limit
-        const usage = await getOrCreateUsage(db, entityId);
-        if (usage.emailsSent >= usage.numberOfEmailsPerMonth) {
+        const recipients = Array.isArray(input.to) ? input.to : [input.to];
+        const recipientCount = recipients.length;
+
+        // 2. Check and deduct quota via gRPC
+        const quotaResult = await emailTopupClient.deductEmailQuota(
+          entityId,
+          recipientCount,
+        );
+        if (!quotaResult.success) {
           throw new GraphQLError(
-            "Email quota exceeded. Please upgrade your plan or purchase a top-up.",
-            { extensions: { code: "QUOTA_EXCEEDED" } },
+            quotaResult.message || "Email quota exceeded.",
+            {
+              extensions: { code: "QUOTA_EXCEEDED" },
+            },
           );
         }
 
@@ -559,9 +519,16 @@ export const emailResolvers: any = {
             ),
           });
           if (template) {
-            html = template.html;
-            subject = template.subject;
+            html = html || template.html;
+            subject = subject || template.subject;
           }
+        }
+
+        if (!html || !subject) {
+          throw new GraphQLError(
+            "Email content is missing. Provide 'html/subject' or a valid 'templateId'.",
+            { extensions: { code: "BAD_USER_INPUT" } },
+          );
         }
 
         // 4. Get sender address (verified custom domain required)
@@ -577,23 +544,23 @@ export const emailResolvers: any = {
         // 5. Send via SES
         const sesResult = await sendEmailViaSES({
           from: senderAddress,
-          to: input.to,
+          bcc: recipients,
           subject,
           html,
         });
 
         // 6. Log the email
-        await db.insert(emailLog).values({
-          entity: entityId,
-          to: input.to,
-          subject,
-          senderAddress,
-          sesMessageId: sesResult.messageId,
-          status: "sent",
-        });
-
-        // 7. Increment usage
-        await incrementUsage(db, usage.id);
+        // Log individual recipients
+        for (const recipient of recipients) {
+          await db.insert(emailLog).values({
+            entity: entityId,
+            to: recipient,
+            subject,
+            senderAddress,
+            sesMessageId: sesResult.messageId,
+            status: "sent",
+          });
+        }
 
         await createAuditLog(db, {
           adminId,
@@ -602,7 +569,7 @@ export const emailResolvers: any = {
           action: "SEND_EMAIL",
           resourceId: sesResult.messageId,
           newState: {
-            to: input.to,
+            bcc: input.bcc,
             subject,
             sender: senderAddress,
           },
@@ -616,7 +583,7 @@ export const emailResolvers: any = {
           message: "Email sent successfully",
         };
       } catch (error) {
-        console.error("sendEmail error:", error);
+        log.error("sendEmail error:", error);
         throw error;
       }
     },
@@ -635,6 +602,7 @@ export const emailResolvers: any = {
             name: input.name,
             subject: input.subject,
             html: input.html,
+            json: input.json ?? null,
           })
           .returning();
 
@@ -651,7 +619,7 @@ export const emailResolvers: any = {
 
         return template;
       } catch (error) {
-        console.error("createEmailTemplate error:", error);
+        log.error("createEmailTemplate error:", error);
         throw error;
       }
     },
@@ -679,6 +647,7 @@ export const emailResolvers: any = {
         if (input.name !== undefined) updateData.name = input.name;
         if (input.subject !== undefined) updateData.subject = input.subject;
         if (input.html !== undefined) updateData.html = input.html;
+        if (input.json !== undefined) updateData.json = input.json;
         if (input.isActive !== undefined) updateData.isActive = input.isActive;
 
         const [updated] = await db
@@ -701,7 +670,7 @@ export const emailResolvers: any = {
 
         return updated;
       } catch (error) {
-        console.error("updateEmailTemplate error:", error);
+        log.error("updateEmailTemplate error:", error);
         throw error;
       }
     },
@@ -740,7 +709,7 @@ export const emailResolvers: any = {
 
         return { success: true };
       } catch (error) {
-        console.error("deleteEmailTemplate error:", error);
+        log.error("deleteEmailTemplate error:", error);
         throw error;
       }
     },
@@ -749,11 +718,7 @@ export const emailResolvers: any = {
     async setEmailSubscription(_: any, { input }: any, context: any) {
       try {
         const auth = await checkAuth(context);
-        ensurePermission(
-          auth,
-          AdminModule.SUBSCRIPTION,
-          PermissionAction.EDIT,
-        );
+        ensurePermission(auth, AdminModule.SUBSCRIPTION, PermissionAction.EDIT);
         const { entity: entityId, db, id: adminId } = auth;
 
         const limit = PLAN_LIMITS[input.plan] || PLAN_LIMITS.free;
@@ -813,7 +778,7 @@ export const emailResolvers: any = {
 
         return sub;
       } catch (error) {
-        console.error("setEmailSubscription error:", error);
+        log.error("setEmailSubscription error:", error);
         throw error;
       }
     },
@@ -822,11 +787,7 @@ export const emailResolvers: any = {
     async addEmailTopup(_: any, { input }: any, context: any) {
       try {
         const auth = await checkAuth(context);
-        ensurePermission(
-          auth,
-          AdminModule.SUBSCRIPTION,
-          PermissionAction.EDIT,
-        );
+        ensurePermission(auth, AdminModule.SUBSCRIPTION, PermissionAction.EDIT);
         const { entity: entityId, db, id: adminId } = auth;
 
         // Create topup record
@@ -866,7 +827,43 @@ export const emailResolvers: any = {
 
         return topup;
       } catch (error) {
-        console.error("addEmailTopup error:", error);
+        log.error("addEmailTopup error:", error);
+        throw error;
+      }
+    },
+
+    async buyEmailTopup(_: any, { input }: any, context: any) {
+      try {
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.SUBSCRIPTION, PermissionAction.EDIT);
+        const { entity: entityId } = auth;
+
+        const response = await emailTopupClient.buyEmailTopup({
+          entityId,
+          topupId: input.topupId,
+          countryCode: auth?.country,
+        });
+
+        return response;
+      } catch (error) {
+        log.error("buyEmailTopup error:", error);
+        throw error;
+      }
+    },
+    async verifyEmailTopupPayment(_: any, { input }: any, context: any) {
+      try {
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.SUBSCRIPTION, PermissionAction.EDIT);
+
+        const result = await subscriptionClient.verifyRazorpayPayment(
+          input.razorpayOrderId,
+          input.razorpayPaymentId,
+          input.razorpaySignature,
+        );
+
+        return result;
+      } catch (error) {
+        log.error("verifyEmailTopupPayment error:", error);
         throw error;
       }
     },

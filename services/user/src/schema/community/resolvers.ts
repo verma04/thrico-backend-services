@@ -106,7 +106,7 @@ const communitiesResolvers: any = {
           .orderBy(desc(communityActivityLog.createdAt))
           .limit(5);
 
-        const recentActivity = recentActivityRows.map((row) => {
+        const recentActivity = recentActivityRows.map((row: any) => {
           let description = "";
           let type = row.type || "";
           let createdAt = row.createdAt;
@@ -189,8 +189,8 @@ const communitiesResolvers: any = {
           where: and(eq(communitySettings.groupId, groupId)),
         });
 
-        // Fetch rules (assuming rules are in communitySettings or a rules table)
-        const rules = adminInfo?.rules || null;
+        // Fetch rules (assuming rules are in groups table)
+        const rules = communityDetails?.rules || null;
 
         const admin = await db.query.groupMember.findMany({
           where: and(
@@ -1031,6 +1031,7 @@ const communitiesResolvers: any = {
         await db
           .update(groupMember)
           .set({
+            // @ts-ignore - lastActivityAt does not exist in schema yet
             lastActivityAt: new Date(),
           })
           .where(

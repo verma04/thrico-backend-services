@@ -31,6 +31,7 @@ const throwForbidden = (message = "Permission Denied") => {
 };
 
 const checkAuth = async (context: any): Promise<AuthContext> => {
+  if (context.user) return context.user;
   const authHeaderRaw = context.headers?.authorization;
 
   if (!authHeaderRaw) throwForbidden();

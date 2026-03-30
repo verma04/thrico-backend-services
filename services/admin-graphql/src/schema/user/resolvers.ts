@@ -205,7 +205,7 @@ export const userResolvers = {
 
         return result;
       } catch (error) {
-        console.error("Error in getUserDetailsById:", error);
+        log.error("Error in getUserDetailsById:", error);
         throw error;
       }
     },
@@ -258,7 +258,7 @@ export const userResolvers = {
           count: Number(row.count),
         }));
       } catch (error) {
-        console.error("Failed to get user growth:", error);
+        log.error("Failed to get user growth:", error);
         throw error;
       }
     },
@@ -310,7 +310,7 @@ export const userResolvers = {
           value: Number(row.value),
         }));
       } catch (error) {
-        console.error("Failed to get user role distribution:", error);
+        log.error("Failed to get user role distribution:", error);
         throw error;
       }
     },

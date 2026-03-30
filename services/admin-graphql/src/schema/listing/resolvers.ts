@@ -10,6 +10,7 @@ import {
 } from "@thrico/database";
 import uploadFeedImage from "../../utils/upload/uploadFeedImage.utils";
 import { entityClient } from "@thrico/grpc";
+import { log } from "@thrico/logging";
 
 export const listingResolvers = {
   Query: {
@@ -49,7 +50,7 @@ export const listingResolvers = {
 
         return listing;
       } catch (error) {
-        console.log(error);
+        log.error("Catch error:", error);
         throw error;
       }
     },
@@ -77,7 +78,7 @@ export const listingResolvers = {
 
         return listing;
       } catch (error) {
-        console.error(error);
+        log.error("Catch error:", error);
         throw error;
       }
     },
@@ -183,7 +184,7 @@ export const listingResolvers = {
           viewsPercent: viewsPercent.toString(),
         };
       } catch (error) {
-        console.log(error);
+        log.error("Catch error:", error);
         throw error;
       }
     },
@@ -275,7 +276,7 @@ export const listingResolvers = {
           weeklyViewsDiff: weeklyViewsDiff.toString(),
         };
       } catch (error) {
-        console.log(error);
+        log.error("Catch error:", error);
         throw error;
       }
     },
@@ -355,14 +356,14 @@ export const listingResolvers = {
               entityId: entity,
             });
           } catch (notifError) {
-            console.error("Failed to send approval notification:", notifError);
+            log.error("Failed to send approval notification:", notifError);
             // Don't fail the mutation if notification fails
           }
         }
 
         return updatedListing;
       } catch (error) {
-        console.error("Failed to change status:", error);
+        log.error("Failed to change status:", error);
         throw error;
       }
     },
@@ -435,7 +436,7 @@ export const listingResolvers = {
           with: { verification: true, media: true },
         });
       } catch (error) {
-        console.error("Failed to change verification:", error);
+        log.error("Failed to change verification:", error);
         throw error;
       }
     },
@@ -465,14 +466,14 @@ export const listingResolvers = {
             eq(entitySettings.entity, entity),
         });
 
-        console.log("Input:", input);
+        log.info("Input settings:", input);
 
         let media: any[] = [];
         if (input.media) {
           media = await uploadFeedImage(entity, input.media);
         }
 
-        console.log("Uploaded Media:", media);
+        log.info("Uploaded Media:", media);
 
         const newListing = await db.transaction(async (tx: any) => {
           const [createdListing] = await tx
@@ -535,7 +536,7 @@ export const listingResolvers = {
 
         return newListing;
       } catch (error) {
-        console.log(error);
+        log.error("Catch error:", error);
         throw error;
       }
     },
@@ -607,7 +608,7 @@ export const listingResolvers = {
 
         return finalResult;
       } catch (error) {
-        console.error(error);
+        log.error("Catch error:", error);
         throw error;
       }
     },

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { customDomain } from "@thrico/database";
 
 import checkAuth from "../../utils/auth/checkAuth.utils";
@@ -13,6 +13,12 @@ import { registerDomain } from "../../utils/rabbit-mq/domin-register";
 import { entityClient } from "@thrico/grpc";
 import { customDomainQueue } from "../../queue/email-rabbit";
 import { createAuditLog } from "../../utils/audit/auditLog.utils";
+import { log } from "@thrico/logging";
+import {
+  verifyDomainIdentity,
+  deleteDomainIdentity,
+} from "../../utils/ses/ses.service";
+import { emailDomain } from "@thrico/database";
 
 const dns = require("dns").promises;
 
@@ -25,12 +31,13 @@ function isSubdomain(url: string) {
 }
 
 function getSubdomainFromHost(hostname: string) {
+  if (typeof hostname !== "string") return null;
   const parts = hostname.split(".");
 
   if (parts.length > 2) {
     return parts.slice(0, parts.length - 2).join(".");
   }
-  console.log(hostname);
+  log.info("Hostname:", hostname);
 
   return null; // No subdomain
 }
@@ -52,13 +59,13 @@ function getDomainName(str: string) {
 async function verifyCame(name: string, value: string) {
   try {
     const records = await dns.resolveCname(name);
-    console.log(records);
+    log.info("DNS Records:", records);
     return records.includes(value);
   } catch (err: any) {
     if (err.code === "ENODATA") {
-      console.error(`No CNAME records found for domain: `);
+      log.error(`No CNAME records found for domain: `);
     } else {
-      console.error(`Error querying DNS for domain`, err.message);
+      log.error(`Error querying DNS for domain`, err.message);
     }
     return false;
   }
@@ -74,13 +81,13 @@ async function verifyTxt(domain: string, name: string, value: string) {
 
     // Log and return if the value exists in any TXT record
 
-    console.log(flattenedRecords);
+    log.info("Flattened Records:", flattenedRecords);
     return flattenedRecords.includes(value);
   } catch (err: any) {
     if (err.code === "ENODATA") {
-      console.error(`No TXT records found for domain: ${domain}`);
+      log.error(`No TXT records found for domain: ${domain}`);
     } else {
-      console.error(`Error querying DNS for domain ${domain}:`, err.message);
+      log.error(`Error querying DNS for domain ${domain}:`, err.message);
     }
     return false; // Return false if there's an error or no records
   }
@@ -89,13 +96,13 @@ async function verifyTxt(domain: string, name: string, value: string) {
 async function verifyARecord(name: string, value: string) {
   try {
     const records = await dns.resolve4(name);
-    console.log(records, name);
+    log.info("A Records for " + name + ":", records);
     return records.includes(value);
   } catch (err: any) {
     if (err.code === "ENODATA") {
-      console.error(`No ARecords found for domain: `);
+      log.error(`No ARecords found for domain: `);
     } else {
-      console.error(`Error querying DNS for domain`, err.message);
+      log.error(`Error querying DNS for domain`, err.message);
     }
     return false;
   }
@@ -122,7 +129,7 @@ async function checkDnsRecord(domain: any) {
         },
       },
     );
-    console.log(set);
+    log.info("Set record result:", set?.toJSON ? set.toJSON() : set);
   }
   if (!txt?.verified) {
     checkTxt = await verifyTxt(mainDomain, txt.name, txt.value);
@@ -212,17 +219,19 @@ export const domainResolvers: any = {
     async getCustomDomain(_: any, {}: any, context: any) {
       try {
         const auth = await checkAuth(context);
-        console.log(auth);
         ensurePermission(auth, AdminModule.DOMAIN, PermissionAction.READ);
         const { entity } = auth;
 
         const findDomain = await CUSTOM_DOMAIN.query("entity")
           .eq(entity)
           .exec();
-        if (findDomain[0]?.toJSON()) return findDomain[0]?.toJSON();
-        else [];
+        const firstDomain = findDomain[0];
+        if (firstDomain) {
+          return firstDomain.toJSON();
+        }
+        return null;
       } catch (error) {
-        console.log(error);
+        log.error("Catch error in getCustomDomain:", error);
         throw error;
       }
     },
@@ -245,7 +254,7 @@ export const domainResolvers: any = {
           });
         }
       } catch (error) {
-        console.log(error);
+        log.error("Catch error:", error);
         throw error;
       }
     },
@@ -270,7 +279,7 @@ export const domainResolvers: any = {
             },
           });
       } catch (error) {
-        console.log(error);
+        log.error("Catch error:", error);
         throw error;
       }
     },
@@ -287,7 +296,7 @@ export const domainResolvers: any = {
 
         return domain;
       } catch (error) {
-        console.log(error);
+        log.error("Catch error:", error);
         throw error;
       }
     },
@@ -349,7 +358,7 @@ export const domainResolvers: any = {
             },
           });
       } catch (error) {
-        console.log(error);
+        log.error("Catch error:", error);
         throw error;
       }
     },
@@ -410,10 +419,28 @@ export const domainResolvers: any = {
             userAgent: context.userAgent,
           });
 
+          // ── SES Integration ─────────────────────────────
+          // Automatically start email verification for the same domain
+          try {
+            const domainName = input.domain;
+            const sesResult = await verifyDomainIdentity(domainName);
+            await db.insert(emailDomain).values({
+              entity,
+              domain: domainName,
+              verificationToken: sesResult.verificationToken,
+              dkimTokens: JSON.stringify(sesResult.dkimTokens),
+              spfRecord: sesResult.spfRecord,
+              status: "pending",
+            });
+          } catch (sesErr) {
+            log.error("Autostart SES verification failed:", sesErr);
+            // Don't fail the whole domain setup if SES fails
+          }
+
           return newDomain.toJSON();
         }
       } catch (error) {
-        console.log(error);
+        log.error("Catch error:", error);
         throw error;
       }
     },
@@ -435,6 +462,26 @@ export const domainResolvers: any = {
 
         await CUSTOM_DOMAIN.delete({ id: input.id });
 
+        // ── Email Domain Deletion ──────────────────────
+        // If an email domain exists for this entity, delete it from SES and DB
+        try {
+          const emailRecord = await db.query.emailDomain.findFirst({
+            where: and(eq(emailDomain.entity, entity)),
+          });
+
+          if (emailRecord) {
+            await deleteDomainIdentity(emailRecord.domain);
+            await db
+              .delete(emailDomain)
+              .where(eq(emailDomain.id, emailRecord.id));
+          }
+        } catch (emailDelErr) {
+          log.error(
+            "Cleanup EmailDomain on Domain deletion failed:",
+            emailDelErr,
+          );
+        }
+
         await createAuditLog(db, {
           adminId: adminId,
           entityId: entity,
@@ -450,7 +497,7 @@ export const domainResolvers: any = {
           success: true,
         };
       } catch (error) {
-        console.log(error);
+        log.error("Catch error:", error);
         throw error;
       }
     },
@@ -493,7 +540,7 @@ export const domainResolvers: any = {
 
         return newState;
       } catch (error) {
-        console.log(error);
+        log.error("Catch error:", error);
         throw error;
       }
     },

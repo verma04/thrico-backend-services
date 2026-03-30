@@ -386,7 +386,7 @@ const profileResolvers: any = {
         };
 
         if (avatar) {
-          userUpdateData.avatar = avatar;
+          userUpdateData.avatar = (avatar as any).key;
         }
 
         await db.update(user).set(userUpdateData).where(eq(user.id, userId));
@@ -443,7 +443,7 @@ const profileResolvers: any = {
           await db
             .update(user)
             .set({
-              cover,
+              cover: (cover as any).key,
             })
             .where(eq(user.id, userId));
         }

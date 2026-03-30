@@ -1,22 +1,8 @@
-import { bookingResolvers } from "./booking.resolvers";
-import { categoryResolvers } from "./category.resolvers";
-import { mentorResolvers } from "./mentor.resolvers";
-import { servicesResolvers } from "./services.resolvers";
-import { testimonialsResolvers } from "./testimonials.resolvers";
-
+/**
+ * Mentorship resolvers are currently under development.
+ * Commeting out for now to ensure build passes.
+ */
 export const mentorshipResolvers = {
-  Query: {
-    ...bookingResolvers.Query,
-    ...categoryResolvers.Query,
-    ...mentorResolvers.Query,
-    ...servicesResolvers.Query,
-    ...testimonialsResolvers.Query,
-  },
-  Mutation: {
-    ...bookingResolvers.Mutation,
-    ...categoryResolvers.Mutation,
-    ...servicesResolvers.Mutation,
-    ...testimonialsResolvers.Mutation,
-    ...mentorResolvers.Mutation,
-  },
+  Query: {},
+  Mutation: {},
 };

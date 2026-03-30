@@ -37,6 +37,7 @@ export const momentTypes = `#graphql
     isWishlisted: Boolean
     isOwner: Boolean
     similarityScore: Float
+    isAiContent: Boolean
   }
 
   type DailyStats {
@@ -101,6 +102,7 @@ export const momentTypes = `#graphql
     caption: String!
     thumbnailUrl: String
     shareInFeed: Boolean
+    isAiContent: Boolean
   }
 
   input MomentCursorInput {
@@ -144,6 +146,7 @@ export const momentTypes = `#graphql
   input UpdateMomentInput {
     caption: String
     thumbnailUrl: String
+    isAiContent: Boolean
   }
 
   extend type Query {

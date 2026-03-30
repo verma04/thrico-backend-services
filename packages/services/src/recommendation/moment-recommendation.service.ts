@@ -89,6 +89,8 @@ export class MomentRecommendationService {
         throw new Error("Database instance error: db.select is not a function");
       }
 
+      const decodedCursor = cursor ? MomentService.decodeCursor(cursor) : null;
+
       // 1. Get user embedding
       const [userData] = await db
         .select({ embedding: user.embedding })
@@ -149,12 +151,12 @@ export class MomentRecommendationService {
             and(
               eq(moments.entityId, entityId),
               eq(moments.status, "PUBLISHED"),
-              cursor
-                ? sql`${moments.createdAt} < ${MomentService.decodeCursor(cursor).createdAt}`
+              decodedCursor
+                ? sql`(thrico_moments.created_at::timestamp(3), thrico_moments.id) < (${decodedCursor.createdAt.toISOString()}::timestamp(3), ${decodedCursor.id}::uuid)`
                 : undefined,
             ),
           )
-          .orderBy(desc(moments.totalViews), desc(moments.createdAt))
+          .orderBy(desc(moments.createdAt), desc(moments.id))
           .limit(limit + 1);
 
         return MomentService.formatMomentConnection(results, limit, userId);
@@ -180,12 +182,12 @@ export class MomentRecommendationService {
           and(
             eq(moments.entityId, entityId),
             eq(moments.status, "PUBLISHED"),
-            cursor
-              ? sql`${moments.createdAt} < ${MomentService.decodeCursor(cursor).createdAt}`
+            decodedCursor
+              ? sql`(thrico_moments.created_at::timestamp(3), thrico_moments.id) < (${decodedCursor.createdAt.toISOString()}::timestamp(3), ${decodedCursor.id}::uuid)`
               : undefined,
           ),
         )
-        .orderBy(sql`finalScore DESC`)
+        .orderBy(desc(moments.createdAt), sql`finalScore DESC`, desc(moments.id))
         .limit(limit + 1);
 
       return MomentService.formatMomentConnection(results, limit, userId);

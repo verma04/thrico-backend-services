@@ -86,5 +86,6 @@ export { ModerationPublisher } from "./utils/moderation-publisher";
 export { AIService } from "./utils/ai.service";
 export * from "./feed/types";
 
+export { ContactService } from "./contact/contact.service";
 // Export types
 export * from "./types";

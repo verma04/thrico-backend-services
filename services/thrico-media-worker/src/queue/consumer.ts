@@ -74,6 +74,12 @@ export class MomentConsumer {
         const optimizedPath = path.join(tempDir, "optimized.mp4");
         await FFmpegService.optimizeVideo(inputPath, optimizedPath);
 
+        // Clear original video as it's no longer needed (we'll use optimized video for HLS and thumbnails)
+        if (fs.existsSync(inputPath)) {
+          fs.unlinkSync(inputPath);
+          logger.info("Cleared original video temp file");
+        }
+
         // 4. Generate HLS
         const hlsDir = path.join(tempDir, "hls");
         if (!fs.existsSync(hlsDir)) fs.mkdirSync(hlsDir, { recursive: true });
@@ -87,7 +93,7 @@ export class MomentConsumer {
         const thumbnailOptions: string[] = [];
         let thumbnailUrl = "";
         try {
-          const duration = await FFmpegService.getVideoDuration(inputPath);
+          const duration = await FFmpegService.getVideoDuration(optimizedPath);
           const interval = 2; // Every 2 seconds
           const numberOfThumbnails = Math.max(
             1,
@@ -101,13 +107,13 @@ export class MomentConsumer {
             timestamps.push(ts > duration ? duration - 0.1 : ts);
           }
 
-          logger.info("Generating thumbnails every 2 seconds", {
+          logger.info("Generating thumbnails from optimized video", {
             duration,
             count: timestamps.length,
           });
 
           await FFmpegService.generateMultipleThumbnails(
-            inputPath,
+            optimizedPath,
             tempDir,
             timestamps,
             "thumb_%i.jpg",

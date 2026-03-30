@@ -29,6 +29,48 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
+ CREATE TYPE "emailDomainStatus" AS ENUM('pending', 'verified', 'failed');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ CREATE TYPE "emailSubscriptionPlan" AS ENUM('free', 'pro', 'enterprise');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ CREATE TYPE "emailSubscriptionStatus" AS ENUM('active', 'inactive', 'expired');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ CREATE TYPE "gender" AS ENUM('male', 'female', 'other');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ CREATE TYPE "nearbyDiscoveryPrivacy" AS ENUM('VISIBLE', 'APPROXIMATE', 'HIDDEN');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ CREATE TYPE "userStatus" AS ENUM('APPROVED', 'BLOCKED', 'PENDING', 'REJECTED', 'FLAGGED', 'DISABLED', 'SUSPENDED');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ CREATE TYPE "userPronounsStatus" AS ENUM('they/them', 'she/her', 'he/him', 'other');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
  CREATE TYPE "attendeeStatus" AS ENUM('CONFIRMED', 'WAITLISTED', 'PENDING', 'CANCELLED');
 EXCEPTION
  WHEN duplicate_object THEN null;
@@ -365,13 +407,19 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
+ CREATE TYPE "momentNotificationType" AS ENUM('MOMENT_LIKE', 'MOMENT_COMMENT', 'MOMENT_POSTED');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
  CREATE TYPE "networkNotificationType" AS ENUM('CONNECTION_REQUEST', 'CONNECTION_ACCEPTED', 'PROFILE_VIEW');
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- CREATE TYPE "notificationModule" AS ENUM('COMMUNITY', 'FEED', 'NETWORK', 'JOB', 'LISTING', 'GAMIFICATION');
+ CREATE TYPE "notificationModule" AS ENUM('COMMUNITY', 'FEED', 'NETWORK', 'JOB', 'LISTING', 'GAMIFICATION', 'MOMENT');
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -455,12 +503,6 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- CREATE TYPE "gender" AS ENUM('male', 'female', 'other');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
  CREATE TYPE "joiningTerms" AS ENUM('ANYONE_CAN_JOIN', 'ADMIN_ONLY_ADD');
 EXCEPTION
  WHEN duplicate_object THEN null;
@@ -497,19 +539,7 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- CREATE TYPE "reportStatus" AS ENUM('PENDING', 'RESOLVED', 'DISMISSED');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
- CREATE TYPE "userStatus" AS ENUM('APPROVED', 'BLOCKED', 'PENDING', 'REJECTED', 'FLAGGED', 'DISABLED');
-EXCEPTION
- WHEN duplicate_object THEN null;
-END $$;
---> statement-breakpoint
-DO $$ BEGIN
- CREATE TYPE "userPronounsStatus" AS ENUM('they/them', 'she/her', 'he/him', 'other');
+ CREATE TYPE "reportStatus" AS ENUM('PENDING', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'DISMISSED', 'RESOLVED');
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -593,13 +623,31 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
+ CREATE TYPE "moderation_job_status" AS ENUM('PENDING', 'PROCESSING', 'DONE', 'FAILED');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ CREATE TYPE "moderation_state_status" AS ENUM('PENDING', 'PROCESSING', 'APPROVED', 'REJECTED', 'FLAGGED', 'FAILED');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
  CREATE TYPE "severity" AS ENUM('LOW', 'MEDIUM', 'HIGH');
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
- CREATE TYPE "reportModule" AS ENUM('FEED', 'MEMBER', 'DISCUSSION_FORUM');
+ CREATE TYPE "reportModule" AS ENUM('FEED', 'MEMBER', 'DISCUSSION_FORUM', 'COMMUNITY', 'JOB', 'LISTING', 'MOMENT', 'OFFER', 'EVENT', 'USER', 'SHOP', 'SURVEY');
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ CREATE TYPE "storageModule" AS ENUM('FEED', 'MEMBER', 'DISCUSSION_FORUM', 'COMMUNITY', 'JOB', 'LISTING', 'MOMENT', 'OFFER', 'EVENT', 'USER', 'SHOP', 'SURVEY', 'MESSAGING', 'GENERAL', 'OFFERS');
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -643,6 +691,7 @@ CREATE TABLE IF NOT EXISTS "admin" (
 	"email" text NOT NULL,
 	"created_at" timestamp DEFAULT now(),
 	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP,
+	"role_id" uuid,
 	CONSTRAINT "admin_email_unique" UNIQUE("email")
 );
 --> statement-breakpoint
@@ -651,6 +700,47 @@ CREATE TABLE IF NOT EXISTS "currency" (
 	"cc" text NOT NULL,
 	"symbol" text NOT NULL,
 	"name" text NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "modulePermissions" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"role_id" uuid NOT NULL,
+	"module" text NOT NULL,
+	"can_read" boolean DEFAULT false NOT NULL,
+	"can_create" boolean DEFAULT false NOT NULL,
+	"can_edit" boolean DEFAULT false NOT NULL,
+	"can_delete" boolean DEFAULT false NOT NULL,
+	"entity_id" uuid NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now(),
+	CONSTRAINT "modulePermissions_role_id_module_unique" UNIQUE("role_id","module")
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "roles" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"name" text NOT NULL,
+	"description" text,
+	"entity_id" uuid NOT NULL,
+	"is_system" boolean DEFAULT false NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now(),
+	CONSTRAINT "roles_name_entity_id_unique" UNIQUE("name","entity_id")
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "admin_audit_logs" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"admin_id" uuid NOT NULL,
+	"entity_id" uuid NOT NULL,
+	"module" text NOT NULL,
+	"action" text NOT NULL,
+	"resource_id" text,
+	"target_user_id" uuid,
+	"previous_state" jsonb,
+	"new_state" jsonb,
+	"reason" text,
+	"ip_address" text,
+	"user_agent" text,
+	"created_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "customDomain" (
@@ -736,7 +826,9 @@ CREATE TABLE IF NOT EXISTS "entitySettings" (
 	"termAndConditionsWallOfFame" jsonb,
 	"faqWallOfFame" jsonb,
 	"termAndConditionsGamification" jsonb,
-	"faqGamification" jsonb
+	"faqGamification" jsonb,
+	"termAndConditionsRewards" jsonb,
+	"faqRewards" jsonb
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "entitySettingsUserApprovals" (
@@ -945,6 +1037,73 @@ CREATE TABLE IF NOT EXISTS "payments" (
 	"currencySymbol" text NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "emailDomain" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"entity_id" uuid NOT NULL,
+	"domain" text NOT NULL,
+	"verification_token" text,
+	"dkim_tokens" text,
+	"spf_record" text,
+	"status" "emailDomainStatus" DEFAULT 'pending' NOT NULL,
+	"verified_at" timestamp,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "emailLog" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"entity_id" uuid NOT NULL,
+	"to" text NOT NULL,
+	"subject" text NOT NULL,
+	"sender_address" text NOT NULL,
+	"ses_message_id" text,
+	"status" text DEFAULT 'sent',
+	"sent_at" timestamp DEFAULT now(),
+	"created_at" timestamp DEFAULT now()
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "emailSubscription" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"entity_id" uuid NOT NULL,
+	"plan" "emailSubscriptionPlan" DEFAULT 'free' NOT NULL,
+	"number_of_emails_per_month" integer DEFAULT 1000 NOT NULL,
+	"status" "emailSubscriptionStatus" DEFAULT 'active' NOT NULL,
+	"start_date" timestamp DEFAULT now(),
+	"end_date" timestamp,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "emailTemplate" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"entity_id" uuid NOT NULL,
+	"name" text NOT NULL,
+	"subject" text NOT NULL,
+	"html" text NOT NULL,
+	"is_active" boolean DEFAULT true,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "emailTopup" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"entity_id" uuid NOT NULL,
+	"extra_emails" integer NOT NULL,
+	"purchased_at" timestamp DEFAULT now(),
+	"created_at" timestamp DEFAULT now()
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "emailUsage" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"entity_id" uuid NOT NULL,
+	"emails_sent" integer DEFAULT 0 NOT NULL,
+	"number_of_emails_per_month" integer DEFAULT 1000 NOT NULL,
+	"period_start" timestamp DEFAULT now() NOT NULL,
+	"period_end" timestamp NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "userAuditLogs" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"userToEntityId" uuid NOT NULL,
@@ -959,13 +1118,13 @@ CREATE TABLE IF NOT EXISTS "userAuditLogs" (
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "aboutUser" (
+	"about" text,
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"currentPosition" varchar(200),
-	"user_ID" uuid NOT NULL,
-	"userPronounsStatus" "userPronounsStatus",
-	"social" json,
-	"headline" varchar,
-	"about" varchar
+	"currentPosition" text,
+	"linkedin" text,
+	"instagram" text,
+	"portfolio" text,
+	"user_id" uuid NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "thricoUser" (
@@ -984,6 +1143,8 @@ CREATE TABLE IF NOT EXISTS "thricoUser" (
 	"isActive" boolean DEFAULT true,
 	"loginType" text,
 	"embedding" "vector(1536)",
+	"isDeletionPending" boolean DEFAULT false,
+	"deletionRequestedAt" timestamp,
 	CONSTRAINT "thricoUser_thricoId_entity_id_unique" UNIQUE("thricoId","entity_id")
 );
 --> statement-breakpoint
@@ -1011,7 +1172,16 @@ CREATE TABLE IF NOT EXISTS "userLoction" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"latitude" numeric(10, 8) NOT NULL,
 	"longitude" numeric(11, 8) NOT NULL,
-	"user_ID" uuid NOT NULL
+	"location" "geometry",
+	"user_ID" uuid NOT NULL,
+	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "userNearbySettings" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" uuid NOT NULL,
+	"privacy" "nearbyDiscoveryPrivacy" DEFAULT 'VISIBLE' NOT NULL,
+	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "userOtp" (
@@ -1083,6 +1253,7 @@ CREATE TABLE IF NOT EXISTS "userToEntity" (
 	"categories" text[],
 	"last_active" timestamp with time zone,
 	"isOnline" boolean DEFAULT false NOT NULL,
+	"city_id" uuid,
 	CONSTRAINT "userToEntity_user_id_entity_id_unique" UNIQUE("user_id","entity_id")
 );
 --> statement-breakpoint
@@ -1188,6 +1359,8 @@ CREATE TABLE IF NOT EXISTS "eventsss" (
 	"status" "communityEntityStatus" NOT NULL,
 	"venue" text,
 	"location" jsonb,
+	"location_point" "geometry",
+	"city_id" uuid,
 	"lastDateOfRegistration" date NOT NULL,
 	"startDate" date NOT NULL,
 	"endDate" date NOT NULL,
@@ -1208,6 +1381,9 @@ CREATE TABLE IF NOT EXISTS "eventsss" (
 	"numberOfViews" integer DEFAULT 0,
 	"isRegistrationOpen" boolean DEFAULT true NOT NULL,
 	"embedding" "vector(1536)",
+	"moderationStatus" "moderation_state_status" DEFAULT 'PENDING',
+	"moderationResult" text,
+	"moderatedAt" timestamp,
 	CONSTRAINT "eventsss_slug_unique" UNIQUE("slug")
 );
 --> statement-breakpoint
@@ -1725,6 +1901,8 @@ CREATE TABLE IF NOT EXISTS "-community" (
 	"joiningTerms" "joiningTerms" DEFAULT 'ANYONE_CAN_JOIN',
 	"privacy" "communityPrivacy" DEFAULT 'PUBLIC',
 	"location" jsonb,
+	"location_point" "geometry",
+	"city_id" uuid,
 	"requireAdminApprovalForPosts" boolean DEFAULT false NOT NULL,
 	"allowMemberInvites" boolean DEFAULT true NOT NULL,
 	"allowMemberPosts" boolean DEFAULT true NOT NULL,
@@ -1747,6 +1925,9 @@ CREATE TABLE IF NOT EXISTS "-community" (
 	"archivedAt" timestamp,
 	"archivedBy" uuid,
 	"archivedReason" text,
+	"moderationStatus" "moderation_state_status" DEFAULT 'PENDING',
+	"moderationResult" text,
+	"moderatedAt" timestamp,
 	CONSTRAINT "-community_slug_unique" UNIQUE("slug")
 );
 --> statement-breakpoint
@@ -1778,6 +1959,9 @@ CREATE TABLE IF NOT EXISTS "commentFeed" (
 	"user_id" uuid,
 	"feed_id" uuid NOT NULL,
 	"addedBy" "addedBy" DEFAULT 'USER',
+	"moderation_status" "moderation_state_status" DEFAULT 'PENDING',
+	"moderation_result" text,
+	"moderated_at" timestamp,
 	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP,
 	"created_at" timestamp DEFAULT now()
 );
@@ -1846,7 +2030,10 @@ CREATE TABLE IF NOT EXISTS "userFeed" (
 	"postedOn" "feedPostedOn",
 	"is_pinned" boolean DEFAULT false,
 	"pinned_at" timestamp,
-	"moment_id" uuid
+	"moment_id" uuid,
+	"moderation_status" "moderation_state_status" DEFAULT 'PENDING',
+	"moderation_result" text,
+	"moderated_at" timestamp
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "feedback" (
@@ -1973,7 +2160,10 @@ CREATE TABLE IF NOT EXISTS "jobss" (
 	"skills" jsonb NOT NULL,
 	"isFeatured" boolean DEFAULT false NOT NULL,
 	"location" jsonb NOT NULL,
-	"locationLatLong" "geometry"
+	"locationLatLong" "geometry",
+	"moderationStatus" "moderation_state_status" DEFAULT 'PENDING',
+	"moderationResult" text,
+	"moderatedAt" timestamp
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "savedJobs" (
@@ -2093,6 +2283,9 @@ CREATE TABLE IF NOT EXISTS "listing0" (
 	"locationLatLong" "geometry",
 	"lat" text,
 	"lng" text,
+	"moderationStatus" "moderation_state_status" DEFAULT 'PENDING',
+	"moderationResult" text,
+	"moderatedAt" timestamp,
 	CONSTRAINT "listing0_slug_unique" UNIQUE("slug")
 );
 --> statement-breakpoint
@@ -2173,6 +2366,7 @@ CREATE TABLE IF NOT EXISTS "mentorships" (
 	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP,
 	"category" text,
 	"skills" jsonb,
+	"city_id" uuid,
 	CONSTRAINT "mentorships_slug_unique" UNIQUE("slug")
 );
 --> statement-breakpoint
@@ -2598,6 +2792,18 @@ CREATE TABLE IF NOT EXISTS "listingNotifications" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "momentNotifications" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"type" "momentNotificationType" NOT NULL,
+	"user_id" uuid NOT NULL,
+	"sender_id" uuid NOT NULL,
+	"entity_id" uuid NOT NULL,
+	"moment_id" uuid,
+	"content" text NOT NULL,
+	"is_read" boolean DEFAULT false NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "networkNotifications" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"type" "networkNotificationType" NOT NULL,
@@ -2621,7 +2827,8 @@ CREATE TABLE IF NOT EXISTS "notifications" (
 	"network_notification_id" uuid,
 	"job_notification_id" uuid,
 	"listing_notification_id" uuid,
-	"gamification_notification_id" uuid
+	"gamification_notification_id" uuid,
+	"moment_notification_id" uuid
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "hashtag" (
@@ -2702,7 +2909,10 @@ CREATE TABLE IF NOT EXISTS "discussionForums" (
 	"category" uuid NOT NULL,
 	"isAnonymous" boolean DEFAULT false,
 	"addedBy" "addedBy" DEFAULT 'USER',
-	"user_id" uuid
+	"user_id" uuid,
+	"moderationStatus" "moderation_state_status" DEFAULT 'PENDING',
+	"moderationResult" text,
+	"moderatedAt" timestamp
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "discussionForumAuditLogs" (
@@ -2726,6 +2936,9 @@ CREATE TABLE IF NOT EXISTS "discussionForumComments" (
 	"created_at" timestamp DEFAULT now(),
 	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP,
 	"commentedBy" "addedBy" DEFAULT 'USER',
+	"moderationStatus" "moderation_state_status" DEFAULT 'PENDING',
+	"moderationResult" text,
+	"moderatedAt" timestamp,
 	CONSTRAINT "discussionForumComments_user_id_discussionForum_id_created_at_unique" UNIQUE("user_id","discussionForum_id","created_at")
 );
 --> statement-breakpoint
@@ -2992,7 +3205,10 @@ CREATE TABLE IF NOT EXISTS "offers" (
 	"org_id" uuid NOT NULL,
 	"is_active" boolean DEFAULT true NOT NULL,
 	"created_at" timestamp DEFAULT now(),
-	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP
+	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP,
+	"moderationStatus" "moderation_state_status" DEFAULT 'PENDING',
+	"moderationResult" text,
+	"moderatedAt" timestamp
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "storiesss" (
@@ -3111,6 +3327,9 @@ CREATE TABLE IF NOT EXISTS "shop_products" (
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP NOT NULL,
 	"created_by" uuid,
+	"moderationStatus" "moderation_state_status" DEFAULT 'PENDING',
+	"moderationResult" text,
+	"moderatedAt" timestamp,
 	CONSTRAINT "shop_products_slug_unique" UNIQUE("slug")
 );
 --> statement-breakpoint
@@ -3239,6 +3458,24 @@ CREATE TABLE IF NOT EXISTS "profileViews" (
 	"viewed_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "match_win_combinations" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"config_id" uuid NOT NULL,
+	"entity_id" uuid NOT NULL,
+	"key" varchar(50) NOT NULL,
+	"symbol1_id" uuid,
+	"symbol2_id" uuid,
+	"symbol3_id" uuid,
+	"type" "prize_type" DEFAULT 'NOTHING' NOT NULL,
+	"value" integer DEFAULT 0 NOT NULL,
+	"probability" numeric(5, 2) DEFAULT '0' NOT NULL,
+	"max_wins" integer,
+	"reward_id" uuid,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "match_win_combinations_config_id_key_unique" UNIQUE("config_id","key")
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "match_win_config" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"entity_id" uuid NOT NULL,
@@ -3246,7 +3483,6 @@ CREATE TABLE IF NOT EXISTS "match_win_config" (
 	"max_plays_per_day" integer DEFAULT 3 NOT NULL,
 	"is_active" boolean DEFAULT false NOT NULL,
 	"festival_mode" boolean DEFAULT false NOT NULL,
-	"settings" jsonb,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL,
 	CONSTRAINT "match_win_config_entity_id_unique" UNIQUE("entity_id")
@@ -3256,12 +3492,26 @@ CREATE TABLE IF NOT EXISTS "match_win_plays" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" uuid NOT NULL,
 	"entity_id" uuid NOT NULL,
-	"prize_key" varchar(100),
+	"combination_id" uuid,
 	"prize_type" "prize_type" NOT NULL,
 	"prize_value" integer DEFAULT 0 NOT NULL,
 	"tc_spent" integer DEFAULT 0 NOT NULL,
 	"symbols_won" text,
 	"played_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "match_win_symbols" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"config_id" uuid NOT NULL,
+	"entity_id" uuid NOT NULL,
+	"key" varchar(50) NOT NULL,
+	"label" varchar(100) NOT NULL,
+	"icon" varchar(100),
+	"color" varchar(20),
+	"sort_order" integer DEFAULT 0 NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "match_win_symbols_config_id_key_unique" UNIQUE("config_id","key")
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "scratch_card_config" (
@@ -3406,6 +3656,33 @@ CREATE TABLE IF NOT EXISTS "thrico_moments" (
 	"sentiment_score" real
 );
 --> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "cities" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"name" text NOT NULL,
+	"country" text NOT NULL,
+	"boundary_polygon" "geometry",
+	"created_at" timestamp DEFAULT now()
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "ai_moderation_logs" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"content_id" text NOT NULL,
+	"entity_id" uuid,
+	"classification" text,
+	"confidence" numeric(5, 4),
+	"model_used" text,
+	"created_at" timestamp DEFAULT now()
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "ai_token_usage" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"entity_id" uuid,
+	"module" text DEFAULT 'moderation',
+	"tokens" integer DEFAULT 0,
+	"model" text NOT NULL,
+	"created_at" timestamp DEFAULT now()
+);
+--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "banned_words" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"entity_id" uuid NOT NULL,
@@ -3438,6 +3715,14 @@ CREATE TABLE IF NOT EXISTS "content_reports" (
 	"status" "reportStatus" DEFAULT 'PENDING',
 	"resolved_by_id" uuid,
 	"resolved_at" timestamp,
+	"created_at" timestamp DEFAULT now()
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "moderation_jobs" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"content_id" text NOT NULL,
+	"status" "moderation_job_status" DEFAULT 'PENDING',
+	"attempts" integer DEFAULT 0,
 	"created_at" timestamp DEFAULT now()
 );
 --> statement-breakpoint
@@ -3485,13 +3770,119 @@ CREATE TABLE IF NOT EXISTS "user_risk_profiles" (
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "reports" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"userToEntityId" uuid NOT NULL,
-	"action" "reportStatus",
+	"targetId" uuid NOT NULL,
 	"module" "reportModule",
-	"performedBy" uuid,
+	"reportedBy" uuid,
 	"reason" text,
+	"description" text,
+	"status" "reportStatus" DEFAULT 'PENDING',
 	"created_at" timestamp DEFAULT now(),
-	"entity" uuid NOT NULL
+	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP,
+	"entity_id" uuid NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "storage_files" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"entity_id" uuid NOT NULL,
+	"module" "storageModule" NOT NULL,
+	"file_key" text NOT NULL,
+	"file_url" text,
+	"mime_type" text,
+	"size_in_bytes" integer DEFAULT 0,
+	"uploaded_by" uuid,
+	"reference_id" uuid,
+	"metadata" jsonb,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "page" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" uuid NOT NULL,
+	"title" text NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP,
+	"headquarters" text,
+	"cover" text,
+	"description" text NOT NULL,
+	"slug" text,
+	"isApproved" boolean DEFAULT false NOT NULL,
+	"isVerified" boolean DEFAULT false NOT NULL,
+	"isBlocked" boolean DEFAULT false NOT NULL,
+	"phone" text,
+	"email" text,
+	"facebook" text,
+	"instagram" text,
+	"payload" jsonb,
+	"type" text NOT NULL,
+	"industry" text NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "alumni" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"firstName" text NOT NULL,
+	"avatar" text,
+	"lastName" text NOT NULL,
+	"email" text NOT NULL,
+	"loginType" "loginType" NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP,
+	"googleId" text,
+	CONSTRAINT "alumni_email_unique" UNIQUE("email")
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "alumniConnection" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" uuid NOT NULL,
+	"followers_id" uuid NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"isAccepted" boolean NOT NULL,
+	CONSTRAINT "alumniConnection_user_id_followers_id_unique" UNIQUE("user_id","followers_id"),
+	CONSTRAINT "alumniConnection" UNIQUE("user_id","followers_id")
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "alumniKyc" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"affliction" json,
+	"referralSource" json,
+	"comment" json NOT NULL,
+	"agreement" boolean NOT NULL,
+	"orgId" uuid NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "alumniProfile" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"country" text,
+	"designation" text,
+	"DOB" text,
+	"user_id" uuid NOT NULL,
+	"experience" json,
+	"education" json,
+	"phone" json
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "alumniConnectionRequest" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" uuid NOT NULL,
+	"sender_id" uuid NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"isAccepted" boolean NOT NULL,
+	CONSTRAINT "alumniConnectionRequest_user_id_sender_id_unique" UNIQUE("user_id","sender_id"),
+	CONSTRAINT "alumniRequest" UNIQUE("user_id","sender_id")
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "alumniResume" (
+	"currentPosition" text,
+	"user_id" uuid NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE IF NOT EXISTS "alumniEntityProfile" (
+	"user_id" uuid,
+	"entity_id" uuid,
+	"isApproved" boolean DEFAULT false NOT NULL,
+	"isRequested" boolean DEFAULT false NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT CURRENT_TIMESTAMP
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "static_pages_slug_type_unique" ON "staticPages" ("slug","type_id");--> statement-breakpoint
@@ -3501,6 +3892,12 @@ CREATE INDEX IF NOT EXISTS "moment_views_moment_id_idx" ON "moment_views" ("mome
 CREATE INDEX IF NOT EXISTS "moments_embedding_idx" ON "thrico_moments" ("embedding");--> statement-breakpoint
 DO $$ BEGIN
  ALTER TABLE "otp" ADD CONSTRAINT "otp_user_id_admin_id_fk" FOREIGN KEY ("user_id") REFERENCES "admin"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "modulePermissions" ADD CONSTRAINT "modulePermissions_role_id_roles_id_fk" FOREIGN KEY ("role_id") REFERENCES "roles"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -3776,7 +4173,49 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
+ ALTER TABLE "match_win_combinations" ADD CONSTRAINT "match_win_combinations_config_id_match_win_config_id_fk" FOREIGN KEY ("config_id") REFERENCES "match_win_config"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "match_win_combinations" ADD CONSTRAINT "match_win_combinations_symbol1_id_match_win_symbols_id_fk" FOREIGN KEY ("symbol1_id") REFERENCES "match_win_symbols"("id") ON DELETE set null ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "match_win_combinations" ADD CONSTRAINT "match_win_combinations_symbol2_id_match_win_symbols_id_fk" FOREIGN KEY ("symbol2_id") REFERENCES "match_win_symbols"("id") ON DELETE set null ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "match_win_combinations" ADD CONSTRAINT "match_win_combinations_symbol3_id_match_win_symbols_id_fk" FOREIGN KEY ("symbol3_id") REFERENCES "match_win_symbols"("id") ON DELETE set null ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "match_win_combinations" ADD CONSTRAINT "match_win_combinations_reward_id_rewards_id_fk" FOREIGN KEY ("reward_id") REFERENCES "rewards"("id") ON DELETE set null ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
  ALTER TABLE "match_win_plays" ADD CONSTRAINT "match_win_plays_user_id_thricoUser_id_fk" FOREIGN KEY ("user_id") REFERENCES "thricoUser"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "match_win_plays" ADD CONSTRAINT "match_win_plays_combination_id_match_win_combinations_id_fk" FOREIGN KEY ("combination_id") REFERENCES "match_win_combinations"("id") ON DELETE set null ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "match_win_symbols" ADD CONSTRAINT "match_win_symbols_config_id_match_win_config_id_fk" FOREIGN KEY ("config_id") REFERENCES "match_win_config"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
@@ -3848,6 +4287,18 @@ EXCEPTION
 END $$;
 --> statement-breakpoint
 DO $$ BEGIN
+ ALTER TABLE "ai_moderation_logs" ADD CONSTRAINT "ai_moderation_logs_entity_id_entity_id_fk" FOREIGN KEY ("entity_id") REFERENCES "entity"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
+ ALTER TABLE "ai_token_usage" ADD CONSTRAINT "ai_token_usage_entity_id_entity_id_fk" FOREIGN KEY ("entity_id") REFERENCES "entity"("id") ON DELETE no action ON UPDATE no action;
+EXCEPTION
+ WHEN duplicate_object THEN null;
+END $$;
+--> statement-breakpoint
+DO $$ BEGIN
  ALTER TABLE "banned_words" ADD CONSTRAINT "banned_words_entity_id_entity_id_fk" FOREIGN KEY ("entity_id") REFERENCES "entity"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION
  WHEN duplicate_object THEN null;
@@ -3912,8 +4363,3 @@ DO $$ BEGIN
 EXCEPTION
  WHEN duplicate_object THEN null;
 END $$;
-
-
-
-ALTER TABLE match_win_config
-ADD COLUMN settings jsonb;

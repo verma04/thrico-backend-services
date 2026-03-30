@@ -104,6 +104,7 @@ export const userFeed = pgTable(
     moderationStatus: moderationStateStatusEnum("moderation_status").default("PENDING"),
     moderationResult: text("moderation_result"),
     moderatedAt: timestamp("moderated_at"),
+    isAiContent: boolean("is_ai_content").default(false),
   },
   (table) => ({
     addedByCheck: check(
