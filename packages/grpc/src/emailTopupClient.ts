@@ -135,6 +135,25 @@ class EmailTopupClient {
     });
   }
 
+  async getBillingHistory(entityId: string): Promise<any> {
+    return new Promise((resolve, reject) => {
+      this.client.GetBillingHistory(
+        { entityId },
+        (error: grpc.ServiceError | null, response: any) => {
+          if (error) {
+            log.error("gRPC GetBillingHistory error", {
+              entityId,
+              error: error.message,
+            });
+            reject(error);
+          } else {
+            resolve(response);
+          }
+        }
+      );
+    });
+  }
+
   close() {
     this.isConnected = false;
     log.info("EmailTopup gRPC client closed");

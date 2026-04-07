@@ -1,3 +1,4 @@
+import { relations } from "drizzle-orm";
 import {
   pgTable,
   text,
@@ -156,6 +157,24 @@ export const contentReports = pgTable("content_reports", {
   resolvedAt: timestamp("resolved_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+export const contentReportsRelations = relations(contentReports, ({ one }) => ({
+  reportedBy: one(user, {
+    fields: [contentReports.reportedById],
+    references: [user.id],
+    relationName: "contentReport_reportedBy",
+  }),
+  reportedUser: one(user, {
+    fields: [contentReports.reportedUserId],
+    references: [user.id],
+    relationName: "contentReport_reportedUser",
+  }),
+  resolvedBy: one(user, {
+    fields: [contentReports.resolvedById],
+    references: [user.id],
+    relationName: "contentReport_resolvedBy",
+  }),
+}));
 
 export const moderationSettings = pgTable("moderation_settings", {
   id: uuid("id").defaultRandom().primaryKey(),

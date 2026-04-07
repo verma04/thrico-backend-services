@@ -7,7 +7,7 @@ export const profileTypes = `#graphql
     language: String!
     phone: phone
     timeZone: String
-    DOB: String!
+    DOB: String
     gender: String
     education: JSON
     experience: JSON

@@ -1,4 +1,4 @@
-import { and, eq, sql, desc } from "drizzle-orm";
+import { and, eq, sql, desc, inArray } from "drizzle-orm";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import {
   bannedWords,
@@ -109,8 +109,53 @@ export const moderationResolvers = {
           .from(contentReports)
           .where(whereClause);
 
+        // Collect unique contentIds to batch-fetch previews and report counts
+        const contentIds = [...new Set(items.map((r: any) => r.contentId))];
+
+        // Batch fetch report counts per contentId for this entity
+        const reportCountRows = contentIds.length
+          ? await db
+              .select({
+                contentId: contentReports.contentId,
+                count: sql<number>`count(*)::int`,
+              })
+              .from(contentReports)
+              .where(
+                and(
+                  eq(contentReports.entityId, entity),
+                  inArray(contentReports.contentId, contentIds as string[]),
+                ),
+              )
+              .groupBy(contentReports.contentId)
+          : [];
+
+        // Batch fetch content previews from userFeed by matching contentId -> userFeed.id
+        const feedRows = contentIds.length
+          ? await db.query.userFeed.findMany({
+              where: inArray(userFeed.id, contentIds as string[]),
+              columns: { id: true, description: true },
+            })
+          : [];
+
+        const countMap: Record<string, number> = {};
+        for (const row of reportCountRows) {
+          countMap[row.contentId] = Number(row.count);
+        }
+
+        const previewMap: Record<string, string> = {};
+        for (const row of feedRows) {
+          const preview = (row.description || "").toString();
+          previewMap[row.id] = preview.length > 200 ? preview.slice(0, 200) + "…" : preview;
+        }
+
+        const enrichedItems = items.map((item: any) => ({
+          ...item,
+          reportsCount: countMap[item.contentId] ?? 1,
+          contentPreview: previewMap[item.contentId] ?? null,
+        }));
+
         return {
-          items,
+          items: enrichedItems,
           totalCount: Number(countResult?.count || 0),
         };
       } catch (error) {

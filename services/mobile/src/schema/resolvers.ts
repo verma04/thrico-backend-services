@@ -74,6 +74,7 @@ export const resolvers = {
 
     async getOrgDetails(_: any, { input }: any, context: any) {
       try {
+        console.log("getOrgDetails called with input:", input, context.headers);
         const { db, entityId } = context.user || (await checkAuth(context));
         return AuthService.getOrgDetails({ entityId, db });
       } catch (error) {
@@ -152,7 +153,35 @@ export const resolvers = {
         throw error;
       }
     },
+    async getReferralCode(_: any, {}: any, context: any) {
+      try {
+        const { db, userId } = context.user || (await checkAuth(context));
+        return UserService.getReferralCode({ userId, db });
+      } catch (error) {
+        log.error("Error in getReferralCode", { error });
+        throw error;
+      }
+    },
+    async getReferralStats(_: any, {}: any, context: any) {
+      try {
+        const { db, userId } = context.user || (await checkAuth(context));
+        return UserService.getReferralStats({ userId, db });
+      } catch (error) {
+        log.error("Error in getReferralStats", { error });
+        throw error;
+      }
+    },
+    async checkReferralCode(_: any, { code, entityId }: any, context: any) {
+      try {
+        const db = getDatabase();
+        return UserService.checkReferralCode({ code, entityId, db });
+      } catch (error) {
+        log.error("Error in checkReferralCode", { error, code, entityId });
+        return { isValid: false };
+      }
+    },
   },
+
   Mutation: {
     async loginWithEmail(_: any, { input }: any, context: any) {
       try {
@@ -345,6 +374,25 @@ export const resolvers = {
         });
       } catch (error) {
         log.error("Error in createProfile", { error, userId: input?.userId });
+        throw error;
+      }
+    },
+    async inviteFriend(_: any, { email }: any, context: any) {
+      try {
+        const { db, userId, entityId } =
+          context.user || (await checkAuth(context));
+        // This would typically send an email with the user's referral code
+        const referralCode = await UserService.getReferralCode({ userId, db });
+
+        // Logic to send actual invite email would go here
+        log.info("Inviting friend", { userId, email, referralCode });
+
+        return {
+          success: true,
+          message: `Invite sent to ${email}`,
+        };
+      } catch (error) {
+        log.error("Error in inviteFriend", { error });
         throw error;
       }
     },

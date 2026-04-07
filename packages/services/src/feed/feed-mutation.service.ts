@@ -23,6 +23,7 @@ import { NotificationAggregatorService } from "../notification/notification-aggr
 import { ModerationPublisher } from "../utils/moderation-publisher";
 import { CloseFriendNotificationService } from "../network/closefriend-notification.service";
 import { StorageService } from "../storage/storage.service";
+import { ModerationService } from "../moderation/moderation.service";
 
 export class FeedMutationService {
   // Add new feed
@@ -129,6 +130,13 @@ export class FeedMutationService {
       | { key: string; size: number; mimetype: string }
       | null
       | undefined;
+
+    // Moderation check
+    await ModerationService.checkContent({
+      entityId,
+      db,
+      content: { description: input?.description },
+    });
 
     // Handle media uploads
     if (input?.media) {
@@ -439,6 +447,13 @@ export class FeedMutationService {
     entity: string;
     db: any;
   }) {
+    // Moderation check
+    await ModerationService.checkContent({
+      entityId: entity,
+      db,
+      content: { comment: input.comment },
+    });
+
     const feed = await db.query.userFeed.findFirst({
       where: eq(userFeed.id, input.feedID),
     });
@@ -674,6 +689,15 @@ export class FeedMutationService {
     if (feed.userId !== currentUserId) {
       throw new GraphQLError("Permission denied", {
         extensions: { code: "FORBIDDEN", http: { status: 403 } },
+      });
+    }
+
+    // Moderation check
+    if (input.description) {
+      await ModerationService.checkContent({
+        entityId,
+        db,
+        content: { description: input.description },
       });
     }
 

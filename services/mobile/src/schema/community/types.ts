@@ -884,6 +884,29 @@ const communitiesTypes = `#graphql
     LAST_90_DAYS
   }
 
+  type EnrollmentTrendPoint {
+    label: String!
+    count: Int!
+  }
+
+  type StatusDistributionItem {
+    name: String!
+    value: Int!
+  }
+
+  type TopCommunity {
+    name: String!
+    members: Int!
+    posts: Int!
+    views: Int!
+  }
+
+  type TopCreator {
+    name: String!
+    avatar: String
+    communitiesCreated: Int!
+  }
+
   type CommunitiesStats {
     totalCommunities: Int!
     activeCommunities: Int!
@@ -893,6 +916,11 @@ const communitiesTypes = `#graphql
     activeCommunitiesChange: Float!
     enrollmentsChange: Float!
     viewsChange: Float!
+
+    enrollmentTrend: [EnrollmentTrendPoint!]!
+    statusDistribution: [StatusDistributionItem!]!
+    topCommunities: [TopCommunity!]!
+    topCreators: [TopCreator!]!
   }
   # =============== UPDATED QUERY AND MUTATION TYPES ===============
 

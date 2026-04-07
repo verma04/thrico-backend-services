@@ -146,6 +146,15 @@ export const userTypes = `#graphql
   input userSettings {
     autoApprove: Boolean
   }
+  input AddNewMemberInput {
+    email: String!
+    firstName: String!
+    lastName: String!
+    avatar: String
+    headline: String
+    about: String
+    DOB: String
+  }
   input UserReportInput {
     userId: ID!
     limit: Int
@@ -232,5 +241,6 @@ export const userTypes = `#graphql
     bulkChangeUserStatus(input: bulkStatusInput): [userToEntity]
     updateUserSettings(input: userSettings): userSetting
     changeUserVerification(input: statusInput): userToEntity
+    addNewMember(input: AddNewMemberInput!): userToEntity
   }
 `;

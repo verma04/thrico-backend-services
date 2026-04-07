@@ -52,12 +52,8 @@ export const typeDefs = `#graphql
     isMember: Boolean
   }
 
-  # Stub for user type if not defined elsewhere
-  type user {
-    id: ID
-    email: String
-    profile: userProfile
-  }
+  # User type removed here as it is defined in other modules (feed/jobs)
+  # to avoid merge conflicts. We will extend it if needed or rely on base definitions.
 
   input inputId {
     id: ID!
@@ -71,6 +67,7 @@ export const typeDefs = `#graphql
     deviceName: String
     deviceOs: String
     country: String!
+    referredByCode: String
   }
   input inputSwitchAccount {
     entityId: ID!
@@ -97,7 +94,7 @@ export const typeDefs = `#graphql
     about: aboutUser
     cover: String
     location: JSON
-    profile: profile
+    profile: userProfile
     isActive: Boolean
     isDeletionPending: Boolean
     deletionRequestedAt: Date
@@ -138,7 +135,25 @@ export const typeDefs = `#graphql
     getEntityTheme: theme
     checkUserOnline: checkUserOnlineResponse
     getEntityModuleAccess(moduleName: ModuleName!): Boolean
+    getReferralCode: String
+    getReferralStats: ReferralStats
+    checkReferralCode(code: String!, entityId: ID!): ReferralCheckResponse
   }
+
+  type ReferralCheckResponse {
+    isValid: Boolean!
+    referrerName: String
+  }
+
+  type ReferralStats {
+    referralCode: String!
+    totalReferrals: Int!
+    referredUsers: [entityUser]
+  }
+
+
+
+
 
   enum ModuleName {
     COMMUNITY
@@ -200,6 +215,7 @@ export const typeDefs = `#graphql
     deactivateAccount: GenericResponse
     reactivateAccount: GenericResponse
     createProfile(input: CreateProfileInput): chooseAccount
+    inviteFriend(email: String!): GenericResponse
   }
 
   input CreateProfileInput {
@@ -219,6 +235,7 @@ export const typeDefs = `#graphql
     deviceType: String
     deviceToken: String
     country: String!
+    referredByCode: String
   }
 
   input SocialInput {

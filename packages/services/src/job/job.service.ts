@@ -16,6 +16,8 @@ import { NotificationService } from "../notification/notification.service";
 import { JobNotificationService } from "./job.notification.service";
 import { CloseFriendNotificationService } from "../network/closefriend-notification.service";
 import { StorageService } from "../storage/storage.service";
+import { AutomationEventService } from "../automation/automation-event.service";
+import { ModerationService } from "../moderation/moderation.service";
 
 export interface PageInfo {
   hasNextPage: boolean;
@@ -570,6 +572,19 @@ export class JobService {
 
       log.debug("Posting job", { userId, entityId, title: input.title });
 
+      // Moderation check
+      await ModerationService.checkContent({
+        entityId,
+        db,
+        content: {
+          title: input.title,
+          description: input.description,
+          location: input.location,
+          tagline: input.tagline,
+          requirements: input.requirements,
+        },
+      });
+
       const slug = generateSlug(input.title);
 
       const [jobAdded] = await db.transaction(async (tx: any) => {
@@ -784,6 +799,17 @@ export class JobService {
           moduleId: "jobs",
           userId,
           entityId: jobData.entityId,
+        });
+        
+        // Automation Trigger
+        await AutomationEventService.triggerEvent({
+          eventName: "job.applied",
+          userId,
+          entityId: jobData.entityId,
+          metadata: {
+            jobId: jobId,
+            jobTitle: jobData.title,
+          },
         });
 
         // Send notification to job poster & applicant

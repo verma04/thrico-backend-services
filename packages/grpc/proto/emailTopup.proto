@@ -26,17 +26,22 @@ message BuyEmailTopupRequest {
   string countryCode = 3;
 }
 
-message BuyEmailTopupResponse {
-  string billingId = 1;
-  string razorpayOrderId = 2;
-  float amount = 3;
-  string currency = 4;
-}
-
 message GetEmailQuotaRequest {
   string entityId = 1;
 }
 
+message BuyEmailTopupResponse {
+  bool success = 1;
+  string message = 2;
+  string billingId = 3;
+  string razorpayOrderId = 4;
+  float amount = 5;
+  float taxAmount = 6;
+  float totalAmount = 7;
+  string currency = 8;
+  string taxName = 9;
+  float taxPercentage = 10;
+}
 message GetEmailQuotaResponse {
   string entityId = 1;
   int32 balance = 2;
@@ -93,10 +98,28 @@ message GetEmailOverviewResponse {
   repeated EmailOverviewRecentEmail recentEmails = 4;
 }
 
+message GetBillingHistoryRequest {
+  string entityId = 1;
+}
+
+message BillingHistoryItem {
+  string billingId = 1;
+  string planName = 2;
+  float amount = 3;
+  string currency = 4;
+  string status = 5;
+  string createdAt = 6;
+}
+
+message GetBillingHistoryResponse {
+  repeated BillingHistoryItem history = 1;
+}
+
 service EmailTopupService {
   rpc GetEmailTopups (GetEmailTopupsRequest) returns (GetEmailTopupsResponse);
   rpc BuyEmailTopup (BuyEmailTopupRequest) returns (BuyEmailTopupResponse);
   rpc GetEmailQuota (GetEmailQuotaRequest) returns (GetEmailQuotaResponse);
   rpc DeductEmailQuota (DeductEmailQuotaRequest) returns (DeductEmailQuotaResponse);
   rpc GetEmailOverview (GetEmailOverviewRequest) returns (GetEmailOverviewResponse);
+  rpc GetBillingHistory (GetBillingHistoryRequest) returns (GetBillingHistoryResponse);
 }

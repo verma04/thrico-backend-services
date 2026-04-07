@@ -73,10 +73,12 @@ export const emailTemplate = pgTable("emailTemplate", {
   id: uuid("id").defaultRandom().primaryKey(),
   entity: uuid("entity_id").notNull(),
   name: text("name").notNull(),
+  slug: text("slug"),
   subject: text("subject").notNull(),
   html: text("html").notNull(),
   json: text("json"), // Raw JSON from visual editor (Unlayer / MJML etc.)
   isActive: boolean("is_active").default(true),
+  isDeletable: boolean("is_deletable").default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });

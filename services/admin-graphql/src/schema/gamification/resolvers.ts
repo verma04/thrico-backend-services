@@ -237,11 +237,16 @@ export const gamificationResolvers = {
       try {
         const { db, entity } = await checkAuth(context);
         const queryService = new GamificationQueryService(db);
-        return await queryService.getLeaderboard({
+        const result = await queryService.getLeaderboard({
           entityId: entity,
           limit: pagination?.limit || 20,
           cursor: pagination?.cursor,
         });
+
+        return {
+          entries: (result.edges || []).map((edge: any) => edge.node),
+          totalUsers: result.totalCount || 0,
+        };
       } catch (error: any) {
         logger.error(`Error in getLeaderboard: ${error.message}`, { error });
         throw error;

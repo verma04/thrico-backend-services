@@ -4,6 +4,9 @@
     "outDir": "./dist",
     "rootDir": "./src",
     "baseUrl": ".",
+    "composite": true,
+    "declaration": true,
+    "declarationMap": true,
     "paths": {
       "@thrico/shared": ["../shared/dist"],
       "@thrico/shared/*": ["../shared/dist/*"],

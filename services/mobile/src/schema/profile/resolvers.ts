@@ -412,7 +412,7 @@ const profileResolvers: any = {
             .set({
               firstName: input.firstName,
               lastName: input.lastName,
-              avatar: avatar,
+              avatar: avatar?.key,
               location: input.location,
             })
             .where(eq(user.id, userId));

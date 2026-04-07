@@ -76,6 +76,38 @@ services:
       start_period: 40s
       retries: 3
 
+  automation-processor:
+    image: thrico/thrico-automation-processor:latest
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: services/automation-processor/Dockerfile
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - thrico-network
+    restart: unless-stopped
+    depends_on:
+      - admin-graphql
+
+  automation-worker:
+    image: thrico/thrico-automation-worker:latest
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: services/automation-worker/Dockerfile
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - thrico-network
+    restart: unless-stopped
+    depends_on:
+      - automation-processor
+
 networks:
   thrico-network:
     driver: bridge

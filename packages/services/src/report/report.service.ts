@@ -2,6 +2,7 @@ import { log } from "@thrico/logging";
 import { GraphQLError } from "graphql";
 import { and, eq, sql, desc } from "drizzle-orm";
 import { reports } from "@thrico/database";
+import { ModerationService } from "../moderation/moderation.service";
 
 export class ReportService {
   static async reportContent({
@@ -29,6 +30,13 @@ export class ReportService {
           }
         );
       }
+
+      // Moderation check
+      await ModerationService.checkContent({
+        entityId,
+        db,
+        content: { reason: input.reason, description: input.description },
+      });
 
       log.debug("Reporting content", {
         entityId,

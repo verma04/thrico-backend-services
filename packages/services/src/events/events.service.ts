@@ -13,6 +13,8 @@ import { log } from "@thrico/logging";
 import { GamificationEventService } from "../gamification/gamification-event.service";
 import { CloseFriendNotificationService } from "../network/closefriend-notification.service";
 import { StorageService } from "../storage/storage.service";
+import { AutomationEventService } from "../automation/automation-event.service";
+import { ModerationService } from "../moderation/moderation.service";
 
 export class EventsService {
   constructor(private db: any) {}
@@ -35,6 +37,13 @@ export class EventsService {
     id: string;
     entityId: string;
   }) {
+    // Moderation check
+    await ModerationService.checkContent({
+      entityId,
+      db: this.db,
+      content: { title: input.title, description: input.description },
+    });
+
     try {
       let cover: string | undefined;
       if (input?.cover) {
@@ -280,6 +289,17 @@ export class EventsService {
           entityId,
         });
 
+        // Automation Trigger
+        await AutomationEventService.triggerEvent({
+          eventName: "event.registered",
+          userId,
+          entityId,
+          metadata: {
+            eventId: eventId,
+            eventTitle: feed.title,
+          },
+        });
+
         return {
           status: true,
         };
@@ -368,6 +388,13 @@ export class EventsService {
     eventId: string;
     details: any;
   }) {
+    // Moderation check
+    await ModerationService.checkContent({
+      entityId: (await this.db.query.events.findFirst({ where: eq(events.id, eventId) }))?.entityId,
+      db: this.db,
+      content: { title: details.title, description: details.description },
+    });
+
     try {
       const updated = await this.db
         .update(events)

@@ -17,6 +17,7 @@ import { CommunityNotificationPublisher } from "./notification-publisher";
 import { UserService } from "../user/user.service";
 import { StorageService } from "../storage/storage.service";
 import { v4 as uuidv4 } from "uuid";
+import { ModerationService } from "../moderation/moderation.service";
 export class CommunityManagementService {
   static readonly DEFAULT_COMMUNITY_RULES = [
     {
@@ -100,6 +101,17 @@ export class CommunityManagementService {
       }
 
       log.debug("Creating community", { userId, entityId, title: input.title });
+
+      // Moderation check
+      await ModerationService.checkContent({
+        entityId,
+        db,
+        content: {
+          title: input.title,
+          description: input.description,
+          tagline: input.tagline,
+        },
+      });
 
       // Using entitySettingsGroups as proxy for entitySettings for now if specific table not found
       // But logic used 'allowCommunity'. entitySettingsGroups has 'autoApprove'.
@@ -578,6 +590,17 @@ export class CommunityManagementService {
         );
       }
 
+      // Moderation check
+      await ModerationService.checkContent({
+        entityId,
+        db,
+        content: {
+          title: input.title,
+          description: input.description,
+          tagline: input.tagline,
+        },
+      });
+
       // Prepare update values - only include fields that are provided
       const updateValues: any = {
         updatedAt: new Date(),
@@ -782,6 +805,17 @@ export class CommunityManagementService {
           "Only admins and managers can edit community info",
         );
       }
+
+      // Moderation check
+      await ModerationService.checkContent({
+        entityId,
+        db,
+        content: {
+          title: input.title,
+          description: input.description,
+          tagline: input.tagline,
+        },
+      });
 
       // Validate input
       if (!input.title && !input.description && !input.tagline) {

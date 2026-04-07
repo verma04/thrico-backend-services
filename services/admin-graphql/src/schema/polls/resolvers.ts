@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, count, eq, inArray, sql } from "drizzle-orm";
 import { GraphQLError } from "graphql";
 import {
   pollOptions,
@@ -139,6 +139,160 @@ export const pollsResolvers = {
         return {
           options: poll?.options,
           individualVotes: individualVotes,
+        };
+      } catch (error) {
+        console.log(error);
+        throw error;
+      }
+    },
+
+    async getPollStats(_: any, { timeRange }: any, context: any) {
+      try {
+        const { entity, db } = await checkAuth(context);
+
+        const now = new Date();
+        let startDate: Date;
+        let prevStartDate: Date;
+
+        switch (timeRange) {
+          case "LAST_24_HOURS":
+            startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+            prevStartDate = new Date(
+              startDate.getTime() - 24 * 60 * 60 * 1000
+            );
+            break;
+          case "LAST_7_DAYS":
+            startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+            prevStartDate = new Date(
+              startDate.getTime() - 7 * 24 * 60 * 60 * 1000
+            );
+            break;
+          case "LAST_30_DAYS":
+            startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+            prevStartDate = new Date(
+              startDate.getTime() - 30 * 24 * 60 * 60 * 1000
+            );
+            break;
+          case "LAST_90_DAYS":
+          default:
+            startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+            prevStartDate = new Date(
+              startDate.getTime() - 90 * 24 * 60 * 60 * 1000
+            );
+            break;
+        }
+
+        const calcChange = (curr: number, prev: number): number => {
+          if (prev === 0) return curr > 0 ? 100 : 0;
+          return ((curr - prev) / prev) * 100;
+        };
+
+        // ── 1. Overall (all-time) counts ────────────────────────────────────
+        const [overallPolls] = await db
+          .select({
+            totalPolls: count(),
+            activePolls: sql<number>`count(case when ${
+              polls.status
+            } = 'APPROVED' and (${
+              polls.endDate
+            } is null or ${polls.endDate} > ${now}) then 1 end)`,
+          })
+          .from(polls)
+          .where(eq(polls.entityId, entity));
+
+        const [overallVotes] = await db
+          .select({ votes: count() })
+          .from(pollResults)
+          .innerJoin(polls, eq(pollResults.pollId, polls.id))
+          .where(eq(polls.entityId, entity));
+
+        // ── 2. Current period counts ─────────────────────────────────────────
+        const [currPolls] = await db
+          .select({
+            totalPolls: count(),
+            activePolls: sql<number>`count(case when ${
+              polls.status
+            } = 'APPROVED' and (${
+              polls.endDate
+            } is null or ${polls.endDate} > ${now}) then 1 end)`,
+          })
+          .from(polls)
+          .where(
+            and(
+              eq(polls.entityId, entity),
+              sql`${polls.createdAt} >= ${startDate}`
+            )
+          );
+
+        const [currVotes] = await db
+          .select({ votes: count() })
+          .from(pollResults)
+          .innerJoin(polls, eq(pollResults.pollId, polls.id))
+          .where(
+            and(
+              eq(polls.entityId, entity),
+              sql`${pollResults.createdAt} >= ${startDate}`
+            )
+          );
+
+        // ── 3. Previous period counts ────────────────────────────────────────
+        const [prevPolls] = await db
+          .select({
+            totalPolls: count(),
+            activePolls: sql<number>`count(case when ${
+              polls.status
+            } = 'APPROVED' and (${
+              polls.endDate
+            } is null or ${polls.endDate} > ${now}) then 1 end)`,
+          })
+          .from(polls)
+          .where(
+            and(
+              eq(polls.entityId, entity),
+              sql`${polls.createdAt} >= ${prevStartDate}`,
+              sql`${polls.createdAt} < ${startDate}`
+            )
+          );
+
+        const [prevVotes] = await db
+          .select({ votes: count() })
+          .from(pollResults)
+          .innerJoin(polls, eq(pollResults.pollId, polls.id))
+          .where(
+            and(
+              eq(polls.entityId, entity),
+              sql`${pollResults.createdAt} >= ${prevStartDate}`,
+              sql`${pollResults.createdAt} < ${startDate}`
+            )
+          );
+
+        // ── 4. Derived values ────────────────────────────────────────────────
+        const totalPolls = Number(overallPolls?.totalPolls || 0);
+        const activePolls = Number(overallPolls?.activePolls || 0);
+        const votes = Number(overallVotes?.votes || 0);
+
+        // Engagement rate = avg votes per poll
+        const engagementRate = totalPolls > 0 ? votes / totalPolls : 0;
+
+        const curTot = Number(currPolls?.totalPolls || 0);
+        const curAct = Number(currPolls?.activePolls || 0);
+        const curVot = Number(currVotes?.votes || 0);
+        const preTot = Number(prevPolls?.totalPolls || 0);
+        const preAct = Number(prevPolls?.activePolls || 0);
+        const preVot = Number(prevVotes?.votes || 0);
+
+        const curEngRate = curTot > 0 ? curVot / curTot : 0;
+        const preEngRate = preTot > 0 ? preVot / preTot : 0;
+
+        return {
+          totalPolls,
+          activePolls,
+          votes,
+          engagementRate,
+          totalPollsChange: calcChange(curTot, preTot),
+          activePollsChange: calcChange(curAct, preAct),
+          votesChange: calcChange(curVot, preVot),
+          engagementRateChange: calcChange(curEngRate, preEngRate),
         };
       } catch (error) {
         console.log(error);

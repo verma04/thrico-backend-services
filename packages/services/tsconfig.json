@@ -12,6 +12,7 @@
   "references": [
     { "path": "../database" },
     { "path": "../logging" },
-    { "path": "../shared" }
+    { "path": "../shared" },
+    { "path": "../grpc" }
   ]
 }

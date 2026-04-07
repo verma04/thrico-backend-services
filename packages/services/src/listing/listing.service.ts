@@ -24,6 +24,7 @@ import { log } from "@thrico/logging";
 import { PaginationParams } from "../types";
 import { GamificationEventService } from "../gamification/gamification-event.service";
 import { StorageService } from "../storage/storage.service";
+import { ModerationService } from "../moderation/moderation.service";
 
 interface ListingLocation {
   name?: string;
@@ -182,6 +183,13 @@ export class ListingService {
     input: CreateListingInput,
   ): Promise<any> {
     try {
+      // Moderation check
+      await ModerationService.checkContent({
+        entityId,
+        db,
+        content: { title: input.title, description: input.description },
+      });
+
       // Upload media files
       // We'll pre-generate the listing ID to use as referenceId
       const listingId = uuidv4();
@@ -268,6 +276,15 @@ export class ListingService {
 
       if (existingListing.postedBy !== userId) {
         throw new Error("You are not authorized to edit this listing");
+      }
+
+      // Moderation check
+      if (input.title || input.description) {
+        await ModerationService.checkContent({
+          entityId,
+          db,
+          content: { title: input.title, description: input.description },
+        });
       }
 
       // Upload new media files if provided

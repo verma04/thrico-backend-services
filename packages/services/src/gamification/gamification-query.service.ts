@@ -683,6 +683,66 @@ export class GamificationQueryService {
   }
 
   /**
+   * Fetches a specific point rule by module and action
+   */
+  async getPointRuleByAction({
+    entityId,
+    module,
+    action,
+    db = this.db,
+  }: {
+    entityId: string;
+    module: string;
+    action: string;
+    db?: any;
+  }) {
+    try {
+      const [rule] = await db
+        .select()
+        .from(pointRules)
+        .where(
+          and(
+            eq(pointRules.entityId, entityId),
+            eq(pointRules.module, module),
+            eq(pointRules.action, action),
+            eq(pointRules.isActive, true),
+          ),
+        );
+      return rule;
+    } catch (error) {
+      log.error("Error in getPointRuleByAction", {
+        error,
+        entityId,
+        module,
+        action,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Fetches all active point rules for an entity
+   */
+  async getActivePointRules({
+    entityId,
+    db = this.db,
+  }: {
+    entityId: string;
+    db?: any;
+  }) {
+    try {
+      return await db
+        .select()
+        .from(pointRules)
+        .where(and(eq(pointRules.entityId, entityId), eq(pointRules.isActive, true)))
+        .orderBy(pointRules.module, pointRules.action);
+    } catch (error) {
+      log.error("Error in getActivePointRules", { error, entityId });
+      throw error;
+    }
+  }
+
+  /**
    * Fetches leaderboard entries for an entity with cursor-based pagination
    */
   async getLeaderboard({

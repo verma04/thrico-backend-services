@@ -43,10 +43,12 @@ export const moderationTypes = `#graphql
     entityId: ID!
     contentType: String!
     contentId: String!
+    contentPreview: String
     reportedBy: User!
     reportedUser: User!
     reason: String!
     status: ReportStatus!
+    reportsCount: Int
     resolvedBy: User
     resolvedAt: String
     createdAt: String!

@@ -83,9 +83,13 @@ export * from "./utils/common.utils";
 export { S3Service } from "./utils/s3.service";
 export { RabbitMQService } from "./utils/rabbitmq.service";
 export { ModerationPublisher } from "./utils/moderation-publisher";
+export { ModerationService } from "./moderation/moderation.service";
 export { AIService } from "./utils/ai.service";
 export * from "./feed/types";
 
 export { ContactService } from "./contact/contact.service";
+export { AutomationEventService } from "./automation/automation-event.service";
+export { AutomationService } from "./automation/automation.service";
+export { EmailService } from "./email/email.service";
 // Export types
 export * from "./types";

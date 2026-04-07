@@ -1,6 +1,7 @@
 import { log } from "@thrico/logging";
 import { GraphQLError } from "graphql";
 import { and, eq, sql, avg, count, desc } from "drizzle-orm";
+import { ModerationService } from "../moderation/moderation.service";
 
 export class ListingRatingService {
   static async createRating({
@@ -48,6 +49,22 @@ export class ListingRatingService {
         sellerId: input.sellerId,
         ratedBy: input.ratedBy,
       });
+
+      // Moderation check
+      if (input.review) {
+        // Fetch entityId from input listing
+        const listing = await db.query.marketPlace.findFirst({
+          where: (mp: any, { eq }: any) => eq(mp.id, input.listingId),
+          columns: { entityId: true },
+        });
+        if (listing) {
+          await ModerationService.checkContent({
+            entityId: listing.entityId,
+            db,
+            content: { review: input.review },
+          });
+        }
+      }
 
       await this.validateListingAndSeller(db, input.listingId, input.sellerId);
 
@@ -124,6 +141,21 @@ export class ListingRatingService {
         ratingId: input.ratingId,
         rating: input.rating,
       });
+
+      // Moderation check
+      if (input.review) {
+        const rating = await db.query.listingRating.findFirst({
+          where: eq(db.schema.listingRating.id, input.ratingId),
+          with: { listing: { columns: { entityId: true } } },
+        });
+        if (rating?.listing?.entityId) {
+          await ModerationService.checkContent({
+            entityId: rating.listing.entityId,
+            db,
+            content: { review: input.review },
+          });
+        }
+      }
 
       const [updatedRating] = await db
         .update(db.schema.listingRating)

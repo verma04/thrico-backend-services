@@ -58,6 +58,7 @@ export const loginTypeDefs = `#graphql
 
   extend type Query {
     getMyAccounts: [AdminAccount!]
+    getMyOtherAccounts: [AdminAccount!]
     getLoginUserDetails: AdminUserDetails
   }
 
@@ -70,5 +71,6 @@ export const loginTypeDefs = `#graphql
     otpLogin(input: AdminOtpInput): JwtToken
     loginByEntityId(entityId: ID!): JwtToken
     registerEntity(input: RegisterEntityInput): JwtToken
+    switchToOtherAccount(entityId: ID!): JwtToken
   }
 `;

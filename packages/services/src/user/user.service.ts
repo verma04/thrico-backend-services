@@ -1,7 +1,15 @@
 import { eq, and, sql } from "drizzle-orm";
-import { userToEntity, userProfile, aboutUser, user } from "@thrico/database";
+import {
+  userToEntity,
+  userProfile,
+  aboutUser,
+  user,
+  gamificationUser,
+} from "@thrico/database";
+
 import { log } from "@thrico/logging";
 import { GraphQLError } from "graphql";
+import { GamificationEventService } from "../gamification/gamification-event.service";
 
 export class UserService {
   static async getUserOrgDetails({
@@ -418,6 +426,210 @@ export class UserService {
     } catch (error) {
       log.error("Error in reactivateAccount", { error, userId });
       throw error;
+    }
+  }
+
+  static async getReferralCode({ userId, db }: { userId: string; db: any }) {
+    try {
+      if (!userId) {
+        throw new GraphQLError("User ID is required.", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+
+      log.debug("Getting or creating referral code", { userId });
+
+      const userRecord = await db.query.user.findFirst({
+        where: eq(user.id, userId),
+        columns: { referralCode: true, firstName: true },
+      });
+
+      if (!userRecord) {
+        throw new GraphQLError("User not found.", {
+          extensions: { code: "NOT_FOUND" },
+        });
+      }
+
+      if (userRecord.referralCode) {
+        return userRecord.referralCode;
+      }
+
+      // Generate new referral code
+      const firstNamePrefix = (userRecord.firstName || "USER")
+        .substring(0, 4)
+        .toUpperCase();
+      const randomSuffix = Math.random()
+        .toString(36)
+        .substring(2, 6)
+        .toUpperCase();
+      const newReferralCode = `${firstNamePrefix}-${randomSuffix}`;
+
+      await db
+        .update(user)
+        .set({ referralCode: newReferralCode })
+        .where(eq(user.id, userId));
+
+      log.info("Referral code created", { userId, code: newReferralCode });
+
+      return newReferralCode;
+    } catch (error) {
+      log.error("Error in getReferralCode", { error, userId });
+      throw error;
+    }
+  }
+
+  static async processReferral({
+    referredByCode,
+    newUserId,
+    entityId,
+    db,
+  }: {
+    referredByCode: string;
+    newUserId: string;
+    entityId: string;
+    db: any;
+  }) {
+    try {
+      if (!referredByCode) return;
+
+      log.debug("Processing referral", { referredByCode, newUserId, entityId });
+
+      // Find referrer in the same entity
+      const referrer = await db.query.user.findFirst({
+        where: and(
+          eq(user.referralCode, referredByCode),
+          eq(user.entityId, entityId),
+        ),
+      });
+
+      if (referrer) {
+        log.info("Referrer found, triggering gamification event", {
+          referrerId: referrer.id,
+          newUserId,
+        });
+
+        // Trigger event for referrer
+        await GamificationEventService.triggerEvent({
+          triggerId: "tr-user-refer",
+          moduleId: "invite",
+          userId: referrer.id,
+          entityId,
+          referenceId: newUserId,
+        });
+
+        // Trigger event for referee (optional, but good for "Double Rewards")
+        await GamificationEventService.triggerEvent({
+          triggerId: "tr-user-referred-join",
+          moduleId: "invite",
+          userId: newUserId,
+          entityId,
+          referenceId: referrer.id,
+        });
+      } else {
+        log.warn("Referrer not found for code", { referredByCode, entityId });
+      }
+    } catch (error) {
+      log.error("Error in processReferral", { error, referredByCode });
+      // Don't throw error to avoid breaking the signup flow
+    }
+  }
+
+  static async getReferralStats({ userId, db }: { userId: string; db: any }) {
+    try {
+      if (!userId) {
+        throw new GraphQLError("User ID is required.", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+
+      log.debug("Getting referral stats", { userId });
+
+      // 1. Get user record to get referral code and entity context
+      const userRecord = await db.query.user.findFirst({
+        where: eq(user.id, userId),
+        columns: { referralCode: true, entityId: true },
+      });
+
+      if (!userRecord) {
+        throw new GraphQLError("User not found.", {
+          extensions: { code: "NOT_FOUND" },
+        });
+      }
+
+      // Ensure referral code exists, if not generate it
+      const code =
+        userRecord.referralCode || (await this.getReferralCode({ userId, db }));
+
+      // 2. Fetch referred users in this entity
+      const referredUsers = await db.query.user.findMany({
+        where: and(
+          eq(user.referredBy, code),
+          eq(user.entityId, userRecord.entityId),
+        ),
+        with: {
+          about: true,
+          profile: true,
+          userEntity: true,
+        },
+      });
+
+      // 3. Map to entityUser format
+      const mappedUsers = referredUsers.map((u: any) => ({
+        ...u,
+        id: u.userEntity?.id || u.id, // Prefer user_to_entity ID if available
+        status: u.userEntity?.status,
+        isApproved: u.userEntity?.isApproved,
+        isRequested: u.userEntity?.isRequested,
+      }));
+
+      log.info("Referral stats retrieved", {
+        userId,
+        totalReferrals: mappedUsers.length,
+      });
+
+      return {
+        referralCode: code,
+        totalReferrals: mappedUsers.length,
+        referredUsers: mappedUsers,
+      };
+    } catch (error) {
+      log.error("Error in getReferralStats", { error, userId });
+      throw error;
+    }
+  }
+
+  static async checkReferralCode({
+    code,
+    entityId,
+    db,
+  }: {
+    code: string;
+    entityId: string;
+    db: any;
+  }) {
+    try {
+      if (!code || !entityId) {
+        return { isValid: false };
+      }
+
+      log.debug("Checking referral code", { code, entityId });
+
+      const referrer = await db.query.user.findFirst({
+        where: and(eq(user.referralCode, code), eq(user.entityId, entityId)),
+        columns: { firstName: true, lastName: true },
+      });
+
+      if (referrer) {
+        return {
+          isValid: true,
+          referrerName: `${referrer.firstName} ${referrer.lastName}`.trim(),
+        };
+      }
+
+      return { isValid: false };
+    } catch (error) {
+      log.error("Error in checkReferralCode", { error, code });
+      return { isValid: false };
     }
   }
 }

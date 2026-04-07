@@ -1,0 +1,1 @@
+ALTER TABLE "emailTemplate" ADD COLUMN "slug" text;

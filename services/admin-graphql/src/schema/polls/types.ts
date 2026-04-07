@@ -94,10 +94,22 @@ export const pollTypes = `#graphql
     options: [options]
     individualVotes: [result]
   }
+  type PollStats {
+    totalPolls: Int!
+    activePolls: Int!
+    votes: Int!
+    engagementRate: Float!
+    totalPollsChange: Float!
+    activePollsChange: Float!
+    votesChange: Float!
+    engagementRateChange: Float!
+  }
+
   extend type Query {
     getPolls(input: inputGetPolls!): [polls]
     getPollByIdForUser(input: inputGetPollByIdForUser!): polls
     getPollResult(input: inputGetPollByIdForUser!): pollResult
+    getPollStats(timeRange: TimeRange!): PollStats!
   }
   input inputVoteOnPoll {
     pollId: String!

@@ -32,6 +32,7 @@ import { reportTypes } from "./report/types";
 import { momentTypes } from "./moment/types";
 import { storageTypes } from "./storage/types";
 import { addonPricingTypes } from "./addon-pricing/types";
+import { emailCampaignTypes } from "./email-campaigns/types";
 
 const mainTypeDefs = `#graphql
   # User Types
@@ -361,6 +362,7 @@ export const typeDefs = [
   momentTypes,
   storageTypes,
   addonPricingTypes,
+  emailCampaignTypes,
   rbacTypeDefs,
   loginTypeDefs,
 ];

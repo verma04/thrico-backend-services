@@ -9,6 +9,7 @@ import {
 } from "@thrico/database";
 import generateSlug from "../generateSlug";
 import { GamificationEventService } from "../gamification/gamification-event.service";
+import { ModerationService } from "../moderation/moderation.service";
 
 export class ForumService {
   static async getDiscussionForumCategory({
@@ -436,6 +437,13 @@ export class ForumService {
         title: input.title,
       });
 
+      // Moderation check
+      await ModerationService.checkContent({
+        entityId,
+        db,
+        content: { title: input.title, content: input.content },
+      });
+
       const isExist = await db.query.discussionForum.findFirst({
         where: (discussionForum: any, { eq }: any) =>
           and(
@@ -578,6 +586,13 @@ export class ForumService {
         forumId: input.id,
       });
 
+      // Moderation check
+      await ModerationService.checkContent({
+        entityId,
+        db,
+        content: { title: input.title, content: input.content },
+      });
+
       const isExist = await db.query.discussionForum.findFirst({
         where: (discussionForum: any, { eq, and, ne }: any) =>
           and(
@@ -662,6 +677,20 @@ export class ForumService {
         userId,
         discussionForumId,
       });
+
+      // Moderation check
+      const forumModerationData = await db.query.discussionForum.findFirst({
+        where: (df: any, { eq }: any) => eq(df.id, discussionForumId),
+        columns: { entityId: true },
+      });
+
+      if (forumModerationData) {
+        await ModerationService.checkContent({
+          entityId: forumModerationData.entityId,
+          db,
+          content: { content },
+        });
+      }
 
       const forum = await db.query.discussionForum.findFirst({
         where: (discussionForum: any, { eq }: any) =>

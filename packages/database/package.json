@@ -12,7 +12,8 @@
     "setup-vector": "tsx src/postgres/setup-vector.ts",
     "generate": "drizzle-kit generate:pg --config=../../drizzle.config.ts",
     "studio": "drizzle-kit studio --config=../../drizzle.config.ts",
-    "seed:currency": "tsx src/postgres/seed/currency.seed.ts"
+    "seed:currency": "tsx src/postgres/seed/currency.seed.ts",
+    "seed:email-templates": "tsx src/postgres/seed/email-template.seed.ts"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.478.0",

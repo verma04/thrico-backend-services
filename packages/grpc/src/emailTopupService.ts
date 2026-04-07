@@ -86,11 +86,19 @@ export const emailTopupService = {
       }
 
       // Mock response
+      const taxPercentage = countryCode === "IN" ? 18 : 0;
+      const taxAmount = (topup.price * taxPercentage) / 100;
       const response = {
+        success: true,
+        message: "Payment order created",
         billingId: `bill_${Math.random().toString(36).substr(2, 9)}`,
         razorpayOrderId: `order_${Math.random().toString(36).substr(2, 9)}`,
         amount: topup.price,
+        taxAmount,
+        totalAmount: topup.price + taxAmount,
         currency: countryCode === "IN" ? "INR" : "USD",
+        taxName: countryCode === "IN" ? "GST" : "Tax",
+        taxPercentage,
       };
 
       callback(null, response);
@@ -267,6 +275,33 @@ export const emailTopupService = {
       callback(null, response);
     } catch (error: any) {
       log.error("Error in GetEmailOverview", { error: error.message });
+      callback(error);
+    }
+  },
+  /**
+   * Get billing history for top-ups and subscriptions
+   */
+  GetBillingHistory: async (call: any, callback: any) => {
+    try {
+      const { entityId } = call.request;
+      // Mock history for now
+      const history = [
+        {
+          billingId: "bill_mock_1",
+          planName: "5,000 Emails Pack",
+          amount: 1999.0,
+          taxAmount: 359.82,
+          totalAmount: 2358.82,
+          currency: "INR",
+          status: "captured",
+          createdAt: new Date().toISOString(),
+          type: "topup",
+        },
+      ];
+
+      callback(null, { history });
+    } catch (error: any) {
+      log.error("Error in GetBillingHistory", { error: error.message });
       callback(error);
     }
   },

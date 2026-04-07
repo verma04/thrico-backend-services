@@ -196,6 +196,20 @@ export const loginResolvers: any = {
         throw new GraphQLError("Failed to fetch your accounts");
       }
     },
+    getMyOtherAccounts: async (_: any, __: any, context: Context) => {
+      try {
+        const auth = await checkAuth(context);
+        const { userId, email, entity } = auth;
+
+        const result = await entityClient.getMyAccounts(userId);
+
+        return result.filter((t: any) => t?.id !== entity);
+      } catch (error: any) {
+        log.error("Error fetching other accounts", { error: error.message });
+        if (error instanceof GraphQLError) throw error;
+        throw new GraphQLError("Failed to fetch your other accounts");
+      }
+    },
     getLoginUserDetails: async (_: any, __: any, context: Context) => {
       try {
         const auth = await checkAuthLogin(context);
@@ -430,7 +444,7 @@ export const loginResolvers: any = {
       try {
         //   Use the token from input
         const auth = await checkAuthLogin(context);
-        console.log(entityId);
+
         const { email, id } = auth;
         // Verify the membership
         console.log(entity);
@@ -581,6 +595,38 @@ export const loginResolvers: any = {
           input,
         });
         throw new GraphQLError(error.message || "Registration failed");
+      }
+    },
+    switchToOtherAccount: async (
+      _: any,
+      { entityId }: { entityId: string },
+      context: Context,
+    ) => {
+      try {
+        const auth = await checkAuth(context);
+        const { email, userId } = auth;
+        const result = await ADMIN.query("id").eq(userId).exec();
+        const targetAdmin = result[0];
+
+        if (!targetAdmin || targetAdmin.email !== email) {
+          throw new GraphQLError("Invalid user account", {
+            extensions: { code: "FORBIDDEN" },
+          });
+        }
+
+        const sessionToken = await generateJwtToken({ userId, entityId });
+        await LOGIN_SESSION.create({
+          id: `session-${Date.now()}`,
+          userId: userId,
+          token: sessionToken,
+          activeEntityId: entityId,
+        });
+
+        return { token: sessionToken };
+      } catch (error: any) {
+        log.error("Error switching account", { error: error.message });
+        if (error instanceof GraphQLError) throw error;
+        throw new GraphQLError("Failed to switch account");
       }
     },
   },

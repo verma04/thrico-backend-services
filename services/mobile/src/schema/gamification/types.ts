@@ -84,7 +84,23 @@ export const gamificationTypes = `#graphql
     limit: Int
   }
 
+ 
+  type PointRule {
+    id: ID!
+    module: String!
+    action: String!
+    points: Int!
+    description: String
+    isActive: Boolean!
+  }
+ 
+  type ReferralPoints {
+    points: Int!
+    description: String
+  }
+ 
   extend type Query {
+    # Existing queries
     getUserGamificationProfile: GamificationProfile
     getUserEarnedBadges(input: GamificationPaginationInput): EarnedBadgeConnection!
     getUserPointsHistory(input: GamificationPaginationInput): PointsHistoryConnection!
@@ -93,6 +109,11 @@ export const gamificationTypes = `#graphql
     getUserLeaderboard(input: GamificationLeaderboardInput): GamificationLeaderboardConnection!
     getUserNextLevelProgress: NextLevelProgress!
     getGamificationStatsByUserId(userId: ID!): GamificationProfile
+    
+    # New point rule queries
+    getPointRule(module: String!, action: String!): PointRule
+    getActivePointRules: [PointRule!]!
+    getReferralPoints: ReferralPoints
   }
 
   input GamificationLeaderboardInput {

@@ -18,6 +18,7 @@
     "dev:cron": "npm run dev -w services/cron-jobs",
     "build": "pnpm -r build",
     "migrate": "npm run migrate -w packages/database",
+    "seed:email-templates": "npm run seed:email-templates -w packages/database",
     "test": "npm run test --workspaces",
     "test:db": "npm run test:db -w packages/database",
     "test:schema": "npm run test:schema --workspaces --if-present",

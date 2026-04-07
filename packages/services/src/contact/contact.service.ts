@@ -2,6 +2,7 @@ import { log } from "@thrico/logging";
 import { GraphQLError } from "graphql";
 import { contact } from "@thrico/database";
 import { and, eq, gte, sql, desc, count } from "drizzle-orm";
+import { ModerationService } from "../moderation/moderation.service";
 
 export class ContactService {
   static async getContactStats(db: any, entityId: string) {
@@ -139,6 +140,13 @@ export class ContactService {
           extensions: { code: "BAD_USER_INPUT" },
         });
       }
+
+      // Moderation check
+      await ModerationService.checkContent({
+        entityId,
+        db,
+        content: { subject, message },
+      });
 
       // Check for 3-day limit
       const threeDaysAgo = new Date();

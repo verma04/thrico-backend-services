@@ -1,5 +1,7 @@
 import { log } from "@thrico/logging";
 import { GraphQLError } from "graphql";
+import { UserService } from "../user/user.service";
+
 import {
   and,
   eq,
@@ -764,6 +766,7 @@ export class AuthService {
 
       // Use transaction to create user and related records
       // db is expected to be a drizzle instance
+      let newUserRecord: any;
       await db.transaction(async (tx: any) => {
         const [createdUser] = await tx
           .insert(user)
@@ -774,8 +777,11 @@ export class AuthService {
             avatar: "default_image_male.png",
             thricoId: userDetails.id,
             entityId: input.entityId,
+            referredBy: input.referredByCode,
           })
           .returning();
+
+        newUserRecord = createdUser;
 
         await tx.insert(aboutUser).values({
           headline: "Community Member",
@@ -794,6 +800,21 @@ export class AuthService {
           DOB: userDetails.dob,
         });
       });
+
+      // Call referral processing after successful transaction
+      if (input.referredByCode && newUserRecord) {
+        UserService.processReferral({
+          referredByCode: input.referredByCode,
+          newUserId: newUserRecord.id,
+          entityId: input.entityId,
+          db,
+        }).catch((e) =>
+          log.error("Referral processing failed in chooseAccountSignup", {
+            error: e,
+          }),
+        );
+      }
+
 
       const thricoUser = await db.query.user.findFirst({
         where: and(
@@ -1360,6 +1381,7 @@ export class AuthService {
       );
 
       // Use transaction to create/update Postgres records
+      let newUserRecord: any;
       await db.transaction(async (tx: any) => {
         // Create user record in the entity context
         const [createdUser] = await tx
@@ -1373,8 +1395,11 @@ export class AuthService {
             entityId: entityId,
             location: location,
             isActive: isActive,
+            referredBy: input.referredByCode,
           })
           .returning();
+
+        newUserRecord = createdUser;
 
         // Create about record
         await tx.insert(aboutUser).values({
@@ -1402,6 +1427,21 @@ export class AuthService {
           status: userStatus,
         });
       });
+
+      // Process referral after successful transaction
+      if (input.referredByCode && newUserRecord) {
+        UserService.processReferral({
+          referredByCode: input.referredByCode,
+          newUserId: newUserRecord.id,
+          entityId: entityId,
+          db,
+        }).catch((e) =>
+          log.error("Referral processing failed in createProfile", {
+            error: e,
+          }),
+        );
+      }
+
 
       // Fetch the newly created records for session generation
       const thricoUser = await db.query.user.findFirst({

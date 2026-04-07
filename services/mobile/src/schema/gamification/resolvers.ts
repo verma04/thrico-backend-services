@@ -136,5 +136,54 @@ export const gamificationResolvers = {
         throw error;
       }
     },
+    async getPointRule(_: any, { module, action }: any, context: any) {
+      try {
+        const { db, entityId } = context.user || (await checkAuth(context));
+        const gamificationQueryService = new GamificationQueryService(db);
+        return await gamificationQueryService.getPointRuleByAction({
+          entityId,
+          module,
+          action,
+          db,
+        });
+      } catch (error) {
+        log.error("Error in getPointRule", { error, module, action });
+        throw error;
+      }
+    },
+
+    async getActivePointRules(_: any, __: any, context: any) {
+      try {
+        const { db, entityId } = context.user || (await checkAuth(context));
+        const gamificationQueryService = new GamificationQueryService(db);
+        return await gamificationQueryService.getActivePointRules({
+          entityId,
+          db,
+        });
+      } catch (error) {
+        log.error("Error in getActivePointRules", { error });
+        throw error;
+      }
+    },
+
+    async getReferralPoints(_: any, __: any, context: any) {
+      try {
+        const { db, entityId } = context.user || (await checkAuth(context));
+        const gamificationQueryService = new GamificationQueryService(db);
+        const rule = await gamificationQueryService.getPointRuleByAction({
+          entityId,
+          module: "invite",
+          action: "tr-user-refer",
+          db,
+        });
+        return {
+          points: rule?.points || 0,
+          description: rule?.description || "Refer a friend and earn points!",
+        };
+      } catch (error) {
+        log.error("Error in getReferralPoints", { error });
+        throw error;
+      }
+    },
   },
 };

@@ -69,10 +69,12 @@ const emailTypes = `#graphql
     id: ID!
     entity: String!
     name: String!
+    slug: String
     subject: String!
     html: String!
     json: String
     isActive: Boolean
+    isDeletable: Boolean
     createdAt: Date
     updatedAt: Date
   }
@@ -129,10 +131,16 @@ const emailTypes = `#graphql
   }
 
   type BuyEmailTopupResult {
+    success: Boolean!
+    message: String!
     billingId: String!
     razorpayOrderId: String!
     amount: Float!
+    taxAmount: Float!
+    totalAmount: Float!
     currency: String!
+    taxName: String
+    taxPercentage: Float
   }
 
   # ─────────────────────────────────────────────
@@ -148,6 +156,28 @@ const emailTypes = `#graphql
     sesMessageId: String
     status: String
     sentAt: Date
+  }
+
+  type BillingHistoryItem {
+    billingId: String!
+    planName: String!
+    amount: Float!
+    taxAmount: Float!
+    totalAmount: Float!
+    currency: String!
+    status: String!
+    createdAt: String!
+    type: String!
+  }
+
+  # ─────────────────────────────────────────────
+  # Delivery Performance
+  # ─────────────────────────────────────────────
+
+  type DeliveryPerformancePoint {
+    day: String!
+    sent: Int!
+    delivered: Int!
   }
 
   type EmailUserGroup {
@@ -175,6 +205,7 @@ const emailTypes = `#graphql
     subscription: EmailSubscriptionType
     usage: EmailUsage
     recentEmails: [EmailLogEntry]
+    billingHistory: [BillingHistoryItem]
   }
 
   # ─────────────────────────────────────────────
@@ -187,9 +218,11 @@ const emailTypes = `#graphql
 
   input CreateEmailTemplateInput {
     name: String!
+    slug: String
     subject: String!
     html: String!
     json: String
+    
   }
 
   input UpdateEmailTemplateInput {
@@ -199,6 +232,7 @@ const emailTypes = `#graphql
     html: String
     json: String
     isActive: Boolean
+ 
   }
 
   input SendEmailInput {
@@ -248,6 +282,7 @@ const emailTypes = `#graphql
     getEmailTopups: [EmailTopupPricing]!
     getEmailTopupHistory: [EmailTopup]!
     getEmailUserGroups: [EmailUserGroup!]!
+    getEmailDeliveryPerformance: [DeliveryPerformancePoint!]!
   }
 
   # ─────────────────────────────────────────────

@@ -30,6 +30,7 @@ import {
 } from "../../utils/dns/dns.service";
 import { log } from "@thrico/logging";
 import { emailTopupClient, subscriptionClient } from "@thrico/grpc";
+import { EmailService } from "@thrico/services";
 
 // ─────────────────────────────────────────────
 // Helpers
@@ -43,54 +44,7 @@ const PLAN_LIMITS: Record<string, number> = {
 
 /**
  * Get or create usage record for the current billing period.
- */
-async function getOrCreateUsage(db: any, entityId: string) {
-  const now = new Date();
-  const periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
-  const periodEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-
-  // Find existing usage for this period
-  let usage = await db.query.emailUsage.findFirst({
-    where: and(
-      eq(emailUsage.entity, entityId),
-      gte(emailUsage.periodStart, periodStart),
-    ),
-  });
-
-  if (!usage) {
-    // Get subscription limit
-    const sub = await db.query.emailSubscription.findFirst({
-      where: and(
-        eq(emailSubscription.entity, entityId),
-        eq(emailSubscription.status, "active"),
-      ),
-    });
-
-    // Get top-ups for this entity
-    const topups = await db
-      .select({ total: sql`COALESCE(SUM(${emailTopup.extraEmails}), 0)` })
-      .from(emailTopup)
-      .where(eq(emailTopup.entity, entityId));
-
-    const baseLimit = sub ? sub.numberOfEmailsPerMonth : PLAN_LIMITS.free;
-    const topupTotal = Number(topups[0]?.total || 0);
-
-    const [newUsage] = await db
-      .insert(emailUsage)
-      .values({
-        entity: entityId,
-        emailsSent: 0,
-        numberOfEmailsPerMonth: baseLimit + topupTotal,
-        periodStart,
-        periodEnd,
-      })
-      .returning();
-
-    usage = newUsage;
-  }
-
-  return usage;
-}
+/** */
 
 /**
  * Increment usage count.
@@ -118,8 +72,112 @@ async function getSenderAddress(
 }
 
 // ─────────────────────────────────────────────
-// Resolvers
+// Resolvers & Helpers
 // ─────────────────────────────────────────────
+
+export async function sendEmailHelper({
+  db,
+  entityId,
+  adminId,
+  input,
+  ip,
+  userAgent,
+}: {
+  db: any;
+  entityId: string;
+  adminId: string;
+  input: any;
+  ip: string;
+  userAgent: string;
+}) {
+  const recipients = Array.isArray(input.to) ? input.to : [input.to];
+  const recipientCount = recipients.length;
+
+  // 2. Check and deduct quota via gRPC
+  const quotaResult = await emailTopupClient.deductEmailQuota(
+    entityId,
+    recipientCount,
+  );
+  if (!quotaResult.success) {
+    throw new GraphQLError(quotaResult.message || "Email quota exceeded.", {
+      extensions: { code: "QUOTA_EXCEEDED" },
+    });
+  }
+
+  // 3. Resolve HTML (from template or direct)
+  let html = input.html;
+  let subject = input.subject;
+  if (input.templateId) {
+    const template = await db.query.emailTemplate.findFirst({
+      where: and(
+        eq(emailTemplate.id, input.templateId),
+        eq(emailTemplate.entity, entityId),
+      ),
+    });
+    if (template) {
+      html = html || template.html;
+      subject = subject || template.subject;
+    }
+  }
+
+  if (!html || !subject) {
+    throw new GraphQLError(
+      "Email content is missing. Provide 'html/subject' or a valid 'templateId'.",
+      { extensions: { code: "BAD_USER_INPUT" } },
+    );
+  }
+
+  // 4. Get sender address (verified custom domain required)
+  const senderAddress = await getSenderAddress(db, entityId);
+
+  if (!senderAddress) {
+    throw new GraphQLError(
+      "No verified custom email domain found. Please verify your domain in Settings > Email first.",
+      { extensions: { code: "DOMAIN_NOT_VERIFIED" } },
+    );
+  }
+
+  // 5. Send via SES
+  const sesResult = await sendEmailViaSES({
+    from: senderAddress,
+    bcc: recipients,
+    subject,
+    html,
+  });
+
+  // 6. Log the email
+  for (const recipient of recipients) {
+    await db.insert(emailLog).values({
+      entity: entityId,
+      to: recipient,
+      subject,
+      senderAddress,
+      sesMessageId: sesResult.messageId,
+      status: "sent",
+    });
+  }
+
+  await createAuditLog(db, {
+    adminId,
+    entityId,
+    module: AdminModule.DOMAIN,
+    action: "SEND_EMAIL",
+    resourceId: sesResult.messageId,
+    newState: {
+      bcc: input.bcc || recipients,
+      subject,
+      sender: senderAddress,
+    },
+    ipAddress: ip,
+    userAgent: userAgent,
+  });
+
+  return {
+    success: true,
+    messageId: sesResult.messageId,
+    message: "Email sent successfully",
+  };
+}
 
 export const emailResolvers: any = {
   Query: {
@@ -134,7 +192,7 @@ export const emailResolvers: any = {
           where: eq(emailDomain.entity, entityId),
         });
 
-        console.log(domain);
+        // await db.delete(emailTemplate);
 
         if (!domain) return null;
 
@@ -182,6 +240,10 @@ export const emailResolvers: any = {
               ipAddress: context.ip,
               userAgent: context.userAgent,
             });
+
+            // Seed built-in templates
+            await EmailService.seedBuiltInTemplates(db, entityId);
+
             domain.status = "verified";
           }
         }
@@ -201,7 +263,7 @@ export const emailResolvers: any = {
         const auth = await checkAuth(context);
         ensurePermission(auth, AdminModule.DOMAIN, PermissionAction.READ);
         const { entity: entityId, db } = auth;
-
+        // await EmailService.seedBuiltInTemplates(db, entityId);
         return await db.query.emailTemplate.findMany({
           where: eq(emailTemplate.entity, entityId),
           orderBy: desc(emailTemplate.createdAt),
@@ -330,6 +392,7 @@ export const emailResolvers: any = {
             senderAddress: "",
             to: "",
           })),
+          billingHistory: response.billingHistory || [],
         };
       } catch (error) {
         log.error("getEmailOverview error:", error);
@@ -354,12 +417,16 @@ export const emailResolvers: any = {
       try {
         const auth = await checkAuth(context);
         ensurePermission(auth, AdminModule.SUBSCRIPTION, PermissionAction.READ);
-        const { entity: entityId, db } = auth;
+        const { entity: entityId } = auth;
 
-        return await db.query.emailTopup.findMany({
-          where: eq(emailTopup.entity, entityId),
-          orderBy: desc(emailTopup.createdAt),
-        });
+        const response = await emailTopupClient.getBillingHistory(entityId);
+        // Map BillingHistoryItem to EmailTopup (legacy) if needed, or just return history
+        return (response.history || []).map((h: any) => ({
+          id: h.billingId,
+          entity: entityId,
+          extraEmails: 0, // Should be part of planName or amount
+          purchasedAt: h.createdAt,
+        }));
       } catch (error) {
         log.error("getEmailTopupHistory error:", error);
         throw error;
@@ -464,6 +531,77 @@ export const emailResolvers: any = {
         throw error;
       }
     },
+
+    // ── Delivery Performance ───────────────────
+    async getEmailDeliveryPerformance(_: any, __: any, context: any) {
+      try {
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.DOMAIN, PermissionAction.READ);
+        const { entity: entityId, db } = auth;
+
+        // Query the last 7 days of email logs grouped by day-of-week + status
+        const since = new Date();
+        since.setDate(since.getDate() - 6);
+        since.setHours(0, 0, 0, 0);
+
+        const rows = await db
+          .select({
+            dow: sql<number>`EXTRACT(DOW FROM ${emailLog.sentAt})::int`,
+            date: sql<string>`TO_CHAR(${emailLog.sentAt}, 'YYYY-MM-DD')`,
+            status: emailLog.status,
+            count: sql<number>`COUNT(*)::int`,
+          })
+          .from(emailLog)
+          .where(
+            and(eq(emailLog.entity, entityId), gte(emailLog.sentAt, since)),
+          )
+          .groupBy(
+            sql`EXTRACT(DOW FROM ${emailLog.sentAt})`,
+            sql`TO_CHAR(${emailLog.sentAt}, 'YYYY-MM-DD')`,
+            emailLog.status,
+          )
+          .orderBy(sql`TO_CHAR(${emailLog.sentAt}, 'YYYY-MM-DD')`);
+
+        // Build a map keyed by date → { sent, delivered }
+        const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+        // Collect the 7 days (today - 6 days → today) in order
+        const days: { label: string; date: string }[] = [];
+        for (let i = 6; i >= 0; i--) {
+          const d = new Date();
+          d.setDate(d.getDate() - i);
+          d.setHours(0, 0, 0, 0);
+          days.push({
+            label: DAY_LABELS[d.getDay()],
+            date: d.toISOString().slice(0, 10),
+          });
+        }
+
+        const dataMap: Record<string, { sent: number; delivered: number }> = {};
+        for (const { date } of days) {
+          dataMap[date] = { sent: 0, delivered: 0 };
+        }
+
+        for (const row of rows) {
+          if (!dataMap[row.date]) continue;
+          const count = Number(row.count);
+          // Any row = sent; rows with status "delivered" = delivered
+          dataMap[row.date].sent += count;
+          if (row.status === "delivered") {
+            dataMap[row.date].delivered += count;
+          }
+        }
+
+        return days.map(({ label, date }) => ({
+          day: label,
+          sent: dataMap[date]?.sent ?? 0,
+          delivered: dataMap[date]?.delivered ?? 0,
+        }));
+      } catch (error) {
+        log.error("getEmailDeliveryPerformance error:", error);
+        throw error;
+      }
+    },
   },
 
   Mutation: {
@@ -476,112 +614,14 @@ export const emailResolvers: any = {
         ensurePermission(auth, AdminModule.DOMAIN, PermissionAction.EDIT);
         const { entity: entityId, db, id: adminId } = auth;
 
-        // 1. Check subscription is active
-        // const sub = await db.query.emailSubscription.findFirst({
-        //   where: and(
-        //     eq(emailSubscription.entity, entityId),
-        //     eq(emailSubscription.status, "active"),
-        //   ),
-        // });
-
-        // if (!sub) {
-        //   throw new GraphQLError(
-        //     "No active email subscription. Please subscribe to a plan first.",
-        //     { extensions: { code: "FORBIDDEN" } },
-        //   );
-        // }
-
-        const recipients = Array.isArray(input.to) ? input.to : [input.to];
-        const recipientCount = recipients.length;
-
-        // 2. Check and deduct quota via gRPC
-        const quotaResult = await emailTopupClient.deductEmailQuota(
+        return await sendEmailHelper({
+          db,
           entityId,
-          recipientCount,
-        );
-        if (!quotaResult.success) {
-          throw new GraphQLError(
-            quotaResult.message || "Email quota exceeded.",
-            {
-              extensions: { code: "QUOTA_EXCEEDED" },
-            },
-          );
-        }
-
-        // 3. Resolve HTML (from template or direct)
-        let html = input.html;
-        let subject = input.subject;
-        if (input.templateId) {
-          const template = await db.query.emailTemplate.findFirst({
-            where: and(
-              eq(emailTemplate.id, input.templateId),
-              eq(emailTemplate.entity, entityId),
-            ),
-          });
-          if (template) {
-            html = html || template.html;
-            subject = subject || template.subject;
-          }
-        }
-
-        if (!html || !subject) {
-          throw new GraphQLError(
-            "Email content is missing. Provide 'html/subject' or a valid 'templateId'.",
-            { extensions: { code: "BAD_USER_INPUT" } },
-          );
-        }
-
-        // 4. Get sender address (verified custom domain required)
-        const senderAddress = await getSenderAddress(db, entityId);
-
-        if (!senderAddress) {
-          throw new GraphQLError(
-            "No verified custom email domain found. Please verify your domain in Settings > Email first.",
-            { extensions: { code: "DOMAIN_NOT_VERIFIED" } },
-          );
-        }
-
-        // 5. Send via SES
-        const sesResult = await sendEmailViaSES({
-          from: senderAddress,
-          bcc: recipients,
-          subject,
-          html,
-        });
-
-        // 6. Log the email
-        // Log individual recipients
-        for (const recipient of recipients) {
-          await db.insert(emailLog).values({
-            entity: entityId,
-            to: recipient,
-            subject,
-            senderAddress,
-            sesMessageId: sesResult.messageId,
-            status: "sent",
-          });
-        }
-
-        await createAuditLog(db, {
           adminId,
-          entityId,
-          module: AdminModule.DOMAIN,
-          action: "SEND_EMAIL",
-          resourceId: sesResult.messageId,
-          newState: {
-            bcc: input.bcc,
-            subject,
-            sender: senderAddress,
-          },
-          ipAddress: context.ip,
+          input,
+          ip: context.ip,
           userAgent: context.userAgent,
         });
-
-        return {
-          success: true,
-          messageId: sesResult.messageId,
-          message: "Email sent successfully",
-        };
       } catch (error) {
         log.error("sendEmail error:", error);
         throw error;
@@ -600,10 +640,12 @@ export const emailResolvers: any = {
           .values({
             entity: entityId,
             name: input.name,
+            slug: input.slug ?? null,
             subject: input.subject,
             html: input.html,
             json: input.json ?? null,
-          })
+            isDeletable: input.isDeletable ?? true,
+          } as any)
           .returning();
 
         await createAuditLog(db, {
@@ -649,6 +691,8 @@ export const emailResolvers: any = {
         if (input.html !== undefined) updateData.html = input.html;
         if (input.json !== undefined) updateData.json = input.json;
         if (input.isActive !== undefined) updateData.isActive = input.isActive;
+        if (input.isDeletable !== undefined)
+          updateData.isDeletable = input.isDeletable;
 
         const [updated] = await db
           .update(emailTemplate)
@@ -692,6 +736,15 @@ export const emailResolvers: any = {
           throw new GraphQLError("Template not found", {
             extensions: { code: "NOT_FOUND" },
           });
+        }
+
+        if ((existing as any).isDeletable === false) {
+          throw new GraphQLError(
+            "This template is protected and cannot be deleted.",
+            {
+              extensions: { code: "FORBIDDEN" },
+            },
+          );
         }
 
         await db.delete(emailTemplate).where(eq(emailTemplate.id, id));

@@ -54,6 +54,8 @@ export const user = pgTable(
     embedding: vector("embedding", { dimensions: 1536 }),
     isDeletionPending: boolean("isDeletionPending").default(false),
     deletionRequestedAt: timestamp("deletionRequestedAt"),
+    referralCode: text("referralCode").unique(),
+    referredBy: text("referredBy"),
   },
   (table) => {
     return {

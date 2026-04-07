@@ -26,6 +26,7 @@ import { CommunityQueryService } from "./query.service";
 import { GamificationEventService } from "../gamification/gamification-event.service";
 import { CommunityNotificationPublisher } from "./notification-publisher";
 import { NotificationService } from "../notification/notification.service";
+import { AutomationEventService } from "../automation/automation-event.service";
 interface CommunityMemberPermissions {
   canEdit: boolean;
   canDelete: boolean;
@@ -183,6 +184,17 @@ export class CommunityActionsService {
             user: userDetails,
             db,
             entityId,
+          });
+
+          // Automation Trigger
+          await AutomationEventService.triggerEvent({
+            eventName: "user.joined_community",
+            userId,
+            entityId,
+            metadata: {
+              communityId: groupId,
+              communityTitle: group.title,
+            },
           });
         } else {
           await tx.insert(groupRequest).values({

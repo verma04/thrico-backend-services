@@ -1,11 +1,19 @@
+import { v4 as uuidv4 } from "uuid";
 import { and, eq, sql, or, count, desc, inArray } from "drizzle-orm";
 import checkAuth from "../../utils/auth/checkAuth.utils";
-import { ensurePermission, AdminModule, PermissionAction } from "../../utils/auth/permissions.utils";
 import {
+  ensurePermission,
+  AdminModule,
+  PermissionAction,
+} from "../../utils/auth/permissions.utils";
+import {
+  user,
+  aboutUser,
   entitySettingsUser,
   userToEntity,
   userToEntityLog,
   userVerification,
+  userProfile,
   userFeed,
   feedComment,
   connections as userConnections,
@@ -15,10 +23,14 @@ import {
   offers,
   jobs,
   badges,
+  entity as entityTable,
 } from "@thrico/database";
-import { GamificationQueryService, NotificationService } from "@thrico/services";
+import {
+  GamificationQueryService,
+  NotificationService,
+  EmailService,
+} from "@thrico/services";
 import { log } from "@thrico/logging";
-
 import { createAuditLog } from "../../utils/audit/auditLog.utils";
 
 export const userResolvers = {
@@ -73,12 +85,7 @@ export const userResolvers = {
         const verifiedMembersResult = await db
           .select({ total: sql<number>`COUNT(*)` })
           .from(userToEntity)
-          .where(
-            and(
-              whereClause,
-              eq(userToEntity.isApproved, true),
-            ),
-          );
+          .where(and(whereClause, eq(userToEntity.isApproved, true)));
         const verifiedMembers = Number(verifiedMembersResult[0]?.total || 0);
 
         // Active Members
@@ -150,9 +157,7 @@ export const userResolvers = {
               userKyc: true,
               verification: true,
             },
-            orderBy: (ute: any, { desc }: any) => [
-              desc(ute.createdAt),
-            ],
+            orderBy: (ute: any, { desc }: any) => [desc(ute.createdAt)],
           });
           return result;
         } else {
@@ -169,9 +174,7 @@ export const userResolvers = {
               userKyc: true,
               verification: true,
             },
-            orderBy: (ute: any, { desc }: any) => [
-              desc(ute.createdAt),
-            ],
+            orderBy: (ute: any, { desc }: any) => [desc(ute.createdAt)],
           });
 
           return result;
@@ -323,8 +326,7 @@ export const userResolvers = {
         const { db, entity } = auth;
 
         const set = await db.query.entitySettingsUser.findFirst({
-          where: (esu: any, { eq }: any) =>
-            eq(esu.entity, entity),
+          where: (esu: any, { eq }: any) => eq(esu.entity, entity),
         });
 
         if (!set) {
@@ -343,89 +345,11 @@ export const userResolvers = {
     async getUserStats(_: any, { input }: any, context: any) {
       const auth = await checkAuth(context);
       ensurePermission(auth, AdminModule.USERS, PermissionAction.READ);
-      const { db, entity } = auth;
-      const userId = input.userId;
-
-      const [
-        [postsCount],
-        [commentsCount],
-        [connectionsCount],
-        [groupsCount],
-        [eventsCount],
-        [listingsCount],
-        [offersCount],
-        [jobsCount],
-      ] = await Promise.all([
-        db
-          .select({ count: count() })
-          .from(userFeed)
-          .where(and(eq(userFeed.userId, userId), eq(userFeed.entity, entity))),
-        db
-          .select({ count: count() })
-          .from(feedComment)
-          .innerJoin(userFeed, eq(feedComment.feedId, userFeed.id))
-          .where(
-            and(eq(feedComment.user, userId), eq(userFeed.entity, entity)),
-          ),
-        db
-          .select({ count: count() })
-          .from(userConnections)
-          .where(
-            and(
-              eq(userConnections.entity, entity),
-              eq(userConnections.connectionStatusEnum, "ACCEPTED"),
-              or(
-                eq(userConnections.user1, userId),
-                eq(userConnections.user2, userId),
-              ),
-            ),
-          ),
-        db
-          .select({ count: count() })
-          .from(communityMember)
-          .innerJoin(userToEntity, eq(communityMember.userId, userToEntity.id))
-          .where(
-            and(
-              eq(userToEntity.userId, userId),
-              eq(userToEntity.entityId, entity),
-              eq(communityMember.memberStatusEnum, "ACCEPTED"),
-            ),
-          ),
-        db
-          .select({ count: count() })
-          .from(events)
-          .where(
-            and(eq(events.eventCreator, userId), eq(events.entityId, entity)),
-          ),
-        db
-          .select({ count: count() })
-          .from(marketPlace)
-          .where(
-            and(
-              eq(marketPlace.postedBy, userId),
-              eq(marketPlace.entityId, entity),
-            ),
-          ),
-        db
-          .select({ count: count() })
-          .from(offers)
-          .where(and(eq(offers.userId, userId), eq(offers.entityId, entity))),
-        db
-          .select({ count: count() })
-          .from(jobs)
-          .where(and(eq(jobs.postedBy, userId), eq(jobs.entityId, entity))),
-      ]);
-
-      return {
-        totalPosts: Number(postsCount?.count || 0),
-        totalComments: Number(commentsCount?.count || 0),
-        totalConnections: Number(connectionsCount?.count || 0),
-        totalGroups: Number(groupsCount?.count || 0),
-        totalEvents: Number(eventsCount?.count || 0),
-        totalListings: Number(listingsCount?.count || 0),
-        totalOffers: Number(offersCount?.count || 0),
-        totalJobs: Number(jobsCount?.count || 0),
-      };
+      return await (userResolvers as any).userToEntity.stats(
+        { userId: input.userId },
+        null,
+        context,
+      );
     },
     async getUserGamificationSummary(_: any, { input }: any, context: any) {
       const auth = await checkAuth(context);
@@ -561,7 +485,101 @@ export const userResolvers = {
       );
     },
     stats: async (parent: any, _: any, context: any) => {
-      log.info(`Fetching stats for userToEntity: ${parent.userId}`);
+      try {
+        log.info(`Fetching stats for userToEntity: ${parent.userId}`);
+        const auth = await checkAuth(context);
+        const { db, entity } = auth;
+        const userId = parent.userId;
+
+        const [
+          [postsCount],
+          [commentsCount],
+          [connectionsCount],
+          [groupsCount],
+          [eventsCount],
+          [listingsCount],
+          [offersCount],
+          [jobsCount],
+        ] = await Promise.all([
+          db
+            .select({ count: count() })
+            .from(userFeed)
+            .where(
+              and(eq(userFeed.userId, userId), eq(userFeed.entity, entity)),
+            ),
+          db
+            .select({ count: count() })
+            .from(feedComment)
+            .innerJoin(userFeed, eq(feedComment.feedId, userFeed.id))
+            .where(
+              and(eq(feedComment.user, userId), eq(userFeed.entity, entity)),
+            ),
+          db
+            .select({ count: count() })
+            .from(userConnections)
+            .where(
+              and(
+                eq(userConnections.entity, entity),
+                eq(userConnections.connectionStatusEnum, "ACCEPTED"),
+                or(
+                  eq(userConnections.user1, userId),
+                  eq(userConnections.user2, userId),
+                ),
+              ),
+            ),
+          db
+            .select({ count: count() })
+            .from(communityMember)
+            .innerJoin(
+              userToEntity,
+              eq(communityMember.userId, userToEntity.id),
+            )
+            .where(
+              and(
+                eq(userToEntity.userId, userId),
+                eq(userToEntity.entityId, entity),
+                eq(communityMember.memberStatusEnum, "ACCEPTED"),
+              ),
+            ),
+          db
+            .select({ count: count() })
+            .from(events)
+            .where(
+              and(eq(events.eventCreator, userId), eq(events.entityId, entity)),
+            ),
+          db
+            .select({ count: count() })
+            .from(marketPlace)
+            .where(
+              and(
+                eq(marketPlace.postedBy, userId),
+                eq(marketPlace.entityId, entity),
+              ),
+            ),
+          db
+            .select({ count: count() })
+            .from(offers)
+            .where(and(eq(offers.userId, userId), eq(offers.entityId, entity))),
+          db
+            .select({ count: count() })
+            .from(jobs)
+            .where(and(eq(jobs.postedBy, userId), eq(jobs.entityId, entity))),
+        ]);
+
+        return {
+          totalPosts: Number(postsCount?.count || 0),
+          totalComments: Number(commentsCount?.count || 0),
+          totalConnections: Number(connectionsCount?.count || 0),
+          totalGroups: Number(groupsCount?.count || 0),
+          totalEvents: Number(eventsCount?.count || 0),
+          totalListings: Number(listingsCount?.count || 0),
+          totalOffers: Number(offersCount?.count || 0),
+          totalJobs: Number(jobsCount?.count || 0),
+        };
+      } catch (error) {
+        log.error("Error in userToEntity.stats resolver:", error);
+        throw error;
+      }
     },
   },
   UserAuditLog: {
@@ -621,10 +639,10 @@ export const userResolvers = {
 
         await db.transaction(async (tx: any) => {
           for (const user of users) {
-             const finalUpdateData = { ...updateData };
-             if (!finalUpdateData.status) {
-                finalUpdateData.status = newStatus || user.status;
-             }
+            const finalUpdateData = { ...updateData };
+            if (!finalUpdateData.status) {
+              finalUpdateData.status = newStatus || user.status;
+            }
 
             await tx
               .update(userToEntity)
@@ -659,7 +677,7 @@ export const userResolvers = {
 
         for (const result of results) {
           const originalUser = users.find((u: any) => u.id === result.id);
-          
+
           if (!originalUser) continue;
 
           await createAuditLog(db, {
@@ -706,8 +724,7 @@ export const userResolvers = {
 
       try {
         const user = await db.query.userToEntity.findFirst({
-          where: (ute: any, { eq }: any) =>
-            eq(ute.id, userId),
+          where: (ute: any, { eq }: any) => eq(ute.id, userId),
         });
 
         if (!user) {
@@ -757,8 +774,7 @@ export const userResolvers = {
         });
 
         const result = await db.query.userToEntity.findFirst({
-          where: (ute: any, { eq }: any) =>
-            eq(ute.id, userId),
+          where: (ute: any, { eq }: any) => eq(ute.id, userId),
           with: {
             user: {
               with: {
@@ -799,61 +815,102 @@ export const userResolvers = {
 
         return result;
       } catch (error) {
-        log.error("Failed to change status:", error);
+        log.error("Error in changeUserStatus:", error);
         throw error;
       }
     },
-
-    async changeUserVerification(_: any, { input }: any, context: any) {
-      log.info(`Changing user verification: ${input?.userId}`, {
-        action: input?.action,
-      });
-      const auth = await checkAuth(context);
-      ensurePermission(auth, AdminModule.USERS, PermissionAction.EDIT);
-      const { db, id: adminId, entity } = auth;
-      const { action, reason, userId } = input;
-
+    async updateUserSettings(_: any, { input }: any, context: any) {
       try {
-        const user = await db.query.userToEntity.findFirst({
-          where: (ute: any, { eq }: any) =>
-            eq(ute.id, userId),
-          with: {
-            verification: true,
-          },
+        log.info("Updating user settings");
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.USERS, PermissionAction.EDIT);
+        const { db, entity } = auth;
+
+        const set = await db.query.entitySettingsUser.findFirst({
+          where: (esu: any, { eq }: any) => eq(esu.entity, entity),
         });
-        if (!user) {
+
+        if (!set) {
+          const [newSet] = await db
+            .insert(entitySettingsUser)
+            .values({
+              entity,
+              autoApprove: input.autoApprove,
+            })
+            .returning();
+          return { autoApprove: newSet.autoApprove };
+        }
+
+        const [updatedSet] = await db
+          .update(entitySettingsUser)
+          .set({ autoApprove: input.autoApprove })
+          .where(eq(entitySettingsUser.entity, entity))
+          .returning();
+
+        return { autoApprove: updatedSet.autoApprove };
+      } catch (error) {
+        log.error("Error in updateUserSettings:", error);
+        throw error;
+      }
+    },
+    async changeUserVerification(_: any, { input }: any, context: any) {
+      try {
+        log.info(`Changing user verification: ${input?.userId}`, {
+          action: input?.action,
+        });
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.USERS, PermissionAction.EDIT);
+        const { db, id: adminId, entity } = auth;
+        const { action, reason, userId } = input;
+
+        const ute = await db.query.userToEntity.findFirst({
+          where: (ute: any, { eq }: any) => eq(ute.id, userId),
+        });
+
+        if (!ute) {
           throw new Error("User not found");
         }
 
-        const globalUserId = user.id;
+        const isVerified = action === "VERIFY";
 
-        if (action === "VERIFY") {
-          await db.transaction(async (tx: any) => {
+        await db.transaction(async (tx: any) => {
+          const existingVerification =
+            await tx.query.userVerification.findFirst({
+              where: (uv: any, { eq }: any) => eq(uv.userId, userId),
+            });
+
+          if (existingVerification) {
+            await tx
+              .update(userVerification)
+              .set({
+                isVerified,
+                verifiedBy: adminId,
+                isVerifiedAt: isVerified ? new Date() : null,
+                verificationReason: reason,
+              })
+              .where(eq(userVerification.userId, userId));
+          } else {
             await tx.insert(userVerification).values({
-              isVerifiedAt: new Date(),
+              userId,
+              isVerified,
               verifiedBy: adminId,
-              isVerified: true,
+              isVerifiedAt: isVerified ? new Date() : null,
               verificationReason: reason,
-              userId: globalUserId,
             });
-            await tx.insert(userToEntityLog).values({
-              reason,
-              userToEntityId: userId,
-              performedBy: adminId,
-              status: "STATUS",
-              entity,
-              previousState: user.status,
-            });
+          }
+
+          await tx.insert(userToEntityLog).values({
+            action,
+            reason,
+            userToEntityId: userId,
+            performedBy: adminId,
+            status: "VERIFICATION",
+            entity,
           });
-        } else {
-          await db
-            .delete(userVerification)
-            .where(eq(userVerification.userId, globalUserId));
-        }
+        });
 
         const result = await db.query.userToEntity.findFirst({
-          where: (ute: any, { eq }: any) =>
-            eq(ute.id, userId),
+          where: (ute: any, { eq }: any) => eq(ute.id, userId),
           with: {
             user: {
               with: {
@@ -861,90 +918,148 @@ export const userResolvers = {
                 about: true,
               },
             },
-            verification: true,
             userKyc: true,
+            verification: true,
           },
         });
 
-        await createAuditLog(db, {
-          adminId,
-          entityId: entity,
-          module: AdminModule.USERS,
-          action: action === "VERIFY" ? "VERIFY_USER" : "UNVERIFY_USER",
-          resourceId: userId,
-          targetUserId: user.userId,
-          previousState: user,
-          newState: result,
-          ipAddress: context.ip,
-          userAgent: context.userAgent,
-        });
-
-        if (action === "VERIFY") {
-          await NotificationService.sendPushNotification({
-            userId: user.userId,
-            entityId: entity,
-            title: "Account Verified",
-            body: "Your account has been verified.",
-            payload: {
-              type: "ACCOUNT_VERIFIED",
-              module: "USER",
-            },
-          });
-        }
-
         return result;
       } catch (error) {
-        log.error("Failed to change user verification:", error);
+        log.error("Error in changeUserVerification:", error);
         throw error;
       }
     },
-
-    async updateUserSettings(_: any, { input }: any, context: any) {
+    async addNewMember(_: any, { input }: any, context: any) {
       try {
+        log.info(`Adding new member with email: ${input?.email}`);
         const auth = await checkAuth(context);
-        ensurePermission(auth, AdminModule.USERS, PermissionAction.EDIT);
-        const { id: adminId, db, entity } = auth;
+        ensurePermission(auth, AdminModule.USERS, PermissionAction.CREATE);
+        const { db, entity: entityId, id: adminId } = auth;
+        const { email, firstName, lastName, avatar, headline, about, DOB } =
+          input;
 
-        const previousState = await db.query.entitySettingsUser.findFirst({
-          where: (esu: any, { eq }: any) =>
-            eq(esu.entity, entity),
+        // 1. Check if user already exists in thricoUser for this entity
+        const existingUserInEntity = await db.query.user.findFirst({
+          where: (u: any, { eq, and }: any) =>
+            and(eq(u.email, email), eq(u.entityId, entityId)),
         });
 
-        let settings;
-        if (!previousState) {
-          settings = await db
-            .insert(entitySettingsUser)
-            .values({
-              entity: entity,
-              autoApprove: input.autoApprove,
-            })
-            .returning();
-        } else {
-          settings = await db
-            .update(entitySettingsUser)
-            .set({ autoApprove: input.autoApprove })
-            .where(eq(entitySettingsUser.entity, entity))
-            .returning();
+        if (existingUserInEntity) {
+          throw new Error("User already exists in this entity");
         }
 
-        const newState = settings[0];
+        // 2. Check if user exists globally (in ANY entity) to get thricoId
+        const existingUserGlobal = await db.query.user.findFirst({
+          where: (u: any, { eq }: any) => eq(u.email, email),
+        });
 
+        let thricoId = existingUserGlobal
+          ? existingUserGlobal.thricoId
+          : uuidv4();
+
+        // 3. Create thricoUser record for this entity
+        const userData: any = {
+          thricoId,
+          firstName,
+          lastName,
+          email,
+          entityId,
+          isActive: true,
+          isBlocked: false,
+        };
+        if (avatar) userData.avatar = avatar;
+
+        const [newUser] = await db.insert(user).values(userData).returning();
+
+        // 4. Create userToEntity record
+        const [newUserToEntity] = await db
+          .insert(userToEntity)
+          .values({
+            userId: newUser.id,
+            entityId,
+            isApproved: true,
+            isRequested: true,
+            status: "APPROVED",
+          })
+          .returning();
+
+        // 5. Create aboutUser record
+        await db.insert(aboutUser).values({
+          userId: newUser.id,
+          headline: headline || "Community Member",
+          about: about || "",
+        });
+
+        // 6. Create userProfile record (for DOB)
+        await db.insert(userProfile).values({
+          userId: newUser.id,
+          DOB: DOB || null,
+        });
+
+        // 6. Send welcome email
+        try {
+          // Fetch entity name for the email
+          const currentEntity = await db.query.entity.findFirst({
+            where: eq(entityTable.id, entityId),
+          });
+
+          await EmailService.sendEmail({
+            db,
+            entityId,
+            input: {
+              to: email,
+              templateSlug: "new-member-welcome",
+              variables: {
+                entity_name: currentEntity?.name || "Community",
+                firstName: firstName,
+                login_url: `https://${context.headers.host}/login`, // Minimal dynamic URL
+              },
+            },
+          });
+        } catch (emailError: any) {
+          log.error(
+            "Failed to send welcome email in addNewMember:",
+            emailError,
+          );
+          // We intentionally do not throw here so the member creation doesn't fail just because email failed.
+        }
+
+        log.info("New member added successfully", {
+          userId: newUser.id,
+          userToEntityId: newUserToEntity.id,
+        });
+
+        // Optional: Audit log
         await createAuditLog(db, {
           adminId,
-          entityId: entity,
+          entityId,
           module: AdminModule.USERS,
-          action: "UPDATE_SETTINGS",
-          previousState,
-          newState,
+          action: "ADD_MEMBER",
+          resourceId: newUserToEntity.id,
+          targetUserId: newUser.id,
+          newState: newUserToEntity,
           ipAddress: context.ip,
           userAgent: context.userAgent,
         });
 
-        return {
-          autoApprove: newState.autoApprove,
-        };
+        // Fetch and return the result with user relations
+        const result = await db.query.userToEntity.findFirst({
+          where: (ute: any, { eq }: any) => eq(ute.id, newUserToEntity.id),
+          with: {
+            user: {
+              with: {
+                profile: true,
+                about: true,
+              },
+            },
+            userKyc: true,
+            verification: true,
+          },
+        });
+
+        return result;
       } catch (error) {
-        log.error("Error in updateUserSettings:", error);
+        log.error("Error in addNewMember:", error);
         throw error;
       }
     },
