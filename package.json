@@ -9,6 +9,8 @@
   ],
   "scripts": {
     "dev": "concurrently \"npm run dev:user\" \"npm run dev:mobile\" \"npm run dev:admin\" \"npm run dev:grpc\"",
+    "dev:live": "NODE_OPTIONS='--max-old-space-size=4096' npm run dev -w services/live",
+    "dev:all": "concurrently \"npm run dev:user\" \"npm run dev:mobile\" \"npm run dev:admin\" \"npm run dev:grpc\" \"npm run dev:live\"",
     "dev:user": "NODE_OPTIONS='--max-old-space-size=4096' npm run dev -w services/user",
     "dev:mobile": "NODE_OPTIONS='--max-old-space-size=4096' npm run dev -w services/mobile",
     "dev:admin": "NODE_OPTIONS='--max-old-space-size=4096' npm run dev -w services/admin-graphql",
@@ -57,5 +59,8 @@
     "pg": "^8.16.3",
     "sharp": "^0.34.5",
     "uuid": "^9.0.1"
+  },
+  "volta": {
+    "node": "20.11.1"
   }
 }

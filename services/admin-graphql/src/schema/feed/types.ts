@@ -7,6 +7,20 @@ export const feedTypes = `#graphql
     ENTITY
     USER
   }
+
+  enum TimeRange {
+    LAST_24_HOURS
+    LAST_7_DAYS
+    LAST_30_DAYS
+    LAST_90_DAYS
+    THIS_MONTH
+    LAST_MONTH
+  }
+
+  input DateRangeInput {
+    startDate: String!
+    endDate: String!
+  }
   
   type FeedUserAbout {
     currentPosition: String
@@ -80,6 +94,10 @@ export const feedTypes = `#graphql
     isPinned: Boolean!
   }
 
+  input UpdateFeedOrderInput {
+    order: [String!]!
+  }
+
   type Status {
     status: Boolean
   }
@@ -130,12 +148,17 @@ export const feedTypes = `#graphql
     getMomentsFeed(input: PaginationInput): [Feed]
     getListingFeed(input: PaginationInput): [Feed]
     getPinnedFeed(input: PaginationInput): [Feed]
+    getPollsFeed(input: PaginationInput): [Feed]
     numberOfFeeds: Int
     getFeedComment(input: InputId): [Comment]
-    getFeedIntelligenceKPI: FeedIntelligenceKPI
-    getFeedYieldVelocity: [FeedYieldVelocity]
-    getFeedInterestMatrix: [FeedInterestMatrix]
-    getPromotedNodeEvents: [PromotedNodeEvent]
+    getFeedIntelligenceKPI(timeRange: TimeRange, dateRange: DateRangeInput): FeedIntelligenceKPI
+    getFeedYieldVelocity(timeRange: TimeRange, dateRange: DateRangeInput): [FeedYieldVelocity]
+    getFeedInterestMatrix(timeRange: TimeRange, dateRange: DateRangeInput): [FeedInterestMatrix]
+    getPromotedNodeEvents(timeRange: TimeRange, dateRange: DateRangeInput): [PromotedNodeEvent]
+    momentsFeed(input: PaginationInput): [Feed]
+    pollsFeed(input: PaginationInput): [Feed]
+    feedByAdmin(input: PaginationInput): [Feed]
+    adminFeed(input: PaginationInput): [Feed]
   }
 
   extend type Mutation {
@@ -145,5 +168,6 @@ export const feedTypes = `#graphql
     deleteCommentFeed(input: InputDeleteFeedComment): Comment
     pinFeed(input: PinFeedInput): Feed
     deleteFeed(input: InputId): Status
+    updateFeedOrder(input: UpdateFeedOrderInput!): Boolean
   }
 `;

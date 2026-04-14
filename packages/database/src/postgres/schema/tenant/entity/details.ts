@@ -252,6 +252,18 @@ export const entitySettings = pgTable("entitySettings", {
   // Rewards
   termAndConditionsRewards: jsonb("termAndConditionsRewards"),
   faqRewards: jsonb("faqRewards"),
+
+  // Feed Settings
+  allowEntityCommunityInFeed: boolean("allowEntityCommunityInFeed").default(
+    true,
+  ),
+  allowEntityDiscussionForumInFeed: boolean(
+    "allowEntityDiscussionForumInFeed",
+  ).default(true),
+  allowEntityPollsInFeed: boolean("allowEntityPollsInFeed").default(true),
+  allowEntityFeedInFeed: boolean("allowEntityFeedInFeed").default(true),
+  allowEntityMomentsInFeed: boolean("allowEntityMomentsInFeed").default(true),
+  feedOrder: jsonb("feedOrders"),
 });
 
 export const entitySettingsRelations = relations(entitySettings, ({ one }) => ({

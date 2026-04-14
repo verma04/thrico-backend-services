@@ -68,6 +68,7 @@ export const moments = pgTable(
     extractedKeywords: text("extracted_keywords").array(),
     sentimentScore: real("sentiment_score"),
     isAiContent: boolean("is_ai_content").default(false),
+    addedBy: addedBy("added_by").default("USER"),
   },
   (table) => ({
     embeddingIdx: index("moments_embedding_idx")

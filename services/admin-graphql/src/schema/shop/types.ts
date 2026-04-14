@@ -87,6 +87,18 @@ export const shopTypeDefs = `#graphql
     linkedProduct: ShopProduct
   }
 
+  type ShopStats {
+    totalViews: Int!
+    activeProducts: Int!
+    activeBanners: Int!
+    totalCategories: Int!
+    lowStockItems: Int!
+    viewsChange: Float
+    productsChange: Float
+    bannersChange: Float
+    categoriesChange: Float
+  }
+
   # Input Types
   input ShopProductFilterInput {
     status: ShopProductStatus
@@ -191,6 +203,7 @@ export const shopTypeDefs = `#graphql
     getShopProducts(filter: ShopProductFilterInput, pagination: PaginationInput): [ShopProduct!]!
     getShopProduct(id: ID!): ShopProduct
     getShopBanners: [ShopBanner!]!
+    getShopStats(timeRange: TimeRange, dateRange: DateRangeInput): ShopStats!
   }
 
   # Mutations

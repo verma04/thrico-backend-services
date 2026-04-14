@@ -1,1 +1,0 @@
-ALTER TABLE "emailTemplate" ADD COLUMN "json" text;

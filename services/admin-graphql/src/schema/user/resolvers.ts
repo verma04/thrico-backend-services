@@ -24,6 +24,7 @@ import {
   jobs,
   badges,
   entity as entityTable,
+  moderationLogs,
 } from "@thrico/database";
 import {
   GamificationQueryService,
@@ -658,6 +659,19 @@ export const userResolvers = {
               entity,
               previousState: user.status,
             });
+
+            if (action === "BLOCK") {
+              await tx.insert(moderationLogs).values({
+                userId: user.userId,
+                entityId: entity,
+                contentId: user.userId,
+                contentType: "USER",
+                decision: "BLOCK",
+                actionTaken: `User manually blocked by admin. Reason: ${
+                  reason || "No reason provided"
+                }`,
+              });
+            }
           }
         });
 
@@ -771,6 +785,19 @@ export const userResolvers = {
             entity,
             previousState: user.status,
           });
+
+          if (action === "BLOCK") {
+            await tx.insert(moderationLogs).values({
+              userId: user.userId,
+              entityId: entity,
+              contentId: user.userId,
+              contentType: "USER",
+              decision: "BLOCK",
+              actionTaken: `User manually blocked by admin. Reason: ${
+                reason || "No reason provided"
+              }`,
+            });
+          }
         });
 
         const result = await db.query.userToEntity.findFirst({

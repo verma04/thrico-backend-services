@@ -9,7 +9,8 @@ import {
   listingReport,
   listingVerification,
   listingMessage,
-  listingConversation,
+  conversation,
+  messages,
   feedWishList,
 } from "@thrico/database";
 
@@ -2090,26 +2091,24 @@ export class ListingService {
         .from(listingContact)
         .where(eq(listingContact.listingId, listingId));
 
-      // Get unread messages count
-      const conversations = await db.query.listingConversation.findMany({
-        where: (conv, { eq }) => eq(conv.listingId, listingId),
-        columns: {
-          id: true,
-        },
-      });
+      // Get unread messages count via unified conversation table
+      const convRows = await db
+        .select({ id: conversation.id })
+        .from(conversation)
+        .where(eq(conversation.listingId, listingId));
 
-      const conversationIds = conversations.map((c) => c.id);
+      const conversationIds = convRows.map((c) => c.id);
 
       let unreadCount = 0;
       if (conversationIds.length > 0) {
         const [{ unread }] = await db
           .select({ unread: sql<number>`count(*)::int` })
-          .from(listingMessage)
+          .from(messages)
           .where(
             and(
-              inArray(listingMessage.conversationId, conversationIds),
-              eq(listingMessage.isRead, false),
-              sql`${listingMessage.senderId} != ${sellerId}`,
+              inArray(messages.conversationId, conversationIds),
+              eq(messages.isRead, false),
+              sql`${messages.senderId} != ${sellerId}`,
             ),
           );
         unreadCount = unread;
@@ -2154,11 +2153,11 @@ export class ListingService {
         );
       }
 
-      // Get all conversations for this listing
-      const conversations = await db.query.listingConversation.findMany({
-        where: (conv, { eq }) => eq(conv.listingId, listingId),
+      // Get all conversations for this listing via unified conversation table
+      const conversations = await db.query.conversation.findMany({
+        where: (c, { eq }) => eq(c.listingId, listingId),
         with: {
-          buyer: {
+          user1: {
             columns: {
               id: true,
               email: true,
@@ -2175,15 +2174,16 @@ export class ListingService {
               isRead: true,
               senderId: true,
             },
-            orderBy: (messages, { desc }) => [desc(messages.createdAt)],
+            orderBy: (msgs, { desc }) => [desc(msgs.createdAt)],
           },
         },
-        orderBy: (conv, { desc }) => [desc(conv.lastMessageAt)],
+        orderBy: (c, { desc }) => [desc(c.lastMessageAt)],
       });
 
       return conversations.map((conv) => ({
         conversationId: conv.id,
-        buyer: conv.buyer,
+        // user1 is the buyer (the one who initiated contact)
+        buyer: conv.user1,
         lastMessageAt: conv.lastMessageAt,
         totalMessages: conv.messages.length,
         unreadMessages: conv.messages.filter(
@@ -2236,11 +2236,11 @@ export class ListingService {
       // 3. Your Enquiry (conversations user is involved in)
       const enquiryResult = await db
         .select({ count: sql`count(*)` })
-        .from(listingConversation)
+        .from(conversation)
         .where(
           or(
-            eq(listingConversation.buyerId, userId),
-            eq(listingConversation.sellerId, userId),
+            eq(conversation.user1Id, userId),
+            eq(conversation.user2Id, userId),
           ),
         );
       const yourEnquiry = Number(enquiryResult[0]?.count || 0);

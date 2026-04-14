@@ -150,7 +150,7 @@ export const rewardsTypes = [
         status: String
         pagination: PaginationInput
       ): [Redemption!]!
-      getRewardStats: RewardStats!
+      getRewardStats(timeRange: TimeRange, dateRange: DateRangeInput): RewardStats!
       getRewardSecuritySettings: RewardSecuritySettings!
     }
 

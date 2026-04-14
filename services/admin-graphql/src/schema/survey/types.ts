@@ -89,6 +89,13 @@ export const surveyTypes = `#graphql
     LAST_7_DAYS
     LAST_30_DAYS
     LAST_90_DAYS
+    THIS_MONTH
+    LAST_MONTH
+  }
+
+  input DateRangeInput {
+    startDate: String!
+    endDate: String!
   }
 
   type SurveyStats {
@@ -137,7 +144,7 @@ export const surveyTypes = `#graphql
     getSurvey(id: ID!): Survey
     getSurveyResponses(surveyId: ID!, input: GetSurveyResponsesInput): GetSurveyResponsesResponse!
     getSurveyResults(surveyId: ID!): SurveyResults!
-    getSurveyStats(timeRange: TimeRange!): SurveyStats!
+    getSurveyStats(timeRange: TimeRange, dateRange: DateRangeInput): SurveyStats!
     getSurveyTemplates: [SurveyTemplate!]!
   }
 

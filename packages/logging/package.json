@@ -13,7 +13,16 @@
     "winston": "^3.11.0",
     "winston-daily-rotate-file": "^4.7.1",
     "express-winston": "^4.2.0",
-    "@thrico/shared": "*"
+    "@thrico/shared": "*",
+    "@opentelemetry/sdk-node": "^0.57.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.56.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.57.0",
+    "@opentelemetry/exporter-logs-otlp-http": "^0.57.0",
+    "@opentelemetry/resources": "^1.30.0",
+    "@opentelemetry/semantic-conventions": "^1.28.0",
+    "@opentelemetry/sdk-logs": "^0.57.0",
+    "@opentelemetry/api-logs": "^0.57.0",
+    "@opentelemetry/instrumentation-winston": "^0.43.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.21"

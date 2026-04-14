@@ -1,15 +1,22 @@
-import { and, eq, sql, desc, inArray } from "drizzle-orm";
+import { and, eq, sql, desc, inArray, lt } from "drizzle-orm";
 import checkAuth from "../../utils/auth/checkAuth.utils";
+import { getDaterangeFromInput } from "../dashboard/resolvers";
 import {
   bannedWords,
   blockedLinks,
   contentReports,
   moderationSettings,
   aiModerationLogs,
+  moderationLogs,
+  aiTokenUsage,
   user,
   userFeed,
 } from "@thrico/database";
-import { ensurePermission, AdminModule, PermissionAction } from "../../utils/auth/permissions.utils";
+import {
+  ensurePermission,
+  AdminModule,
+  PermissionAction,
+} from "../../utils/auth/permissions.utils";
 
 export const moderationResolvers = {
   Query: {
@@ -145,7 +152,8 @@ export const moderationResolvers = {
         const previewMap: Record<string, string> = {};
         for (const row of feedRows) {
           const preview = (row.description || "").toString();
-          previewMap[row.id] = preview.length > 200 ? preview.slice(0, 200) + "…" : preview;
+          previewMap[row.id] =
+            preview.length > 200 ? preview.slice(0, 200) + "…" : preview;
         }
 
         const enrichedItems = items.map((item: any) => ({
@@ -189,9 +197,15 @@ export const moderationResolvers = {
       }
     },
 
-    async getModerationStats(_: any, __: any, context: any) {
+    async getModerationStats(
+      _: any,
+      { timeRange, dateRange }: any,
+      context: any,
+    ) {
       try {
         const { entity, db } = await checkAuth(context);
+
+        const { endDate } = getDaterangeFromInput(timeRange, dateRange);
 
         const [reportsStats] = await db
           .select({
@@ -200,17 +214,32 @@ export const moderationResolvers = {
             resolved: sql<number>`count(*) filter (where status = 'RESOLVED')`,
           })
           .from(contentReports)
-          .where(eq(contentReports.entityId, entity));
+          .where(
+            and(
+              eq(contentReports.entityId, entity),
+              lt(contentReports.createdAt, endDate),
+            ),
+          );
 
         const [wordsCount] = await db
           .select({ count: sql<number>`count(*)` })
           .from(bannedWords)
-          .where(eq(bannedWords.entityId, entity));
+          .where(
+            and(
+              eq(bannedWords.entityId, entity),
+              lt(bannedWords.createdAt, endDate),
+            ),
+          );
 
         const [linksCount] = await db
           .select({ count: sql<number>`count(*)` })
           .from(blockedLinks)
-          .where(eq(blockedLinks.entityId, entity));
+          .where(
+            and(
+              eq(blockedLinks.entityId, entity),
+              lt(blockedLinks.createdAt, endDate),
+            ),
+          );
 
         return {
           totalReports: Number(reportsStats?.total || 0),
@@ -226,10 +255,21 @@ export const moderationResolvers = {
       }
     },
 
-    async getAiModerationLogs(_: any, { limit, offset }: any, context: any) {
+    async getAiModerationLogs(
+      _: any,
+      { limit, offset, classification }: any,
+      context: any,
+    ) {
       try {
         const { entity, db } = await checkAuth(context);
-        const whereClause = eq(aiModerationLogs.entityId, entity);
+        let whereClause = eq(aiModerationLogs.entityId, entity);
+
+        if (classification) {
+          whereClause = and(
+            whereClause,
+            eq(aiModerationLogs.classification, classification),
+          )!;
+        }
 
         const items = await db.query.aiModerationLogs.findMany({
           where: whereClause,
@@ -253,9 +293,15 @@ export const moderationResolvers = {
       }
     },
 
-    async getAiModerationDashboard(_: any, __: any, context: any) {
+    async getAiModerationDashboard(
+      _: any,
+      { timeRange, dateRange }: any,
+      context: any,
+    ) {
       try {
         const { entity, db } = await checkAuth(context);
+
+        const { endDate } = getDaterangeFromInput(timeRange, dateRange);
 
         const [feedStats] = await db
           .select({
@@ -265,17 +311,146 @@ export const moderationResolvers = {
             rejected: sql<number>`count(*) filter (where moderation_status = 'REJECTED')`,
           })
           .from(userFeed)
-          .where(eq(userFeed.entity, entity));
+          .where(
+            and(eq(userFeed.entity, entity), lt(userFeed.createdAt, endDate)),
+          );
+
+        const [tokenStats] = await db
+          .select({
+            total: sql<number>`sum(tokens)`,
+          })
+          .from(aiTokenUsage)
+          .where(
+            and(
+              eq(aiTokenUsage.entityId, entity),
+              lt(aiTokenUsage.createdAt, endDate),
+            ),
+          );
 
         return {
           totalPosts: Number(feedStats?.total || 0),
           pendingModeration: Number(feedStats?.pending || 0),
           flaggedContent: Number(feedStats?.flagged || 0),
           rejectedPosts: Number(feedStats?.rejected || 0),
+          totalTokens: Number(tokenStats?.total || 0),
         };
       } catch (error) {
         console.error("Failed to get AI moderation dashboard stats:", error);
         throw error;
+      }
+    },
+    async getModerationLogs(
+      _: any,
+      { limit, offset, contentType, userId, aiLabel }: any,
+      context: any,
+    ) {
+      try {
+        const { entity, db } = await checkAuth(context);
+        let whereClause = eq(moderationLogs.entityId, entity);
+
+        if (contentType) {
+          whereClause = and(
+            whereClause,
+            eq(moderationLogs.contentType, contentType),
+          )!;
+        }
+        if (userId) {
+          whereClause = and(whereClause, eq(moderationLogs.userId, userId))!;
+        }
+        if (aiLabel) {
+          whereClause = and(whereClause, eq(moderationLogs.aiLabel, aiLabel))!;
+        }
+
+        const items = await db.query.moderationLogs.findMany({
+          where: whereClause,
+          orderBy: [desc(moderationLogs.createdAt)],
+          limit: limit || 100,
+          offset: offset || 0,
+        });
+
+        const [countResult] = await db
+          .select({ count: sql<number>`count(*)` })
+          .from(moderationLogs)
+          .where(whereClause);
+
+        // Collect unique contentIds to batch-fetch previews
+        const contentIds = [...new Set(items.map((r: any) => r.contentId))];
+
+        // Batch fetch content previews from userFeed
+        const feedRows = contentIds.length
+          ? await db.query.userFeed.findMany({
+              where: inArray(userFeed.id, contentIds as string[]),
+              columns: { id: true, description: true },
+            })
+          : [];
+
+        const previewMap: Record<string, string> = {};
+        for (const row of feedRows) {
+          const preview = (row.description || "").toString();
+          previewMap[row.id] = preview;
+        }
+
+        const enrichedItems = items.map((item: any) => ({
+          ...item,
+          contentPreview: previewMap[item.contentId] ?? null,
+        }));
+
+        return {
+          items: enrichedItems,
+          totalCount: Number(countResult?.count || 0),
+        };
+      } catch (error) {
+        console.error("Failed to get moderation logs:", error);
+        throw error;
+      }
+    },
+
+    async getAiTokenUsage(
+      _: any,
+      { limit, offset, module }: any,
+      context: any,
+    ) {
+      try {
+        const { entity, db } = await checkAuth(context);
+        let whereClause = eq(aiTokenUsage.entityId, entity);
+
+        if (module) {
+          whereClause = and(whereClause, eq(aiTokenUsage.module, module))!;
+        }
+
+        const items = await db.query.aiTokenUsage.findMany({
+          where: whereClause,
+          orderBy: [desc(aiTokenUsage.createdAt)],
+          limit: limit || 100,
+          offset: offset || 0,
+        });
+
+        const [countResult] = await db
+          .select({ count: sql<number>`count(*)` })
+          .from(aiTokenUsage)
+          .where(whereClause);
+
+        return {
+          items,
+          totalCount: Number(countResult?.count || 0),
+        };
+      } catch (error) {
+        console.error("Failed to get AI token usage:", error);
+        throw error;
+      }
+    },
+  },
+
+  ModerationLog: {
+    async user(parent: any, _: any, context: any) {
+      if (!parent.userId) return null;
+      try {
+        const { db } = await checkAuth(context);
+        return await db.query.user.findFirst({
+          where: eq(user.id, parent.userId),
+        });
+      } catch (error) {
+        return null;
       }
     },
   },
@@ -438,10 +613,36 @@ export const moderationResolvers = {
 
     async updateModerationSettings(_: any, { input }: any, context: any) {
       try {
-        const { entity, db } = await checkAuth(context);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.MODERATION, PermissionAction.EDIT);
+        const { entity, db } = auth;
+
+        const {
+          autoModerationEnabled,
+          bannedWordsAction,
+          blockedLinksAction,
+          spamDetectionEnabled,
+          spamThreshold,
+          autoFlagThreshold,
+          autoHideThreshold,
+          aiClassificationDefinitions,
+        } = input;
+
+        console.log("aiClassificationDefinitions", aiClassificationDefinitions);
+
         const [result] = await db
           .update(moderationSettings)
-          .set({ ...input, updatedAt: new Date() })
+          .set({
+            autoModerationEnabled,
+            bannedWordsAction,
+            blockedLinksAction,
+            spamDetectionEnabled,
+            spamThreshold,
+            autoFlagThreshold,
+            autoHideThreshold,
+            aiClassificationDefinitions,
+            updatedAt: new Date(),
+          })
           .where(eq(moderationSettings.entityId, entity))
           .returning();
         return result;

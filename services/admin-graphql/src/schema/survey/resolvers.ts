@@ -48,13 +48,14 @@ export const surveyResolvers = {
       });
     },
 
-    async getSurveyStats(_: any, { timeRange }: any, context: any) {
+    async getSurveyStats(_: any, { timeRange, dateRange }: any, context: any) {
       const auth = await checkAuth(context);
       ensurePermission(auth, AdminModule.SURVEYS, PermissionAction.READ);
       const { entity, db } = auth;
       return await SurveyService.getSurveyStats({
         entityId: entity,
         timeRange,
+        dateRange,
         db,
       });
     },

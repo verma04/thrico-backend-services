@@ -22,6 +22,7 @@ export { JobNotificationService } from "./job/job.notification.service";
 
 export { ForumService } from "./forum/forum.service";
 export { UserService } from "./user/user.service";
+export { EntityService } from "./entity/entity.service";
 
 export { AnnouncementService } from "./announcement/announcement.service";
 export { AuthService } from "./auth/auth.service";
@@ -91,5 +92,6 @@ export { ContactService } from "./contact/contact.service";
 export { AutomationEventService } from "./automation/automation-event.service";
 export { AutomationService } from "./automation/automation.service";
 export { EmailService } from "./email/email.service";
+export { LiveService } from "./live/live.service";
 // Export types
 export * from "./types";

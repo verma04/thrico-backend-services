@@ -27,6 +27,8 @@ import {
   connections,
   groupMember,
   polls,
+  pollOptions,
+  pollResults,
   celebration,
   offers,
   userToEntity,
@@ -105,7 +107,9 @@ export class FeedQueryService {
         firstName: user.firstName,
         lastName: user.lastName,
         avatar: user.avatar,
-        headline: aboutUser.headline,
+        about: {
+          headline: aboutUser.headline,
+        },
       },
       isLiked: sql<boolean>`EXISTS (
         SELECT 1 FROM ${feedReactions}
@@ -376,7 +380,9 @@ export class FeedQueryService {
               firstName: user.firstName,
               lastName: user.lastName,
               avatar: user.avatar,
-              headline: aboutUser.headline,
+              about: {
+                headline: aboutUser.headline,
+              },
             },
             isLiked: exists(
               db
@@ -411,10 +417,13 @@ export class FeedQueryService {
     if (opts.includePoll) {
       const ids = [...new Set(baseFeeds.map((f) => f.pollId).filter(Boolean))];
       if (ids.length > 0)
-        queries.polls = db
-          .select({ id: polls.id, title: polls.title })
-          .from(polls)
-          .where(inArray(polls.id, ids));
+        queries.polls = db.query.polls.findMany({
+          where: (polls: any, { inArray }: any) => inArray(polls.id, ids),
+          with: {
+            options: true,
+            results: true,
+          },
+        });
     }
     if (opts.includeCelebration) {
       const ids = [
@@ -476,7 +485,30 @@ export class FeedQueryService {
     const jobMap = new Map((data.jobs || []).map((j: any) => [j.id, j]));
     const mpMap = new Map((data.marketplace || []).map((m: any) => [m.id, m]));
     const momentMap = new Map((data.moments || []).map((m: any) => [m.id, m]));
-    const pollMap = new Map((data.polls || []).map((p: any) => [p.id, p]));
+    const pollMap = new Map();
+    for (const p of data.polls || []) {
+      let isVoted = false;
+      let votedOptionId: string | null = null;
+      if (p.results && Array.isArray(p.results)) {
+        const vote = p.results.find(
+          (r: any) => r.userId === currentUserId && r.votedBy === "USER",
+        );
+        if (vote) {
+          isVoted = true;
+          votedOptionId = vote.pollOptionId;
+        }
+      }
+      pollMap.set(p.id, {
+        ...p,
+        description: p.question, // Map question to description for mobile
+        options: (p.options || []).map((o: any) => ({
+          ...o,
+          option: o.text, // Map text to option for mobile
+        })),
+        isVoted,
+        votedOptionId,
+      });
+    }
     const celebMap = new Map(
       (data.celebrations || []).map((c: any) => [c.id, c]),
     );
@@ -508,7 +540,9 @@ export class FeedQueryService {
               firstName: u.firstName,
               lastName: u.lastName,
               avatar: u.avatar,
-              headline: ab?.headline || null,
+              about: {
+                headline: ab?.headline || null,
+              },
             }
           : null,
         media: opts.includeMedia
@@ -778,7 +812,9 @@ export class FeedQueryService {
               firstName: user.firstName,
               lastName: user.lastName,
               avatar: user.avatar,
-              headline: aboutUser.headline,
+              about: {
+                headline: aboutUser.headline,
+              },
             },
             isLiked: exists(
               db
@@ -1594,6 +1630,277 @@ export class FeedQueryService {
       };
     } catch (error) {
       log.error("Error in getFeedReactions", { error, feedId, cursor, limit });
+      throw error;
+    }
+  }
+
+  // Get moments feed with stable cursor-based pagination
+  static async getMomentsFeed({
+    currentUserId,
+    db,
+    cursor,
+    limit = 20,
+    entity,
+  }: {
+    currentUserId: string;
+    db: any;
+    cursor?: string;
+    limit?: number;
+    entity: string;
+  }) {
+    try {
+      const rootFields = this.getRootFields(currentUserId);
+      const conditions: any[] = [
+        eq(userFeed.entity, entity),
+        eq(userFeed.source, "moment"),
+        isNull(userFeed.groupId),
+      ];
+
+      if (cursor) {
+        const { createdAt: cursorDate, id: cursorId } =
+          this.decodeCursor(cursor);
+        conditions.push(
+          or(
+            sql`${userFeed.createdAt} < ${cursorDate}`,
+            and(
+              sql`${userFeed.createdAt} = ${cursorDate}`,
+              sql`${userFeed.id} < ${cursorId}`,
+            ),
+          ),
+        );
+      }
+
+      const baseFeeds = await db
+        .select(rootFields)
+        .from(userFeed)
+        .where(and(...conditions))
+        .orderBy(desc(userFeed.createdAt), desc(userFeed.id))
+        .limit(limit + 1);
+
+      const hasNextPage = baseFeeds.length > limit;
+      const nodes = hasNextPage ? baseFeeds.slice(0, limit) : baseFeeds;
+
+      const hydratedFeeds = await this.hydrateFeeds(nodes, db, currentUserId, {
+        includeGroup: true,
+        includeMoment: true,
+        includeMedia: true,
+      });
+
+      const [countResult] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(userFeed)
+        .where(
+          and(
+            eq(userFeed.entity, entity),
+            eq(userFeed.source, "moment"),
+            isNull(userFeed.groupId),
+          ),
+        );
+
+      const totalCount = Number(countResult?.count || 0);
+      const processedFeeds = this.processFeedsWithPermissions(hydratedFeeds);
+
+      const edges = processedFeeds.map((feed: any) => ({
+        cursor: this.encodeCursor(feed),
+        node: feed,
+      }));
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount,
+      };
+    } catch (error) {
+      log.error("Error in getMomentsFeed", {
+        error,
+        currentUserId,
+        entity,
+        cursor,
+        limit,
+      });
+      throw error;
+    }
+  }
+
+  // Get polls feed with stable cursor-based pagination
+  static async getPollsFeed({
+    currentUserId,
+    db,
+    cursor,
+    limit = 20,
+    entity,
+  }: {
+    currentUserId: string;
+    db: any;
+    cursor?: string;
+    limit?: number;
+    entity: string;
+  }) {
+    try {
+      const rootFields = this.getRootFields(currentUserId);
+      const conditions: any[] = [
+        eq(userFeed.entity, entity),
+        eq(userFeed.source, "poll"),
+        isNull(userFeed.groupId),
+      ];
+
+      if (cursor) {
+        const { createdAt: cursorDate, id: cursorId } =
+          this.decodeCursor(cursor);
+        conditions.push(
+          or(
+            sql`${userFeed.createdAt} < ${cursorDate}`,
+            and(
+              sql`${userFeed.createdAt} = ${cursorDate}`,
+              sql`${userFeed.id} < ${cursorId}`,
+            ),
+          ),
+        );
+      }
+
+      const baseFeeds = await db
+        .select(rootFields)
+        .from(userFeed)
+        .where(and(...conditions))
+        .orderBy(desc(userFeed.createdAt), desc(userFeed.id))
+        .limit(limit + 1);
+
+      const hasNextPage = baseFeeds.length > limit;
+      const nodes = hasNextPage ? baseFeeds.slice(0, limit) : baseFeeds;
+
+      const hydratedFeeds = await this.hydrateFeeds(nodes, db, currentUserId, {
+        includePoll: true,
+      });
+
+      const [countResult] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(userFeed)
+        .where(
+          and(
+            eq(userFeed.entity, entity),
+            eq(userFeed.source, "poll"),
+            isNull(userFeed.groupId),
+          ),
+        );
+
+      const totalCount = Number(countResult?.count || 0);
+      const processedFeeds = this.processFeedsWithPermissions(hydratedFeeds);
+
+      const edges = processedFeeds.map((feed: any) => ({
+        cursor: this.encodeCursor(feed),
+        node: feed,
+      }));
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount,
+      };
+    } catch (error) {
+      log.error("Error in getPollsFeed", {
+        error,
+        currentUserId,
+        entity,
+        cursor,
+        limit,
+      });
+      throw error;
+    }
+  }
+
+  // Get feed by admin with stable cursor-based pagination
+  static async getFeedByAdmin({
+    currentUserId,
+    db,
+    cursor,
+    limit = 20,
+    entity,
+  }: {
+    currentUserId: string;
+    db: any;
+    cursor?: string;
+    limit?: number;
+    entity: string;
+  }) {
+    try {
+      const rootFields = this.getRootFields(currentUserId);
+      const conditions: any[] = [
+        eq(userFeed.entity, entity),
+        eq(userFeed.addedBy, "ENTITY"),
+      ];
+
+      if (cursor) {
+        const { createdAt: cursorDate, id: cursorId } =
+          this.decodeCursor(cursor);
+        conditions.push(
+          or(
+            sql`${userFeed.createdAt} < ${cursorDate}`,
+            and(
+              sql`${userFeed.createdAt} = ${cursorDate}`,
+              sql`${userFeed.id} < ${cursorId}`,
+            ),
+          ),
+        );
+      }
+
+      const baseFeeds = await db
+        .select(rootFields)
+        .from(userFeed)
+        .where(and(...conditions))
+        .orderBy(desc(userFeed.createdAt), desc(userFeed.id))
+        .limit(limit + 1);
+
+      const hasNextPage = baseFeeds.length > limit;
+      const nodes = hasNextPage ? baseFeeds.slice(0, limit) : baseFeeds;
+
+      const hydratedFeeds = await this.hydrateFeeds(nodes, db, currentUserId, {
+        includeGroup: true,
+        includeJob: true,
+        includeMarketplace: true,
+        includeMoment: true,
+        includePoll: true,
+        includeCelebration: true,
+        includeOffer: true,
+        includeMedia: true,
+      });
+
+      const [countResult] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(userFeed)
+        .where(
+          and(eq(userFeed.entity, entity), eq(userFeed.addedBy, "ENTITY")),
+        );
+
+      const totalCount = Number(countResult?.count || 0);
+      const processedFeeds = this.processFeedsWithPermissions(hydratedFeeds);
+
+      const edges = processedFeeds.map((feed: any) => ({
+        cursor: this.encodeCursor(feed),
+        node: feed,
+      }));
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
+        },
+        totalCount,
+      };
+    } catch (error) {
+      log.error("Error in getFeedByAdmin", {
+        error,
+        currentUserId,
+        entity,
+        cursor,
+        limit,
+      });
       throw error;
     }
   }

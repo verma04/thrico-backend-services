@@ -1,4 +1,4 @@
-import { AuthService, UserService } from "@thrico/services";
+import { AuthService, UserService, EntityService } from "@thrico/services";
 import { getDb } from "@thrico/database";
 import { DatabaseRegion } from "@thrico/shared";
 import { log } from "@thrico/logging";
@@ -26,8 +26,8 @@ export const resolvers = {
 
     async getEntityTheme(_: any, { domain }: any, context: any) {
       try {
-        const { entityId, db } = context.user || (await checkAuth(context));
-        return AuthService.getEntityTheme({ entityId, db });
+        const { entityId } = context.user || (await checkAuth(context));
+        return EntityService.getEntityTheme({ entityId });
       } catch (error) {
         log.error("Error in getEntityTheme", { error, domain });
         throw error;

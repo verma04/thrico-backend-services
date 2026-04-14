@@ -1,5 +1,5 @@
 import { sql, eq, and } from "drizzle-orm";
-import { userFeed, feedComment } from "@thrico/database";
+import { userFeed, feedComment, entitySettings } from "@thrico/database";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import {
   addFeedAdmin,
@@ -72,6 +72,74 @@ export const feedResolvers = {
       }
     },
 
+    async momentsFeed(_: any, { input }: any, context: any) {
+      try {
+        const { entity, db } = await checkAuth(context);
+        const { offset, limit } = input || {};
+        return getAllFeedEntity({
+          db,
+          offset,
+          limit,
+          entity,
+          source: "moment",
+        });
+      } catch (error) {
+        console.log(error);
+        throw error;
+      }
+    },
+
+    async pollsFeed(_: any, { input }: any, context: any) {
+      try {
+        const { entity, db } = await checkAuth(context);
+        const { offset, limit } = input || {};
+        return getAllFeedEntity({
+          db,
+          offset,
+          limit,
+          entity,
+          source: "poll",
+        });
+      } catch (error) {
+        console.log(error);
+        throw error;
+      }
+    },
+
+    async feedByAdmin(_: any, { input }: any, context: any) {
+      try {
+        const { entity, db } = await checkAuth(context);
+        const { offset, limit } = input || {};
+        return getAllFeedEntity({
+          db,
+          offset,
+          limit,
+          entity,
+          source: "admin",
+        });
+      } catch (error) {
+        console.log(error);
+        throw error;
+      }
+    },
+
+    async adminFeed(_: any, { input }: any, context: any) {
+      try {
+        const { entity, db } = await checkAuth(context);
+        const { offset, limit } = input || {};
+        return getAllFeedEntity({
+          db,
+          offset,
+          limit,
+          entity,
+          source: "admin",
+        });
+      } catch (error) {
+        console.log(error);
+        throw error;
+      }
+    },
+
     async getListingFeed(_: any, { input }: any, context: any) {
       try {
         const { entity, db } = await checkAuth(context);
@@ -100,24 +168,57 @@ export const feedResolvers = {
       }
     },
 
-    async getFeedIntelligenceKPI(_: any, __: any, context: any) {
-      const { entity, db } = await checkAuth(context);
-      return getFeedIntelligenceKPI({ db, entity });
+    async getPollsFeed(_: any, { input }: any, context: any) {
+      try {
+        const { entity, db } = await checkAuth(context);
+        const { offset, limit } = input || {};
+        return getAllFeedEntity({
+          db,
+          offset,
+          limit,
+          entity,
+          source: "poll",
+        });
+      } catch (error) {
+        console.log(error);
+        throw error;
+      }
     },
 
-    async getFeedYieldVelocity(_: any, __: any, context: any) {
+    async getFeedIntelligenceKPI(
+      _: any,
+      { timeRange, dateRange }: any,
+      context: any,
+    ) {
       const { entity, db } = await checkAuth(context);
-      return getFeedYieldVelocity({ db, entity });
+      return getFeedIntelligenceKPI({ db, entity, timeRange, dateRange });
     },
 
-    async getFeedInterestMatrix(_: any, __: any, context: any) {
+    async getFeedYieldVelocity(
+      _: any,
+      { timeRange, dateRange }: any,
+      context: any,
+    ) {
       const { entity, db } = await checkAuth(context);
-      return getFeedInterestMatrix({ db, entity });
+      return getFeedYieldVelocity({ db, entity, timeRange, dateRange });
     },
 
-    async getPromotedNodeEvents(_: any, __: any, context: any) {
+    async getFeedInterestMatrix(
+      _: any,
+      { timeRange, dateRange }: any,
+      context: any,
+    ) {
       const { entity, db } = await checkAuth(context);
-      return getPromotedNodeEvents({ db, entity });
+      return getFeedInterestMatrix({ db, entity, timeRange, dateRange });
+    },
+
+    async getPromotedNodeEvents(
+      _: any,
+      { timeRange, dateRange }: any,
+      context: any,
+    ) {
+      const { entity, db } = await checkAuth(context);
+      return getPromotedNodeEvents({ db, entity, timeRange, dateRange });
     },
 
     async numberOfFeeds(_: any, {}: any, context: any) {
@@ -327,6 +428,27 @@ export const feedResolvers = {
       });
 
       return result;
+    },
+    async updateFeedOrder(_: any, { input }: any, context: any) {
+      const auth = await checkAuth(context);
+      const { db, entity, id: adminId } = auth;
+      ensurePermission(auth, AdminModule.FEED, PermissionAction.EDIT);
+
+      await db
+        .update(entitySettings)
+        .set({ feedOrder: input.order })
+        .where(eq(entitySettings.entity, entity));
+
+      await createAuditLog(db, {
+        adminId,
+        entityId: entity,
+        module: AdminModule.FEED,
+        action: "UPDATE_FEED_ORDER",
+        resourceId: entity,
+        newState: input,
+      });
+
+      return true;
     },
   },
 };

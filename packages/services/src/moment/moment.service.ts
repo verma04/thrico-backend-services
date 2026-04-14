@@ -130,6 +130,7 @@ export class MomentService {
     thumbnailUrl?: string,
     shareInFeed: boolean = false,
     isAiContent: boolean = false,
+    addedBy: "USER" | "ENTITY" = "USER",
   ) {
     try {
       let key = "";
@@ -209,6 +210,7 @@ export class MomentService {
           caption,
           status: "PROCESSING",
           isAiContent,
+          addedBy,
         })
         .returning();
 

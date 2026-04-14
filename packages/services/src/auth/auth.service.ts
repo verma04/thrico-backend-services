@@ -1,6 +1,7 @@
 import { log } from "@thrico/logging";
 import { GraphQLError } from "graphql";
 import { UserService } from "../user/user.service";
+import { EntityService } from "../entity/entity.service";
 
 import {
   and,
@@ -175,7 +176,7 @@ export class AuthService {
     sessionId?: string;
   }): Promise<{
     token: string;
-    theme: any;
+    entityTheme: any;
     isDeletionPending?: boolean;
     deletionRequestedAt?: Date | null;
     isActive?: boolean;
@@ -223,11 +224,9 @@ export class AuthService {
         });
       }
 
-      const themeResult = await EntityThemeModel.query("entity")
-        .eq(input.entityId)
-        .exec();
-
-      const themeData = themeResult.toJSON()[0] || null;
+      const themeData = await EntityService.getEntityTheme({
+        entityId: input.entityId,
+      });
 
       // Get old session details if sessionId is provided
       let oldSessionDetails: any = null;
@@ -301,7 +300,7 @@ export class AuthService {
 
       return {
         token,
-        theme: themeData,
+        entityTheme: themeData,
         isDeletionPending: targetUserRecord.isDeletionPending,
         deletionRequestedAt: targetUserRecord.deletionRequestedAt,
         isActive: targetUserRecord.isActive,
@@ -653,7 +652,7 @@ export class AuthService {
     generateJwtTokenFn: (data: any) => Promise<string>;
   }): Promise<{
     token: string;
-    theme: any;
+    entityTheme: any;
     isDeletionPending?: boolean;
     deletionRequestedAt?: Date | null;
     isActive?: boolean;
@@ -694,9 +693,9 @@ export class AuthService {
         });
       }
 
-      const themeResult = await ENTITY_THEME.query("entity")
-        .eq(input?.entityId)
-        .exec();
+      const themeData = await EntityService.getEntityTheme({
+        entityId: input?.entityId,
+      });
       const sessionID = `session-${Date.now()}`;
 
       const createLoginSession = await USER_LOGIN_SESSION.create({
@@ -729,7 +728,7 @@ export class AuthService {
 
       return {
         token: generate,
-        theme: themeResult.toJSON()[0] ? themeResult.toJSON()[0] : null,
+        entityTheme: themeData,
         isDeletionPending: thricoUser.isDeletionPending,
         deletionRequestedAt: thricoUser.deletionRequestedAt,
         isActive: thricoUser.isActive,
@@ -750,7 +749,7 @@ export class AuthService {
     generateJwtTokenFn: (data: any) => Promise<string>;
   }): Promise<{
     token: string;
-    theme: any;
+    entityTheme: any;
     isDeletionPending?: boolean;
     deletionRequestedAt?: Date | null;
     isActive?: boolean;
@@ -842,10 +841,9 @@ export class AuthService {
         });
       }
 
-      const themeResult = await EntityThemeModel.query("entity")
-        .eq(input.entityId)
-        .exec();
-      const themeData = themeResult?.toJSON?.()[0] || null;
+      const themeData = await EntityService.getEntityTheme({
+        entityId: input.entityId,
+      });
 
       const sessionId = `session-${Date.now()}`;
       const loginSession = await LoginSessionModel.create({
@@ -868,7 +866,7 @@ export class AuthService {
 
       return {
         token,
-        theme: themeData,
+        entityTheme: themeData,
         isDeletionPending: thricoUser.isDeletionPending,
         deletionRequestedAt: thricoUser.deletionRequestedAt,
         isActive: thricoUser.isActive,
@@ -1138,11 +1136,17 @@ export class AuthService {
     db: any;
   }): Promise<any> {
     try {
-      const check = await db.query.entity.findFirst({
-        where: (d: any, { eq }: any) => eq(d.id, entityId),
-      });
+      const [check, themeData] = await Promise.all([
+        db.query.entity.findFirst({
+          where: (d: any, { eq }: any) => eq(d.id, entityId),
+        }),
+        EntityService.getEntityTheme({ entityId }),
+      ]);
 
-      return { ...check };
+      return {
+        ...check,
+        entityTheme: themeData,
+      };
     } catch (error) {
       log.error("Error in getOrgDetails", { error, entityId });
       throw error;
@@ -1194,23 +1198,6 @@ export class AuthService {
     }
   }
 
-  static async getEntityTheme({
-    entityId,
-    db,
-  }: {
-    entityId: string;
-    db: any;
-  }): Promise<any> {
-    try {
-      const entityTheme = await db.query.theme.findFirst({
-        where: and(eq(theme.entityId, entityId)),
-      });
-      return entityTheme;
-    } catch (error) {
-      log.error("Error in getEntityTheme", { error, entityId });
-      throw error;
-    }
-  }
 
   static async updateSession({
     sessionId,
@@ -1328,7 +1315,7 @@ export class AuthService {
     generateJwtTokenFn: (data: any) => Promise<string>;
   }): Promise<{
     token: string;
-    theme: any;
+    entityTheme: any;
     isDeletionPending?: boolean;
     deletionRequestedAt?: Date | null;
     isActive?: boolean;
@@ -1481,7 +1468,7 @@ export class AuthService {
 
       return {
         token,
-        theme: themeData,
+        entityTheme: themeData,
         isDeletionPending: thricoUser.isDeletionPending,
         deletionRequestedAt: thricoUser.deletionRequestedAt,
         isActive: thricoUser.isActive,

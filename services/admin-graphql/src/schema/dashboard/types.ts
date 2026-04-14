@@ -31,6 +31,15 @@ export const dashboardTypes = gql`
     LAST_7_DAYS
     LAST_30_DAYS
     LAST_90_DAYS
+    THIS_MONTH
+    LAST_MONTH
+  }
+
+  enum GroupBy {
+    HOUR
+    DAY
+    WEEK
+    MONTH
   }
 
   type DashboardStats {
@@ -61,15 +70,37 @@ export const dashboardTypes = gql`
     interactionReciprocity: StatValue!
     contentReach: StatValue!
     contentTypeBreakdown: [ContentTypeStat!]!
-    
+    contentViralityRate: StatValue!
+    knowledgeDensityIndex: StatValue!
+    contentToMemberRatio: StatValue!
+
     # Acquisition & Retention
     memberActivationRate: StatValue!
     communityAdvocacyIndex: StatValue!
     superfanRatio: StatValue!
-    
+    memberGrowthRate: StatValue!
+    onboardingCompletionRate: StatValue!
+    newMemberResponseRate: StatValue!
+    reEngagementRecoveryRate: StatValue!
+    crossCommunityParticipationRate: StatValue!
+
+    # Revenue & Business Value
+    revenuePerMember: StatValue!
+    memberLifetimeValue: StatValue!
+    revenueConversionRate: StatValue!
+    communityQualifiedLeadScore: StatValue!
+    sponsorContentEngagementRate: StatValue!
+
+    # Engagement & Satisfaction
+    eventParticipationRate: StatValue!
+    memberSatisfactionScore: StatValue!
+    featureAdoptionRate: StatValue!
+    peakEngagementHourDistribution: StatValue!
+    churnPredictionScore: StatValue!
+
     # Moderation Overview
     moderationStats: [ModerationStat!]!
-    
+
     # Module Performance
     modulePerformance: [ModulePerformanceStat!]!
   }
@@ -115,13 +146,61 @@ export const dashboardTypes = gql`
     modules: [PlatformModuleActivityItem!]!
   }
 
+  type MembersStats {
+    totalMembers: Int!
+    activeMembers: Int!
+    newMembersThisMonth: Int!
+    activeRate: Float!
+    totalMembersChange: Float
+    activeMembersChange: Float
+    newMembersChange: Float
+    activeRateChange: Float
+  }
+
+  type GrowthDataPoint {
+    date: Date!
+    count: Int!
+  }
+
+  type GrowthStats {
+    data: [GrowthDataPoint!]!
+    totalNewMembers: Int!
+    growthRate: Float!
+  }
+
+  input DateRangeInput {
+    startDate: String!
+    endDate: String!
+  }
+
   extend type Query {
     dashboards(entityId: String!): [Dashboard!]!
     dashboard(id: ID!): Dashboard
-    getDashboardStats(timeRange: TimeRange!): DashboardStats!
-    getCommunityKPIs(timeRange: TimeRange!): CommunityKPIs!
-    getModuleActivity(timeRange: TimeRange!): [ModuleActivity!]!
-    getPlatformModuleActivity(timeRange: TimeRange!): PlatformModuleActivity!
+    getDashboardStats(
+      timeRange: TimeRange
+      dateRange: DateRangeInput
+    ): DashboardStats!
+    getCommunityKPIs(
+      timeRange: TimeRange
+      dateRange: DateRangeInput
+    ): CommunityKPIs!
+    getMembersStats(
+      timeRange: TimeRange
+      dateRange: DateRangeInput
+    ): MembersStats!
+    getGrowthStats(
+      timeRange: TimeRange
+      dateRange: DateRangeInput
+      groupBy: GroupBy
+    ): GrowthStats!
+    getModuleActivity(
+      timeRange: TimeRange
+      dateRange: DateRangeInput
+    ): [ModuleActivity!]!
+    getPlatformModuleActivity(
+      timeRange: TimeRange
+      dateRange: DateRangeInput
+    ): PlatformModuleActivity!
   }
 
   extend type Mutation {

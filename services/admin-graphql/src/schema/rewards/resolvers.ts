@@ -1,7 +1,8 @@
 import { rewards, vouchers, redemptions } from "@thrico/database";
-import { eq, and, ilike, or, desc, sql } from "drizzle-orm";
+import { eq, and, ilike, or, desc, sql, lt, gte } from "drizzle-orm";
 import uploadImageToFolder from "../../utils/upload/uploadImageToFolder.utils";
 import checkAuth from "../../utils/auth/checkAuth.utils";
+import { getDaterangeFromInput } from "../dashboard/resolvers";
 import { spinResolvers } from "./spin/resolvers";
 import { scratchResolvers } from "./scratch/resolvers";
 import { matchWinResolvers } from "./match-win/resolvers";
@@ -142,8 +143,17 @@ export const rewardsResolvers = {
       });
     },
 
-    async getRewardStats(_: any, __: any, context: any) {
+    async getRewardStats(
+      _: any,
+      { timeRange, dateRange }: any,
+      context: any,
+    ) {
       const { entity, db } = await checkAuth(context);
+
+      const { startDate, endDate } = getDaterangeFromInput(
+        timeRange,
+        dateRange,
+      );
 
       // Get aggregate stats
       const [stats] = await db
@@ -152,12 +162,23 @@ export const rewardsResolvers = {
           totalTcBurned: sql`sum(${redemptions.tcUsed})`.mapWith(Number),
         })
         .from(redemptions)
-        .where(eq(redemptions.entityId, entity));
+        .where(
+          and(
+            eq(redemptions.entityId, entity),
+            lt(redemptions.createdAt, endDate),
+          ),
+        );
 
       const activeCoupons = await db
         .select({ count: sql`count(*)`.mapWith(Number) })
         .from(rewards)
-        .where(and(eq(rewards.entityId, entity), eq(rewards.status, "ACTIVE")));
+        .where(
+          and(
+            eq(rewards.entityId, entity),
+            eq(rewards.status, "ACTIVE"),
+            lt(rewards.createdAt, endDate),
+          ),
+        );
 
       // Low inventory logic: items with < 5 vouchers left that require inventory
       const lowInventoryItems = await db
@@ -172,12 +193,13 @@ export const rewardsResolvers = {
             eq(rewards.entityId, entity),
             eq(rewards.inventoryRequired, true),
             eq(rewards.status, "ACTIVE"),
+            lt(rewards.createdAt, endDate),
           ),
         )
         .groupBy(rewards.id)
         .having(sql`count(${vouchers.id}) < 5`);
 
-      // Redemption trend for last 7 days
+      // Redemption trend for selected period
       const trend = await db
         .select({
           date: sql`DATE_TRUNC('day', ${redemptions.createdAt})::text`,
@@ -188,7 +210,8 @@ export const rewardsResolvers = {
         .where(
           and(
             eq(redemptions.entityId, entity),
-            sql`${redemptions.createdAt} > now() - interval '7 days'`,
+            gte(redemptions.createdAt, startDate),
+            lt(redemptions.createdAt, endDate),
           ),
         )
         .groupBy(sql`DATE_TRUNC('day', ${redemptions.createdAt})`)

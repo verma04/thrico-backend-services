@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, sql, lt, gte } from "drizzle-orm";
 // import { userOrg } from "./mentorship.resolvers";
 import { GraphQLError } from "graphql";
 
@@ -14,6 +14,7 @@ import {
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import generateSlug from "../../utils/slug.utils";
 import { ensurePermission, AdminModule, PermissionAction } from "../../utils/auth/permissions.utils";
+import { getDaterangeFromInput } from "../dashboard/resolvers";
 
 export const jobsResolvers = {
   Query: {
@@ -60,7 +61,10 @@ export const jobsResolvers = {
 
     async getJobStats(
       _: any,
-      { timeRange }: { timeRange: string },
+      {
+        timeRange,
+        dateRange,
+      }: { timeRange?: string; dateRange?: { startDate: string; endDate: string } },
       context: any,
     ) {
       try {
@@ -68,34 +72,14 @@ export const jobsResolvers = {
         ensurePermission(auth, AdminModule.JOBS, PermissionAction.READ);
         const { entity, db } = auth;
 
-        const now = new Date();
-        let startDate = new Date();
+        const { startDate, endDate, prevStartDate, prevEndDate } =
+          getDaterangeFromInput(timeRange, dateRange);
 
-        switch (timeRange) {
-          case "LAST_24_HOURS":
-            startDate.setHours(now.getHours() - 24);
-            break;
-          case "LAST_7_DAYS":
-            startDate.setDate(now.getDate() - 7);
-            break;
-          case "LAST_30_DAYS":
-            startDate.setDate(now.getDate() - 30);
-            break;
-          case "LAST_90_DAYS":
-            startDate.setDate(now.getDate() - 90);
-            break;
-          default:
-            startDate.setDate(now.getDate() - 7);
-        }
-
-        const timeDiff = now.getTime() - startDate.getTime();
-        const previousStartDate = new Date(startDate.getTime() - timeDiff);
-
-        // 1. Total Jobs (all time)
+        // 1. Total Jobs (as of end of period)
         const [totalJobsResult] = await db
           .select({ count: sql`COUNT(*)`.mapWith(Number) })
           .from(jobs)
-          .where(eq(jobs.entityId, entity));
+          .where(and(eq(jobs.entityId, entity), lt(jobs.createdAt, endDate)));
         const totalJobs = totalJobsResult?.count || 0;
 
         const [prevTotalJobsResult] = await db
@@ -104,7 +88,7 @@ export const jobsResolvers = {
           .where(
             and(
               eq(jobs.entityId, entity),
-              sql`${jobs.createdAt} < ${startDate}`,
+              lt(jobs.createdAt, startDate),
             ),
           );
         const prevTotalJobs = prevTotalJobsResult?.count || 0;
@@ -122,6 +106,7 @@ export const jobsResolvers = {
               eq(jobs.entityId, entity),
               eq(jobs.status, "APPROVED"),
               eq(jobs.isActive, true),
+              lt(jobs.createdAt, endDate),
             ),
           );
         const activeJobs = activeJobsResult?.count || 0;
@@ -134,7 +119,7 @@ export const jobsResolvers = {
               eq(jobs.entityId, entity),
               eq(jobs.status, "APPROVED"),
               eq(jobs.isActive, true),
-              sql`${jobs.createdAt} < ${startDate}`,
+              lt(jobs.createdAt, startDate),
             ),
           );
         const prevActiveJobs = prevActiveJobsResult?.count || 0;
@@ -143,12 +128,15 @@ export const jobsResolvers = {
             ? ((activeJobs - prevActiveJobs) / prevActiveJobs) * 100
             : 0;
 
-        // 3. Total Applications (all time)
+        // 3. Total Applications (as of end of period)
         const [totalApplicationsResult] = await db
           .select({ count: sql`COUNT(*)`.mapWith(Number) })
           .from(jobApplicant)
           .where(
-            sql`${jobApplicant.jobId} IN (SELECT ${jobs.id} FROM ${jobs} WHERE ${jobs.entityId} = ${entity})`,
+            and(
+              sql`${jobApplicant.jobId} IN (SELECT ${jobs.id} FROM ${jobs} WHERE ${jobs.entityId} = ${entity})`,
+              lt(jobApplicant.createdAt, endDate),
+            ),
           );
         const totalApplications = totalApplicationsResult?.count || 0;
 
@@ -158,7 +146,8 @@ export const jobsResolvers = {
           .where(
             and(
               sql`${jobApplicant.jobId} IN (SELECT ${jobs.id} FROM ${jobs} WHERE ${jobs.entityId} = ${entity})`,
-              sql`${jobApplicant.createdAt} >= ${startDate}`,
+              gte(jobApplicant.createdAt, startDate),
+              lt(jobApplicant.createdAt, endDate),
             ),
           );
         const currAppCount = currAppCountResult?.count || 0;
@@ -169,8 +158,8 @@ export const jobsResolvers = {
           .where(
             and(
               sql`${jobApplicant.jobId} IN (SELECT ${jobs.id} FROM ${jobs} WHERE ${jobs.entityId} = ${entity})`,
-              sql`${jobApplicant.createdAt} >= ${previousStartDate}`,
-              sql`${jobApplicant.createdAt} < ${startDate}`,
+              gte(jobApplicant.createdAt, prevStartDate),
+              lt(jobApplicant.createdAt, prevEndDate),
             ),
           );
         const prevAppCount = prevAppCountResult?.count || 0;
@@ -179,12 +168,15 @@ export const jobsResolvers = {
             ? ((currAppCount - prevAppCount) / prevAppCount) * 100
             : 0;
 
-        // 4. Total Views (all time)
+        // 4. Total Views (as of end of period)
         const [totalViewsResult] = await db
           .select({ count: sql`COUNT(*)`.mapWith(Number) })
           .from(jobViews)
           .where(
-            sql`${jobViews.jobId} IN (SELECT ${jobs.id} FROM ${jobs} WHERE ${jobs.entityId} = ${entity})`,
+            and(
+              sql`${jobViews.jobId} IN (SELECT ${jobs.id} FROM ${jobs} WHERE ${jobs.entityId} = ${entity})`,
+              lt(jobViews.viewedAt, endDate),
+            ),
           );
         const totalViews = totalViewsResult?.count || 0;
 
@@ -194,7 +186,8 @@ export const jobsResolvers = {
           .where(
             and(
               sql`${jobViews.jobId} IN (SELECT ${jobs.id} FROM ${jobs} WHERE ${jobs.entityId} = ${entity})`,
-              sql`${jobViews.viewedAt} >= ${startDate}`,
+              gte(jobViews.viewedAt, startDate),
+              lt(jobViews.viewedAt, endDate),
             ),
           );
         const currViewCount = currViewCountResult?.count || 0;
@@ -205,8 +198,8 @@ export const jobsResolvers = {
           .where(
             and(
               sql`${jobViews.jobId} IN (SELECT ${jobs.id} FROM ${jobs} WHERE ${jobs.entityId} = ${entity})`,
-              sql`${jobViews.viewedAt} >= ${previousStartDate}`,
-              sql`${jobViews.viewedAt} < ${startDate}`,
+              gte(jobViews.viewedAt, prevStartDate),
+              lt(jobViews.viewedAt, prevEndDate),
             ),
           );
         const prevViewCount = prevViewCountResult?.count || 0;

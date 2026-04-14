@@ -7,6 +7,11 @@ export const momentTypes = `#graphql
     FAILED
   }
 
+  enum AddedBy {
+    USER
+    ENTITY
+  }
+
   type AdminMomentOwner {
     id: ID!
     firstName: String
@@ -36,6 +41,7 @@ export const momentTypes = `#graphql
     detectedCategory: String
     extractedKeywords: [String]
     sentimentScore: Float
+    addedBy: AddedBy
   }
 
   type AdminMomentConnection {
@@ -47,6 +53,33 @@ export const momentTypes = `#graphql
     caption: String
     thumbnailUrl: String
     status: AdminMomentStatus
+  }
+
+  input AdminGenerateMomentUploadInput {
+    videoFileName: String!
+    videoFileType: String!
+    videoFileSize: Int!
+    thumbnailFileName: String!
+    thumbnailFileType: String!
+    thumbnailFileSize: Int!
+  }
+
+  type AdminGenerateMomentUploadResponse {
+    momentId: ID
+    videoUploadUrl: String
+    videoFileUrl: String
+    thumbnailUploadUrl: String
+    thumbnailFileUrl: String
+    expiresIn: Int
+  }
+
+  input AdminConfirmMomentUploadInput {
+    fileUrl: String!
+    caption: String!
+    thumbnailUrl: String
+    shareInFeed: Boolean
+    isAiContent: Boolean
+    userId: String
   }
 
   type MomentAnalytics {
@@ -78,5 +111,8 @@ export const momentTypes = `#graphql
   extend type Mutation {
     adminDeleteMoment(id: ID!): Boolean
     adminEditMoment(id: ID!, input: AdminUpdateMomentInput!): AdminMoment
+    adminGenerateMomentUploadUrl(input: AdminGenerateMomentUploadInput!): AdminGenerateMomentUploadResponse
+    adminConfirmMomentUpload(input: AdminConfirmMomentUploadInput!): AdminMoment
+    adminMomentUpload(input: AdminConfirmMomentUploadInput!): AdminMoment
   }
 `;

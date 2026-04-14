@@ -11,12 +11,14 @@
   },
   "dependencies": {
     "@apollo/server": "^4.10.0",
+    "@graphql-tools/schema": "^10.0.31",
     "@thrico/database": "workspace:*",
     "@thrico/grpc": "workspace:*",
     "@thrico/logging": "workspace:*",
     "@thrico/services": "workspace:*",
     "@thrico/shared": "workspace:*",
     "@types/redis": "^4.0.10",
+    "@types/ws": "^8.18.1",
     "@urql/core": "^6.0.1",
     "amqp-connection-manager": "^5.0.0",
     "bcryptjs": "^3.0.3",
@@ -27,11 +29,13 @@
     "graphql-subscriptions": "^3.0.0",
     "graphql-type-json": "^0.3.2",
     "graphql-upload-minimal": "^1.6.4",
+    "graphql-ws": "^6.0.8",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "moment": "^2.30.1",
     "redis": "^5.10.0",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "ws": "^8.20.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",

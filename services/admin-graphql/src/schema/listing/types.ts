@@ -2,7 +2,7 @@ export const listingTypes = `#graphql
 
   enum ListingConditionEnum {
     NEW
-    USED_LIKE_NOW
+    USED_LIKE_NEW
     USED_LIKE_GOOD
     USED_LIKE_FAIR
   }

@@ -3,10 +3,12 @@ import { GraphQLError } from "graphql";
 import { and, eq, sql, or, desc } from "drizzle-orm";
 import {
   listingContact,
-  listingConversation,
   listingMessage,
+  conversation,
+  messages,
   marketPlace,
   user,
+  chat,
 } from "@thrico/database";
 import { GamificationEventService } from "../gamification/gamification-event.service";
 
@@ -56,9 +58,11 @@ export class ListingContactService {
             createdAt: listingMessage.createdAt,
             isRead: listingMessage.isRead,
           },
+          // Unified conversation row (has listingId)
           conversation: {
-            id: listingConversation.id,
-            lastMessageAt: listingConversation.lastMessageAt,
+            id: conversation.id,
+            lastMessageAt: conversation.lastMessageAt,
+            listingId: conversation.listingId,
           },
           buyer: {
             id: user.id,
@@ -74,9 +78,10 @@ export class ListingContactService {
           listingMessage,
           eq(listingContact.messageId, listingMessage.id),
         )
+        // Join unified conversation via listingContact.conversationId -> conversation.id
         .leftJoin(
-          listingConversation,
-          eq(listingContact.conversationId, listingConversation.id),
+          conversation,
+          eq(listingContact.conversationId, conversation.id),
         )
         .where(and(...conditions))
         .orderBy(desc(listingContact.createdAt))
@@ -117,27 +122,26 @@ export class ListingContactService {
     limit: number = 50,
   ) {
     try {
-      // First verify participation
-      const conversation = await db.query.listingConversation.findFirst({
-        where: (conv: any, { eq, or, and }: any) =>
+      // Verify participation via unified conversation table
+      const conv = await db.query.conversation.findFirst({
+        where: (c: any, { eq, or, and }: any) =>
           and(
-            eq(conv.id, conversationId),
-            or(eq(conv.buyerId, userId), eq(conv.sellerId, userId)),
+            eq(c.id, conversationId),
+            or(eq(c.user1Id, userId), eq(c.user2Id, userId)),
           ),
       });
 
-      if (!conversation) {
+      if (!conv) {
         throw new GraphQLError("Conversation not found or access denied");
       }
 
-      const conditions = [eq(listingMessage.conversationId, conversationId)];
+      const conditions = [eq(messages.conversationId, conversationId)];
       if (cursor) {
-        conditions.push(sql`${listingMessage.createdAt} < ${new Date(cursor)}`);
+        conditions.push(sql`${messages.createdAt} < ${new Date(cursor)}`);
       }
 
-      const messages = await db.query.listingMessage.findMany({
+      const msgs = await db.query.messages.findMany({
         where: (msg: any, { eq, and }: any) => and(...conditions),
-        // orderBy: (msg: any, { desc }: any) => [desc(msg.createdAt)],
         limit: limit + 1,
         with: {
           sender: {
@@ -151,13 +155,13 @@ export class ListingContactService {
         },
       });
 
-      const hasNextPage = messages.length > limit;
-      const nodes = hasNextPage ? messages.slice(0, limit) : messages;
+      const hasNextPage = msgs.length > limit;
+      const nodes = hasNextPage ? msgs.slice(0, limit) : msgs;
 
       const totalMessages = await db
         .select({ count: sql<number>`count(*)::int` })
-        .from(listingMessage)
-        .where(eq(listingMessage.conversationId, conversationId));
+        .from(messages)
+        .where(eq(messages.conversationId, conversationId));
 
       const edges = nodes.map((m: any) => ({
         cursor: m.createdAt.toISOString(),
@@ -174,6 +178,8 @@ export class ListingContactService {
           endCursor: edges.length > 0 ? edges[edges.length - 1].cursor : null,
         },
         totalCount: totalMessages[0].count,
+        // Surface listingId so the UI can show which listing this thread is about
+        listingId: conv.listingId ?? null,
       };
     } catch (error) {
       log.error("Error in getListingConversationMessages", {
@@ -352,42 +358,45 @@ export class ListingContactService {
       let conversationId: string;
 
       await db.transaction(async (tx: any) => {
-        let conversation = await tx.query.listingConversation.findFirst({
-          where: (conv: any, { and, eq }: any) =>
+        // Look for an existing unified conversation for this buyer+seller+listing
+        let conv = await tx.query.conversation.findFirst({
+          where: (c: any, { and, eq }: any) =>
             and(
-              eq(conv.listingId, listingId),
-              eq(conv.buyerId, buyerId),
-              eq(conv.sellerId, listing.postedBy!),
+              eq(c.listingId, listingId),
+              eq(c.user1Id, buyerId),
+              eq(c.user2Id, listing.postedBy!),
             ),
         });
 
-        if (!conversation) {
+        if (!conv) {
           const [newConversation] = await tx
-            .insert(listingConversation)
+            .insert(conversation)
             .values({
               listingId: listingId,
-              buyerId: buyerId,
-              sellerId: listing.postedBy!,
+              user1Id: buyerId,
+              user2Id: listing.postedBy!,
+              entityId: entityId,
               lastMessageAt: new Date(),
             })
             .returning();
 
-          conversation = newConversation;
+          conv = newConversation;
         } else {
           await tx
-            .update(listingConversation)
+            .update(conversation)
             .set({ lastMessageAt: new Date() })
-            .where(eq(listingConversation.id, conversation.id));
+            .where(eq(conversation.id, conv.id));
         }
 
-        conversationId = conversation.id;
+        conversationId = conv.id;
 
         const [newMessage] = await tx
-          .insert(listingMessage)
+          .insert(messages)
           .values({
             conversationId: conversationId,
             senderId: buyerId,
             content: message,
+            entityId: entityId,
             isRead: false,
           })
           .returning();
@@ -413,6 +422,20 @@ export class ListingContactService {
             numberOfContactClick: sql`${marketPlace.numberOfContactClick} + 1`,
           })
           .where(eq(marketPlace.id, listingId));
+
+        // Update main chat inbox entry so it floats to the top
+        await tx
+          .update(chat)
+          .set({ updatedAt: new Date() })
+          .where(
+            and(
+              or(
+                and(eq(chat.user1, buyerId), eq(chat.user2, listing.postedBy!)),
+                and(eq(chat.user1, listing.postedBy!), eq(chat.user2, buyerId)),
+              ),
+              eq(chat.entity, entityId),
+            ),
+          );
       });
 
       log.info("Seller contacted successfully", {
@@ -475,11 +498,13 @@ export class ListingContactService {
     conversationId,
     senderId,
     content,
+    entityId,
   }: {
     db: any;
     conversationId: string;
     senderId: string;
     content: string;
+    entityId: string;
   }) {
     try {
       if (!conversationId || !senderId || !content) {
@@ -493,13 +518,13 @@ export class ListingContactService {
 
       log.debug("Sending message", { conversationId, senderId });
 
-      const conv = await db.query.listingConversation.findFirst({
-        where: (conversation: any, { eq, and, or }: any) =>
+      const conv = await db.query.conversation.findFirst({
+        where: (c: any, { eq, and, or }: any) =>
           and(
-            eq(conversation.id, conversationId),
+            eq(c.id, conversationId),
             or(
-              eq(conversation.buyerId, senderId),
-              eq(conversation.sellerId, senderId),
+              eq(c.user1Id, senderId),
+              eq(c.user2Id, senderId),
             ),
           ),
       });
@@ -511,19 +536,37 @@ export class ListingContactService {
       }
 
       const [newMessage] = await db
-        .insert(listingMessage)
+        .insert(messages)
         .values({
           conversationId,
           senderId,
           content,
+          entityId,
           isRead: false,
         })
         .returning();
 
-      await db
-        .update(listingConversation)
-        .set({ lastMessageAt: new Date() })
-        .where(eq(listingConversation.id, conversationId));
+      await db.transaction(async (tx: any) => {
+        // Update unified conversation
+        await tx
+          .update(conversation)
+          .set({ lastMessageAt: new Date() })
+          .where(eq(conversation.id, conversationId));
+
+        // Update main chat inbox entry so it floats to the top
+        await tx
+          .update(chat)
+          .set({ updatedAt: new Date() })
+          .where(
+            and(
+              or(
+                and(eq(chat.user1, conv.user1Id), eq(chat.user2, conv.user2Id)),
+                and(eq(chat.user1, conv.user2Id), eq(chat.user2, conv.user1Id)),
+              ),
+              eq(chat.entity, conv.entityId),
+            ),
+          );
+      });
 
       log.info("Message sent successfully", {
         conversationId,
@@ -531,41 +574,43 @@ export class ListingContactService {
         messageId: newMessage.id,
       });
 
-      // Trigger Notification
-      try {
-        const { ListingNotificationPublisher } =
-          await import("./listing-notification-publisher");
+      // Trigger notification if this is a listing-linked conversation
+      if (conv.listingId) {
+        try {
+          const { ListingNotificationPublisher } =
+            await import("./listing-notification-publisher");
 
-        const recipientId =
-          conv.buyerId === senderId ? conv.sellerId : conv.buyerId;
+          const recipientId =
+            conv.user1Id === senderId ? conv.user2Id : conv.user1Id;
 
-        const listing = await db.query.marketPlace.findFirst({
-          where: (listing: any, { eq }: any) => eq(listing.id, conv.listingId),
-          with: { media: true },
-        });
+          const listing = await db.query.marketPlace.findFirst({
+            where: (l: any, { eq }: any) => eq(l.id, conv.listingId),
+            with: { media: true },
+          });
 
-        const sender = await db.query.user.findFirst({
-          where: (user: any, { eq }: any) => eq(user.id, senderId),
-        });
+          const sender = await db.query.user.findFirst({
+            where: (u: any, { eq }: any) => eq(u.id, senderId),
+          });
 
-        if (listing) {
-          await ListingNotificationPublisher.publishListingMessage({
-            recipientId,
+          if (listing) {
+            await ListingNotificationPublisher.publishListingMessage({
+              recipientId,
+              senderId,
+              listingId: conv.listingId,
+              listing,
+              sender,
+              message: content,
+              db,
+              entityId: listing.entityId,
+            });
+          }
+        } catch (notifError) {
+          log.error("Error triggering listing message notification", {
+            notifError,
+            conversationId,
             senderId,
-            listingId: conv.listingId,
-            listing,
-            sender,
-            message: content,
-            db,
-            entityId: listing.entityId,
           });
         }
-      } catch (notifError) {
-        log.error("Error triggering listing message notification", {
-          notifError,
-          conversationId,
-          senderId,
-        });
       }
 
       return newMessage;
@@ -593,13 +638,13 @@ export class ListingContactService {
 
       log.debug("Marking messages as read", { conversationId, userId });
 
-      const conv = await db.query.listingConversation.findFirst({
-        where: (conversation: any, { eq, and, or }: any) =>
+      const conv = await db.query.conversation.findFirst({
+        where: (c: any, { eq, and, or }: any) =>
           and(
-            eq(conversation.id, conversationId),
+            eq(c.id, conversationId),
             or(
-              eq(conversation.buyerId, userId),
-              eq(conversation.sellerId, userId),
+              eq(c.user1Id, userId),
+              eq(c.user2Id, userId),
             ),
           ),
       });
@@ -611,16 +656,16 @@ export class ListingContactService {
       }
 
       await db
-        .update(listingMessage)
+        .update(messages)
         .set({
           isRead: true,
           readAt: new Date(),
         })
         .where(
           and(
-            eq(listingMessage.conversationId, conversationId),
-            eq(listingMessage.isRead, false),
-            sql`${listingMessage.senderId} != ${userId}`,
+            eq(messages.conversationId, conversationId),
+            eq(messages.isRead, false),
+            sql`${messages.senderId} != ${userId}`,
           ),
         );
 
@@ -676,9 +721,11 @@ export class ListingContactService {
             createdAt: listingMessage.createdAt,
             isRead: listingMessage.isRead,
           },
+          // Unified conversation row (has listingId)
           conversation: {
-            id: listingConversation.id,
-            lastMessageAt: listingConversation.lastMessageAt,
+            id: conversation.id,
+            lastMessageAt: conversation.lastMessageAt,
+            listingId: conversation.listingId,
           },
         })
         .from(listingContact)
@@ -687,9 +734,10 @@ export class ListingContactService {
           listingMessage,
           eq(listingContact.messageId, listingMessage.id),
         )
+        // Join unified conversation via listingContact.conversationId -> conversation.id
         .leftJoin(
-          listingConversation,
-          eq(listingContact.conversationId, listingConversation.id),
+          conversation,
+          eq(listingContact.conversationId, conversation.id),
         )
         .where(and(...conditions))
         .orderBy(desc(listingContact.createdAt))

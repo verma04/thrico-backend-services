@@ -13,7 +13,8 @@ import {
   offers,
   jobs,
   discussionForum,
-  discussionForumComment
+  discussionForumComment,
+  messages,
 } from "@thrico/database";
 import { eq } from "drizzle-orm";
 import { log } from "@thrico/logging";
@@ -48,6 +49,7 @@ export class ModerationService {
         aiCategories: aiResult.categories,
         decision: decision as any, // Enum cast
         actionTaken: `Marked as ${decision}`,
+        reason: aiResult.reason,
       });
 
       // 2. Log to ai_moderation_logs
@@ -55,15 +57,16 @@ export class ModerationService {
         contentId,
         entityId,
         classification: aiResult.label,
-        confidence: aiResult.score.toString(),
+        confidence: aiResult.confidence.toString(),
         model: "llava", // using llava/llama3 or whatever is standard in ai-gateway
+        reason: aiResult.reason,
       });
 
-      // 3. Log token usage randomly/mocked for now since Gateway doesn't return it
+      // 3. Log actual token usage returned by the Gateway
       await db.insert(aiTokenUsage).values({
         entityId,
         module: "moderation",
-        tokens: 150, // rough estimate
+        tokens: aiResult.usage?.total_tokens || 0,
         model: "llava",
       });
 
@@ -118,6 +121,10 @@ export class ModerationService {
         await db.update(discussionForumComment)
           .set({ moderationStatus: modStatus, moderationResult: modResult, moderatedAt: new Date() })
           .where(eq(discussionForumComment.id, contentId));
+      } else if (contentType === "MESSAGE") {
+        await db.update(messages)
+          .set({ moderationStatus: modStatus, moderationResult: modResult, moderatedAt: new Date() })
+          .where(eq(messages.id, contentId));
       }
 
       log.info(`Moderation Decision: ${decision}`, { userId, contentId });
@@ -126,13 +133,14 @@ export class ModerationService {
       if (
         decision === DecisionAction.WARNING ||
         decision === DecisionAction.BLOCK ||
-        decision === DecisionAction.SUSPEND
+        decision === DecisionAction.SUSPEND ||
+        decision === DecisionAction.SHADOW_HIDE
       ) {
         await UserRiskService.updateUserRisk(
           db,
           userId,
           entityId,
-          decision as any,
+          decision === DecisionAction.SHADOW_HIDE ? "FLAG" : decision as any,
         );
       }
     } catch (error: any) {
@@ -183,6 +191,10 @@ export class ModerationService {
         await db.update(discussionForumComment)
           .set({ moderationStatus: "FAILED", moderatedAt: new Date() })
           .where(eq(discussionForumComment.id, contentId));
+      } else if (contentType === "MESSAGE") {
+        await db.update(messages)
+          .set({ moderationStatus: "FAILED", moderatedAt: new Date() })
+          .where(eq(messages.id, contentId));
       }
     } catch (error: any) {
       log.error("Error marking content as FAILED", { contentId, error: error.message });

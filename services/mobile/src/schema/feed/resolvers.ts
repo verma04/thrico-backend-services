@@ -9,6 +9,7 @@ import {
   aboutUser,
   groups,
   offers,
+  entitySettings,
 } from "@thrico/database"; // Changed import to @thrico/database
 import { and, asc, desc, eq, or, sql } from "drizzle-orm";
 
@@ -174,7 +175,15 @@ const feedResolvers: any = {
             videoUrl: userFeed.videoUrl,
             thumbnailUrl: userFeed.thumbnailUrl,
             momentId: userFeed.momentId,
-            user: { ...user, about: aboutUser },
+            user: {
+              id: user.id,
+              firstName: user.firstName,
+              lastName: user.lastName,
+              avatar: user.avatar,
+              about: {
+                headline: aboutUser.headline,
+              },
+            },
             isLiked: sql<boolean>`EXISTS (
             SELECT 1 FROM ${feedReactions}
             WHERE ${feedReactions.feedId} = ${userFeed.id}
@@ -243,6 +252,62 @@ const feedResolvers: any = {
         return result;
       } catch (error) {
         log.error("Error in getUserActivityFeed", { error, userId, input });
+        throw error;
+      }
+    },
+
+    async momentsFeed(_: any, { input }: any, context: any) {
+      try {
+        const { db, userId, entityId } = await checkAuth(context);
+        const { cursor, limit } = input || {};
+
+        return await FeedQueryService.getMomentsFeed({
+          currentUserId: userId,
+          db,
+          cursor,
+          limit,
+          entity: entityId,
+        });
+      } catch (error) {
+        log.error("Error in momentsFeed", { error, input });
+        throw error;
+      }
+    },
+
+    async pollsFeed(_: any, { input }: any, context: any) {
+      try {
+        const { db, userId, entityId } = await checkAuth(context);
+        const { cursor, limit } = input || {};
+
+        const polls = await FeedQueryService.getPollsFeed({
+          currentUserId: userId,
+          db,
+          cursor,
+          limit,
+          entity: entityId,
+        });
+        console.log(polls.edges[0]);
+        return polls;
+      } catch (error) {
+        log.error("Error in pollsFeed", { error, input });
+        throw error;
+      }
+    },
+
+    async feedByAdmin(_: any, { input }: any, context: any) {
+      try {
+        const { db, userId, entityId } = await checkAuth(context);
+        const { cursor, limit } = input || {};
+
+        return await FeedQueryService.getFeedByAdmin({
+          currentUserId: userId,
+          db,
+          cursor,
+          limit,
+          entity: entityId,
+        });
+      } catch (error) {
+        log.error("Error in feedByAdmin", { error, input });
         throw error;
       }
     },
@@ -406,6 +471,34 @@ const feedResolvers: any = {
         });
       } catch (error) {
         log.error("Error in getPollVoters", { error, input });
+        throw error;
+      }
+    },
+    async getFeedSettings(_: any, __: any, context: any) {
+      try {
+        const { db, entityId } = await checkAuth(context);
+
+        const settings = await db.query.entitySettings.findFirst({
+          where: eq(entitySettings.entity, entityId),
+        });
+
+        if (!settings) {
+          return {
+            allowEntityCommunityInFeed: true,
+            allowEntityDiscussionForumInFeed: true,
+            allowEntityPollsInFeed: true,
+            allowEntityFeedInFeed: true,
+            allowEntityMomentsInFeed: true,
+            feedOrder: settings?.feedOrders || [],
+          };
+        }
+
+        return {
+          ...settings,
+          feedOrder: settings.feedOrder || [],
+        };
+      } catch (error) {
+        log.error("Error in getFeedSettings", { error });
         throw error;
       }
     },

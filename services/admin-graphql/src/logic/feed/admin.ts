@@ -369,9 +369,13 @@ export const deleteFeedAdmin = async ({
 export const getFeedIntelligenceKPI = async ({
   db,
   entity,
+  timeRange,
+  dateRange,
 }: {
   db: AppDatabase;
   entity: string;
+  timeRange?: string;
+  dateRange?: { startDate: string; endDate: string };
 }) => {
   try {
     // Initial implementation with placeholder data that can be refined with actual analytics logic
@@ -394,9 +398,13 @@ export const getFeedIntelligenceKPI = async ({
 export const getFeedYieldVelocity = async ({
   db,
   entity,
+  timeRange,
+  dateRange,
 }: {
   db: AppDatabase;
   entity: string;
+  timeRange?: string;
+  dateRange?: { startDate: string; endDate: string };
 }) => {
   try {
     return [
@@ -417,9 +425,13 @@ export const getFeedYieldVelocity = async ({
 export const getFeedInterestMatrix = async ({
   db,
   entity,
+  timeRange,
+  dateRange,
 }: {
   db: AppDatabase;
   entity: string;
+  timeRange?: string;
+  dateRange?: { startDate: string; endDate: string };
 }) => {
   try {
     return [
@@ -438,9 +450,13 @@ export const getFeedInterestMatrix = async ({
 export const getPromotedNodeEvents = async ({
   db,
   entity,
+  timeRange,
+  dateRange,
 }: {
   db: AppDatabase;
   entity: string;
+  timeRange?: string;
+  dateRange?: { startDate: string; endDate: string };
 }) => {
   try {
     return [

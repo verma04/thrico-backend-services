@@ -13,12 +13,19 @@ import { relations, sql } from "drizzle-orm";
 import { user, userToEntity } from "./member/user";
 import { mentorShip } from "./mentor";
 import { entity } from "../tenant";
+import { marketPlace } from "./marketPlace";
 
 export const chatStatusEnum = pgEnum("connectionStatusEnum", [
   "PENDING",
   "ACCEPTED",
   "REJECTED",
   "BLOCKED",
+]);
+
+export const chatTypeEnum = pgEnum("chatTypeEnum", [
+  "CONNECTION",
+  "MARKETPLACE",
+  "MENTORSHIP",
 ]);
 
 export const messageTypeEnum = pgEnum("messageTypeEnum", [
@@ -34,6 +41,7 @@ export const chat = pgTable(
     chatStatusEnum: chatStatusEnum("chatStatusEnum")
       .notNull()
       .default("ACCEPTED"),
+    chatType: chatTypeEnum("chatType").notNull().default("CONNECTION"),
     user2: uuid("user2_id").notNull(),
     entity: uuid("entity").notNull(),
     createdAt: timestamp("created_at").defaultNow(),
@@ -69,6 +77,8 @@ export const conversation = pgTable("conversation", {
   user1Id: uuid("user1Id").notNull(),
   user2Id: uuid("user2Id").notNull(),
   entityId: uuid("entityId").notNull(),
+  // When chatType = 'MARKETPLACE', this references the listing that started the chat
+  listingId: uuid("listingId"),
   lastMessageAt: timestamp("lastMessageAt"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
@@ -89,6 +99,10 @@ export const conversationRelations = relations(
       fields: [conversation.entityId],
       references: [entity.id],
     }),
+    listing: one(marketPlace, {
+      fields: [conversation.listingId],
+      references: [marketPlace.id],
+    }),
     messages: many(messages),
   }),
 );
@@ -101,6 +115,9 @@ export const messages = pgTable("messages", {
   entityId: uuid("entityId").notNull(),
   isRead: boolean("isRead").notNull().default(false),
   readAt: timestamp("readAt"),
+  moderationStatus: text("moderation_status").default("PENDING"), // PENDING, APPROVED, REJECTED, FLAGGED
+  moderationResult: text("moderation_result"),
+  moderatedAt: timestamp("moderated_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });

@@ -1,5 +1,5 @@
 import { GraphQLError } from "graphql";
-import { eq, and, count, gte, lt } from "drizzle-orm";
+import { eq, and, count, gte, lt, sql } from "drizzle-orm";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import {
   groups,
@@ -24,11 +24,61 @@ import {
 } from "@thrico/database";
 import { entityClient, subscriptionClient } from "@thrico/grpc";
 
+export const getDaterangeFromInput = (
+  timeRange?: string,
+  dateRange?: { startDate: string; endDate: string },
+) => {
+  const now = new Date();
+  let startDate = new Date();
+  let endDate = now;
+
+  if (dateRange) {
+    startDate = new Date(dateRange.startDate);
+    endDate = new Date(dateRange.endDate);
+  } else {
+    switch (timeRange) {
+      case "LAST_24_HOURS":
+        startDate.setHours(now.getHours() - 24);
+        break;
+      case "LAST_7_DAYS":
+        startDate.setDate(now.getDate() - 7);
+        break;
+      case "LAST_30_DAYS":
+        startDate.setDate(now.getDate() - 30);
+        break;
+      case "LAST_90_DAYS":
+        startDate.setDate(now.getDate() - 90);
+        break;
+      case "THIS_MONTH":
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
+      case "LAST_MONTH":
+        startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+        break;
+      default:
+        startDate.setHours(now.getHours() - 24); // Default to 24h
+    }
+  }
+
+  const timeDiff = endDate.getTime() - startDate.getTime();
+  const prevStartDate = new Date(startDate.getTime() - timeDiff);
+  const prevEndDate = startDate;
+
+  return { startDate, endDate, prevStartDate, prevEndDate };
+};
+
 const dashboardResolvers = {
   Query: {
     async getDashboardStats(
       _: any,
-      { timeRange }: { timeRange: string },
+      {
+        timeRange,
+        dateRange,
+      }: {
+        timeRange?: string;
+        dateRange?: { startDate: string; endDate: string };
+      },
       context: any,
     ) {
       const { db, entityId } = await checkAuth(context);
@@ -42,29 +92,8 @@ const dashboardResolvers = {
         });
       }
 
-      const now = new Date();
-      let startDate = new Date();
-
-      switch (timeRange) {
-        case "LAST_24_HOURS":
-          startDate.setHours(now.getHours() - 24);
-          break;
-        case "LAST_7_DAYS":
-          startDate.setDate(now.getDate() - 7);
-          break;
-        case "LAST_30_DAYS":
-          startDate.setDate(now.getDate() - 30);
-          break;
-        case "LAST_90_DAYS":
-          startDate.setDate(now.getDate() - 90);
-          break;
-        default:
-          startDate.setHours(now.getHours() - 24); // Default to 24h
-      }
-
-      const timeDiff = now.getTime() - startDate.getTime();
-      const previousStartDate = new Date(startDate.getTime() - timeDiff);
-      const previousEndDate = startDate;
+      const { startDate, endDate, prevStartDate, prevEndDate } =
+        getDaterangeFromInput(timeRange, dateRange);
 
       // 1. Total Users
       const totalUsersResult = await db
@@ -97,6 +126,7 @@ const dashboardResolvers = {
           and(
             eq(userToEntity.entityId, entityId),
             gte(userToEntity.lastActive, startDate.toISOString()),
+            lt(userToEntity.lastActive, endDate.toISOString()),
           ),
         );
       const activeUsers = activeUsersResult[0]?.count || 0;
@@ -108,8 +138,8 @@ const dashboardResolvers = {
         .where(
           and(
             eq(userToEntity.entityId, entityId),
-            gte(userToEntity.lastActive, previousStartDate.toISOString()),
-            lt(userToEntity.lastActive, previousEndDate.toISOString()),
+            gte(userToEntity.lastActive, prevStartDate.toISOString()),
+            lt(userToEntity.lastActive, prevEndDate.toISOString()),
           ),
         );
       const prevActiveUsers = prevActiveUsersResult[0]?.count || 0;
@@ -127,6 +157,7 @@ const dashboardResolvers = {
           and(
             eq(groups.entity, entityId),
             gte(groupViews.createdAt, startDate),
+            lt(groupViews.createdAt, endDate),
           ),
         );
       const pageViews = pageViewsResult[0]?.count || 0;
@@ -139,8 +170,8 @@ const dashboardResolvers = {
         .where(
           and(
             eq(groups.entity, entityId),
-            gte(groupViews.createdAt, previousStartDate),
-            lt(groupViews.createdAt, previousEndDate),
+            gte(groupViews.createdAt, prevStartDate),
+            lt(groupViews.createdAt, prevEndDate),
           ),
         );
       const prevPageViews = prevPageViewsResult[0]?.count || 0;
@@ -173,9 +204,15 @@ const dashboardResolvers = {
       };
     },
 
-    async getModuleActivity(
+    async getMembersStats(
       _: any,
-      { timeRange }: { timeRange: string },
+      {
+        timeRange,
+        dateRange,
+      }: {
+        timeRange?: string;
+        dateRange?: { startDate: string; endDate: string };
+      },
       context: any,
     ) {
       const { db, entityId } = await checkAuth(context);
@@ -189,25 +226,252 @@ const dashboardResolvers = {
         });
       }
 
-      const now = new Date();
-      let startDate = new Date();
+      const { startDate, endDate, prevStartDate, prevEndDate } =
+        getDaterangeFromInput(timeRange, dateRange);
 
-      switch (timeRange) {
-        case "LAST_24_HOURS":
-          startDate.setHours(now.getHours() - 24);
-          break;
-        case "LAST_7_DAYS":
-          startDate.setDate(now.getDate() - 7);
-          break;
-        case "LAST_30_DAYS":
-          startDate.setDate(now.getDate() - 30);
-          break;
-        case "LAST_90_DAYS":
-          startDate.setDate(now.getDate() - 90);
-          break;
-        default:
-          startDate.setHours(now.getHours() - 24);
+      const [
+        totalMembersResult,
+        prevTotalMembersResult,
+        activeMembersResult,
+        prevActiveMembersResult,
+        newMembersResult,
+        prevNewMembersResult,
+      ] = await Promise.all([
+        // Total Members
+        db
+          .select({ count: count() })
+          .from(userToEntity)
+          .where(eq(userToEntity.entityId, entityId)),
+
+        // Previous Total Members (at start of period)
+        db
+          .select({ count: count() })
+          .from(userToEntity)
+          .where(
+            and(
+              eq(userToEntity.entityId, entityId),
+              lt(userToEntity.createdAt, startDate),
+            ),
+          ),
+
+        // Active Members
+        db
+          .select({ count: count() })
+          .from(userToEntity)
+          .where(
+            and(
+              eq(userToEntity.entityId, entityId),
+              gte(userToEntity.lastActive, startDate.toISOString()),
+              lt(userToEntity.lastActive, endDate.toISOString()),
+            ),
+          ),
+
+        // Previous Active Members
+        db
+          .select({ count: count() })
+          .from(userToEntity)
+          .where(
+            and(
+              eq(userToEntity.entityId, entityId),
+              gte(userToEntity.lastActive, prevStartDate.toISOString()),
+              lt(userToEntity.lastActive, prevEndDate.toISOString()),
+            ),
+          ),
+
+        // New Members in Period
+        db
+          .select({ count: count() })
+          .from(userToEntity)
+          .where(
+            and(
+              eq(userToEntity.entityId, entityId),
+              gte(userToEntity.createdAt, startDate),
+              lt(userToEntity.createdAt, endDate),
+            ),
+          ),
+
+        // Previous New Members
+        db
+          .select({ count: count() })
+          .from(userToEntity)
+          .where(
+            and(
+              eq(userToEntity.entityId, entityId),
+              gte(userToEntity.createdAt, prevStartDate),
+              lt(userToEntity.createdAt, prevEndDate),
+            ),
+          ),
+      ]);
+
+      const totalMembers = Number(totalMembersResult[0]?.count || 0);
+      const prevTotalMembers = Number(prevTotalMembersResult[0]?.count || 0);
+      const activeMembers = Number(activeMembersResult[0]?.count || 0);
+      const prevActiveMembers = Number(prevActiveMembersResult[0]?.count || 0);
+      const newMembers = Number(newMembersResult[0]?.count || 0);
+      const prevNewMembers = Number(prevNewMembersResult[0]?.count || 0);
+
+      const activeRate =
+        totalMembers > 0 ? (activeMembers / totalMembers) * 100 : 0;
+      const prevActiveRate =
+        prevTotalMembers > 0 ? (prevActiveMembers / prevTotalMembers) * 100 : 0;
+
+      const calcChange = (curr: number, prev: number) => {
+        if (prev === 0) return curr > 0 ? 100 : 0;
+        return ((curr - prev) / prev) * 100;
+      };
+
+      return {
+        totalMembers,
+        activeMembers,
+        newMembersThisMonth: newMembers, // Using the current period's new members
+        activeRate: parseFloat(activeRate.toFixed(1)),
+        totalMembersChange: parseFloat(
+          calcChange(totalMembers, prevTotalMembers).toFixed(1),
+        ),
+        activeMembersChange: parseFloat(
+          calcChange(activeMembers, prevActiveMembers).toFixed(1),
+        ),
+        newMembersChange: parseFloat(
+          calcChange(newMembers, prevNewMembers).toFixed(1),
+        ),
+        activeRateChange: parseFloat(
+          calcChange(activeRate, prevActiveRate).toFixed(1),
+        ),
+      };
+    },
+
+    async getGrowthStats(
+      _: any,
+      {
+        timeRange,
+        dateRange,
+        groupBy,
+      }: {
+        timeRange?: string;
+        dateRange?: { startDate: string; endDate: string };
+        groupBy?: string;
+      },
+      context: any,
+    ) {
+      const { db, entityId } = await checkAuth(context);
+
+      if (!entityId) {
+        throw new GraphQLError("Permission Denied", {
+          extensions: {
+            code: "FORBIDDEN",
+            http: { status: 403 },
+          },
+        });
       }
+
+      const { startDate, endDate, prevStartDate, prevEndDate } =
+        getDaterangeFromInput(timeRange, dateRange);
+
+      let groupBySql = sql`DATE(${userToEntity.createdAt})`; // Default: DAY
+      let selectSql = sql<string>`DATE(${userToEntity.createdAt})`;
+
+      if (groupBy === "MONTH") {
+        groupBySql = sql`DATE_TRUNC('month', ${userToEntity.createdAt})`;
+        selectSql = sql<string>`TO_CHAR(DATE_TRUNC('month', ${userToEntity.createdAt}), 'YYYY-MM')`;
+      } else if (groupBy === "WEEK") {
+        groupBySql = sql`DATE_TRUNC('week', ${userToEntity.createdAt})`;
+        selectSql = sql<string>`TO_CHAR(DATE_TRUNC('week', ${userToEntity.createdAt}), 'YYYY-WW')`;
+      } else if (groupBy === "HOUR") {
+        groupBySql = sql`DATE_TRUNC('hour', ${userToEntity.createdAt})`;
+        selectSql = sql<string>`TO_CHAR(DATE_TRUNC('hour', ${userToEntity.createdAt}), 'YYYY-MM-DD HH24:00')`;
+      }
+
+      const growthDataEntries = await db
+        .select({
+          date: selectSql,
+          count: count(),
+        })
+        .from(userToEntity)
+        .where(
+          and(
+            eq(userToEntity.entityId, entityId),
+            gte(userToEntity.createdAt, startDate),
+            lt(userToEntity.createdAt, endDate),
+          ),
+        )
+        .groupBy(groupBySql)
+        .orderBy(groupBySql);
+
+      // Calculate total new members and growth rate
+      const totalNewMembers = growthDataEntries.reduce(
+        (sum, entry) => sum + Number(entry.count),
+        0,
+      );
+
+      const [prevNewMembersResult, totalMembersBeforeResult] =
+        await Promise.all([
+          db
+            .select({ count: count() })
+            .from(userToEntity)
+            .where(
+              and(
+                eq(userToEntity.entityId, entityId),
+                gte(userToEntity.createdAt, prevStartDate),
+                lt(userToEntity.createdAt, prevEndDate),
+              ),
+            ),
+          db
+            .select({ count: count() })
+            .from(userToEntity)
+            .where(
+              and(
+                eq(userToEntity.entityId, entityId),
+                lt(userToEntity.createdAt, startDate),
+              ),
+            ),
+        ]);
+
+      const prevNewMembers = Number(prevNewMembersResult[0]?.count || 0);
+      const totalMembersBefore = Number(
+        totalMembersBeforeResult[0]?.count || 0,
+      );
+
+      const growthRate =
+        totalMembersBefore > 0
+          ? (totalNewMembers / totalMembersBefore) * 100
+          : 100;
+
+      return {
+        data: growthDataEntries.map((entry) => ({
+          date: entry.date,
+          count: Number(entry.count),
+        })),
+        totalNewMembers,
+        growthRate: parseFloat(growthRate.toFixed(1)),
+      };
+    },
+
+    async getModuleActivity(
+      _: any,
+      {
+        timeRange,
+        dateRange,
+      }: {
+        timeRange?: string;
+        dateRange?: { startDate: string; endDate: string };
+      },
+      context: any,
+    ) {
+      const { db, entityId } = await checkAuth(context);
+
+      if (!entityId) {
+        throw new GraphQLError("Permission Denied", {
+          extensions: {
+            code: "FORBIDDEN",
+            http: { status: 403 },
+          },
+        });
+      }
+
+      const { startDate, endDate } = getDaterangeFromInput(
+        timeRange,
+        dateRange,
+      );
 
       // Check Subscription / Enabled Modules
       // We can use entityClient.getEntityDetails(entityId) to get enabled modules
@@ -246,6 +510,7 @@ const dashboardResolvers = {
             and(
               eq(groups.entity, entityId),
               gte(groupMember.createdAt, startDate),
+              lt(groupMember.createdAt, endDate),
             ),
           );
         results.push({
@@ -264,6 +529,7 @@ const dashboardResolvers = {
             and(
               eq(events.entityId, entityId),
               gte(eventsAttendees.createdAt, startDate),
+              lt(eventsAttendees.createdAt, endDate),
             ),
           );
         results.push({
@@ -281,6 +547,7 @@ const dashboardResolvers = {
             and(
               eq(marketPlace.entityId, entityId),
               gte(marketPlace.createdAt, startDate),
+              lt(marketPlace.createdAt, endDate),
             ),
           );
         results.push({
@@ -295,7 +562,11 @@ const dashboardResolvers = {
           .select({ count: count(jobs.id) })
           .from(jobs)
           .where(
-            and(eq(jobs.entityId, entityId), gte(jobs.createdAt, startDate)),
+            and(
+              eq(jobs.entityId, entityId),
+              gte(jobs.createdAt, startDate),
+              lt(jobs.createdAt, endDate),
+            ),
           );
         results.push({
           name: "Jobs",
@@ -312,6 +583,7 @@ const dashboardResolvers = {
             and(
               eq(mentorShip.entity, entityId),
               gte(mentorShip.createdAt, startDate),
+              lt(mentorShip.createdAt, endDate),
             ),
           );
         results.push({
@@ -330,6 +602,7 @@ const dashboardResolvers = {
             and(
               eq(polls.entityId, entityId),
               gte(pollResults.createdAt, startDate),
+              lt(pollResults.createdAt, endDate),
             ),
           );
         results.push({
@@ -347,6 +620,7 @@ const dashboardResolvers = {
             and(
               eq(discussionForum.entityId, entityId),
               gte(discussionForum.createdAt, startDate),
+              lt(discussionForum.createdAt, endDate),
             ),
           );
         results.push({
@@ -365,6 +639,7 @@ const dashboardResolvers = {
             and(
               eq(customForms.entityId, entityId),
               gte(formResponses.submittedAt, startDate),
+              lt(formResponses.submittedAt, endDate),
             ),
           );
         results.push({
@@ -382,6 +657,7 @@ const dashboardResolvers = {
             and(
               eq(offers.entityId, entityId),
               gte(offers.createdAt, startDate),
+              lt(offers.createdAt, endDate),
             ),
           );
         results.push({
@@ -395,7 +671,13 @@ const dashboardResolvers = {
 
     async getPlatformModuleActivity(
       _: any,
-      { timeRange }: { timeRange: string },
+      {
+        timeRange,
+        dateRange,
+      }: {
+        timeRange?: string;
+        dateRange?: { startDate: string; endDate: string };
+      },
       context: any,
     ) {
       const { db, entityId } = await checkAuth(context);
@@ -409,25 +691,10 @@ const dashboardResolvers = {
         });
       }
 
-      const now = new Date();
-      let startDate = new Date();
-
-      switch (timeRange) {
-        case "LAST_24_HOURS":
-          startDate.setHours(now.getHours() - 24);
-          break;
-        case "LAST_7_DAYS":
-          startDate.setDate(now.getDate() - 7);
-          break;
-        case "LAST_30_DAYS":
-          startDate.setDate(now.getDate() - 30);
-          break;
-        case "LAST_90_DAYS":
-          startDate.setDate(now.getDate() - 90);
-          break;
-        default:
-          startDate.setHours(now.getHours() - 24);
-      }
+      const { startDate, endDate } = getDaterangeFromInput(
+        timeRange,
+        dateRange,
+      );
 
       let enabledModules: string[] = [];
       try {
@@ -453,6 +720,7 @@ const dashboardResolvers = {
             and(
               eq(userFeed.entity, entityId),
               gte(userFeed.createdAt, startDate),
+              lt(userFeed.createdAt, endDate),
             ),
           );
         results.push({
@@ -467,7 +735,11 @@ const dashboardResolvers = {
           .select({ count: count(groups.id) })
           .from(groups)
           .where(
-            and(eq(groups.entity, entityId), gte(groups.createdAt, startDate)),
+            and(
+              eq(groups.entity, entityId),
+              gte(groups.createdAt, startDate),
+              lt(groups.createdAt, endDate),
+            ),
           );
         results.push({
           name: "Communities",
@@ -484,6 +756,7 @@ const dashboardResolvers = {
             and(
               eq(events.entityId, entityId),
               gte(events.createdAt, startDate),
+              lt(events.createdAt, endDate),
             ),
           );
         results.push({
@@ -501,6 +774,7 @@ const dashboardResolvers = {
             and(
               eq(marketPlace.entityId, entityId),
               gte(marketPlace.createdAt, startDate),
+              lt(marketPlace.createdAt, endDate),
             ),
           );
         results.push({
@@ -515,7 +789,11 @@ const dashboardResolvers = {
           .select({ count: count(jobs.id) })
           .from(jobs)
           .where(
-            and(eq(jobs.entityId, entityId), gte(jobs.createdAt, startDate)),
+            and(
+              eq(jobs.entityId, entityId),
+              gte(jobs.createdAt, startDate),
+              lt(jobs.createdAt, endDate),
+            ),
           );
         results.push({
           name: "Jobs",
@@ -546,7 +824,11 @@ const dashboardResolvers = {
           .select({ count: count(polls.id) })
           .from(polls)
           .where(
-            and(eq(polls.entityId, entityId), gte(polls.createdAt, startDate)),
+            and(
+              eq(polls.entityId, entityId),
+              gte(polls.createdAt, startDate),
+              lt(polls.createdAt, endDate),
+            ),
           );
         results.push({
           name: "Polls",
@@ -563,6 +845,7 @@ const dashboardResolvers = {
             and(
               eq(discussionForum.entityId, entityId),
               gte(discussionForum.createdAt, startDate),
+              lt(discussionForum.createdAt, endDate),
             ),
           );
         results.push({
@@ -580,6 +863,7 @@ const dashboardResolvers = {
             and(
               eq(customForms.entityId, entityId),
               gte(customForms.createdAt, startDate),
+              lt(customForms.createdAt, endDate),
             ),
           );
         results.push({
@@ -597,6 +881,7 @@ const dashboardResolvers = {
             and(
               eq(offers.entityId, entityId),
               gte(offers.createdAt, startDate),
+              lt(offers.createdAt, endDate),
             ),
           );
         results.push({
@@ -623,7 +908,13 @@ const dashboardResolvers = {
 
     async getCommunityKPIs(
       _: any,
-      { timeRange }: { timeRange: string },
+      {
+        timeRange,
+        dateRange,
+      }: {
+        timeRange?: string;
+        dateRange?: { startDate: string; endDate: string };
+      },
       context: any,
     ) {
       const { db, entityId } = await checkAuth(context);
@@ -637,77 +928,207 @@ const dashboardResolvers = {
         });
       }
 
-      const now = new Date();
-      let startDate = new Date();
-
-      switch (timeRange) {
-        case "LAST_24_HOURS":
-          startDate.setHours(now.getHours() - 24);
-          break;
-        case "LAST_7_DAYS":
-          startDate.setDate(now.getDate() - 7);
-          break;
-        case "LAST_30_DAYS":
-          startDate.setDate(now.getDate() - 30);
-          break;
-        case "LAST_90_DAYS":
-          startDate.setDate(now.getDate() - 90);
-          break;
-        default:
-          startDate.setDate(now.getDate() - 7);
-      }
-
-      const timeDiff = now.getTime() - startDate.getTime();
-      const prevStartDate = new Date(startDate.getTime() - timeDiff);
-      const prevEndDate = startDate;
+      const { startDate, endDate, prevStartDate, prevEndDate } =
+        getDaterangeFromInput(timeRange, dateRange);
 
       // Parallel data fetching for efficiency
       const [
-        totalUsersResult, prevTotalUsersResult,
-        dauResult, prevDauResult,
-        mauResult, prevMauResult,
-        newMembersResult, prevNewMembersResult,
+        totalUsersResult,
+        prevTotalUsersResult,
+        dauResult,
+        prevDauResult,
+        mauResult,
+        prevMauResult,
+        newMembersResult,
+        prevNewMembersResult,
         feedBreakdownResult,
-        moderationReports, moderationSpam, moderationAutoRemoved,
-        activeGroups, activeEvents, activeJobs, activeListing,
+        moderationReports,
+        moderationSpam,
+        moderationAutoRemoved,
+        activeGroups,
+        activeEvents,
+        activeJobs,
+        activeListing,
       ] = await Promise.all([
         // Engagement metrics
-        db.select({ count: count() }).from(userToEntity).where(eq(userToEntity.entityId, entityId)),
-        db.select({ count: count() }).from(userToEntity).where(and(eq(userToEntity.entityId, entityId), lt(userToEntity.createdAt, startDate))),
-        
-        db.select({ count: count() }).from(userToEntity).where(and(eq(userToEntity.entityId, entityId), gte(userToEntity.lastActive, startDate.toISOString()))),
-        db.select({ count: count() }).from(userToEntity).where(and(eq(userToEntity.entityId, entityId), gte(userToEntity.lastActive, prevStartDate.toISOString()), lt(userToEntity.lastActive, prevEndDate.toISOString()))),
-        
-        db.select({ count: count() }).from(userToEntity).where(and(eq(userToEntity.entityId, entityId), gte(userToEntity.lastActive, new Date(now.setDate(now.getDate() - 30)).toISOString()))),
-        db.select({ count: count() }).from(userToEntity).where(and(eq(userToEntity.entityId, entityId), gte(userToEntity.lastActive, new Date(now.setDate(now.getDate() - 60)).toISOString()), lt(userToEntity.lastActive, new Date(now.setDate(now.getDate() - 30)).toISOString()))),
-        
-        db.select({ count: count() }).from(userToEntity).where(and(eq(userToEntity.entityId, entityId), gte(userToEntity.createdAt, startDate))),
-        db.select({ count: count() }).from(userToEntity).where(and(eq(userToEntity.entityId, entityId), gte(userToEntity.createdAt, prevStartDate), lt(userToEntity.createdAt, prevEndDate))),
-        
+        db
+          .select({ count: count() })
+          .from(userToEntity)
+          .where(eq(userToEntity.entityId, entityId)),
+        db
+          .select({ count: count() })
+          .from(userToEntity)
+          .where(
+            and(
+              eq(userToEntity.entityId, entityId),
+              lt(userToEntity.createdAt, startDate),
+            ),
+          ),
+
+        db
+          .select({ count: count() })
+          .from(userToEntity)
+          .where(
+            and(
+              eq(userToEntity.entityId, entityId),
+              gte(userToEntity.lastActive, startDate.toISOString()),
+              lt(userToEntity.lastActive, endDate.toISOString()),
+            ),
+          ),
+        db
+          .select({ count: count() })
+          .from(userToEntity)
+          .where(
+            and(
+              eq(userToEntity.entityId, entityId),
+              gte(userToEntity.lastActive, prevStartDate.toISOString()),
+              lt(userToEntity.lastActive, prevEndDate.toISOString()),
+            ),
+          ),
+
+        db
+          .select({ count: count() })
+          .from(userToEntity)
+          .where(
+            and(
+              eq(userToEntity.entityId, entityId),
+              gte(
+                userToEntity.lastActive,
+                new Date(
+                  new Date().setDate(new Date().getDate() - 30),
+                ).toISOString(),
+              ),
+            ),
+          ),
+        db
+          .select({ count: count() })
+          .from(userToEntity)
+          .where(
+            and(
+              eq(userToEntity.entityId, entityId),
+              gte(
+                userToEntity.lastActive,
+                new Date(
+                  new Date().setDate(new Date().getDate() - 60),
+                ).toISOString(),
+              ),
+              lt(
+                userToEntity.lastActive,
+                new Date(
+                  new Date().setDate(new Date().getDate() - 30),
+                ).toISOString(),
+              ),
+            ),
+          ),
+
+        db
+          .select({ count: count() })
+          .from(userToEntity)
+          .where(
+            and(
+              eq(userToEntity.entityId, entityId),
+              gte(userToEntity.createdAt, startDate),
+              lt(userToEntity.createdAt, endDate),
+            ),
+          ),
+        db
+          .select({ count: count() })
+          .from(userToEntity)
+          .where(
+            and(
+              eq(userToEntity.entityId, entityId),
+              gte(userToEntity.createdAt, prevStartDate),
+              lt(userToEntity.createdAt, prevEndDate),
+            ),
+          ),
+
         // Content details
-        db.select({ count: count(), type: userFeed.source }).from(userFeed).where(and(eq(userFeed.entity, entityId), gte(userFeed.createdAt, startDate))).groupBy(userFeed.source),
-        
+        db
+          .select({ count: count(), type: userFeed.source })
+          .from(userFeed)
+          .where(
+            and(
+              eq(userFeed.entity, entityId),
+              gte(userFeed.createdAt, startDate),
+              lt(userFeed.createdAt, endDate),
+            ),
+          )
+          .groupBy(userFeed.source),
+
         // Moderation
-        db.select({ count: count() }).from(contentReports).where(and(eq(contentReports.entityId, entityId), eq(contentReports.status, "PENDING"))),
-        db.select({ count: count() }).from(userRiskProfiles).where(and(eq(userRiskProfiles.entityId, entityId), gte(userRiskProfiles.riskScore, "0.7"))),
-        db.select({ count: count() }).from(moderationLogs).where(and(eq(moderationLogs.entityId, entityId), and(gte(moderationLogs.createdAt, startDate), eq(moderationLogs.decision, "BLOCK")))),
-        
+        db
+          .select({ count: count() })
+          .from(contentReports)
+          .where(
+            and(
+              eq(contentReports.entityId, entityId),
+              eq(contentReports.status, "PENDING"),
+            ),
+          ),
+        db
+          .select({ count: count() })
+          .from(userRiskProfiles)
+          .where(
+            and(
+              eq(userRiskProfiles.entityId, entityId),
+              gte(userRiskProfiles.riskScore, "0.7"),
+            ),
+          ),
+        db
+          .select({ count: count() })
+          .from(moderationLogs)
+          .where(
+            and(
+              eq(moderationLogs.entityId, entityId),
+              and(
+                gte(moderationLogs.createdAt, startDate),
+                lt(moderationLogs.createdAt, endDate),
+                eq(moderationLogs.decision, "BLOCK"),
+              ),
+            ),
+          ),
+
         // Modules
-        db.select({ count: count() }).from(groups).where(and(eq(groups.entity, entityId), eq(groups.status, "APPROVED"))),
-        db.select({ count: count() }).from(events).where(and(eq(events.entityId, entityId), gte(events.startDate, startDate.toISOString()))),
-        db.select({ count: count() }).from(jobs).where(and(eq(jobs.entityId, entityId), eq(jobs.status, "APPROVED"))),
-        db.select({ count: count() }).from(marketPlace).where(and(eq(marketPlace.entityId, entityId), eq(marketPlace.status, "APPROVED"))),
+        db
+          .select({ count: count() })
+          .from(groups)
+          .where(
+            and(eq(groups.entity, entityId), eq(groups.status, "APPROVED")),
+          ),
+        db
+          .select({ count: count() })
+          .from(events)
+          .where(
+            and(
+              eq(events.entityId, entityId),
+              gte(events.startDate, startDate.toISOString()),
+              lt(events.startDate, endDate.toISOString()),
+            ),
+          ),
+        db
+          .select({ count: count() })
+          .from(jobs)
+          .where(and(eq(jobs.entityId, entityId), eq(jobs.status, "APPROVED"))),
+        db
+          .select({ count: count() })
+          .from(marketPlace)
+          .where(
+            and(
+              eq(marketPlace.entityId, entityId),
+              eq(marketPlace.status, "APPROVED"),
+            ),
+          ),
       ]);
 
       const totalUsers = Number(totalUsersResult[0]?.count || 0);
       const prevTotalUsers = Number(prevTotalUsersResult[0]?.count || 0);
-      
+
       const dau = Number(dauResult[0]?.count || 0);
       const prevDau = Number(prevDauResult[0]?.count || 0);
-      
+
       const mau = Number(mauResult[0]?.count || 0);
       const prevMau = Number(prevMauResult[0]?.count || 0);
-      
+
       const newMembers = Number(newMembersResult[0]?.count || 0);
       const prevNewMembers = Number(prevNewMembersResult[0]?.count || 0);
 
@@ -717,7 +1138,8 @@ const dashboardResolvers = {
       };
 
       // Helper for mock trends (simulating sparkline data)
-      const mockTrend = (base: number) => Array.from({ length: 7 }, () => base * (0.8 + Math.random() * 0.4));
+      const mockTrend = (base: number) =>
+        Array.from({ length: 7 }, () => base * (0.8 + Math.random() * 0.4));
 
       return {
         dailyActiveUsers: {
@@ -760,9 +1182,12 @@ const dashboardResolvers = {
           change: 6.0,
           trend: mockTrend(45),
         },
-        
+
         totalPosts: {
-          value: feedBreakdownResult.reduce((acc, curr) => acc + Number(curr.count), 0),
+          value: feedBreakdownResult.reduce(
+            (acc, curr) => acc + Number(curr.count),
+            0,
+          ),
           change: 18.0,
           trend: mockTrend(24000),
         },
@@ -781,30 +1206,68 @@ const dashboardResolvers = {
           change: 31.0,
           trend: mockTrend(180000),
         },
-        
-        contentTypeBreakdown: feedBreakdownResult.map(item => ({
+
+        contentTypeBreakdown: feedBreakdownResult.map((item) => ({
           type: item.type || "Other",
           count: Number(item.count),
-          percentage: (Number(item.count) / feedBreakdownResult.reduce((acc, curr) => acc + Number(curr.count), 0)) * 100
+          percentage:
+            (Number(item.count) /
+              feedBreakdownResult.reduce(
+                (acc, curr) => acc + Number(curr.count),
+                0,
+              )) *
+            100,
         })),
 
         moderationStats: [
-          { type: "Reported content", count: Number(moderationReports[0]?.count || 0), status: "Urgent" },
-          { type: "Spam accounts", count: Number(moderationSpam[0]?.count || 0), status: "Review" },
-          { type: "Auto-removed", count: Number(moderationAutoRemoved[0]?.count || 0), status: "Done" },
+          {
+            type: "Reported content",
+            count: Number(moderationReports[0]?.count || 0),
+            status: "Urgent",
+          },
+          {
+            type: "Spam accounts",
+            count: Number(moderationSpam[0]?.count || 0),
+            status: "Review",
+          },
+          {
+            type: "Auto-removed",
+            count: Number(moderationAutoRemoved[0]?.count || 0),
+            status: "Done",
+          },
           { type: "Appeals", count: 2, status: "Open" }, // Mocked
-          { type: "False positives", count: 8, status: "Resolved" } // Mocked
+          { type: "False positives", count: 8, status: "Resolved" }, // Mocked
         ],
 
         modulePerformance: [
-          { module: "Communities", value: activeGroups[0]?.count.toString() || "0", subtext: "active groups" },
-          { module: "Events", value: activeEvents[0]?.count.toString() || "0", subtext: "incoming events" },
-          { module: "Jobs", value: activeJobs[0]?.count.toString() || "0", subtext: "active listings" },
-          { module: "Shop & Listings", value: activeListing[0]?.count.toString() || "0", subtext: "active products" },
+          {
+            module: "Communities",
+            value: activeGroups[0]?.count.toString() || "0",
+            subtext: "active groups",
+          },
+          {
+            module: "Events",
+            value: activeEvents[0]?.count.toString() || "0",
+            subtext: "incoming events",
+          },
+          {
+            module: "Jobs",
+            value: activeJobs[0]?.count.toString() || "0",
+            subtext: "active listings",
+          },
+          {
+            module: "Shop & Listings",
+            value: activeListing[0]?.count.toString() || "0",
+            subtext: "active products",
+          },
         ],
 
         memberActivationRate: { value: 41, change: 4.0, trend: mockTrend(40) },
-        communityAdvocacyIndex: { value: 3.2, change: 0.4, trend: mockTrend(3) },
+        communityAdvocacyIndex: {
+          value: 3.2,
+          change: 0.4,
+          trend: mockTrend(3),
+        },
         superfanRatio: { value: 8.4, change: 1.2, trend: mockTrend(8) },
       };
     },

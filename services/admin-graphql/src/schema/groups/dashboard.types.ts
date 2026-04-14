@@ -73,6 +73,13 @@ const dashboardTypes = gql`
     LAST_7_DAYS
     LAST_30_DAYS
     LAST_90_DAYS
+    THIS_MONTH
+    LAST_MONTH
+  }
+
+  input DateRangeInput {
+    startDate: String!
+    endDate: String!
   }
 
   type CommunityStats {
@@ -94,13 +101,21 @@ const dashboardTypes = gql`
   }
 
   extend type Query {
-    getCommunityStats(input: CommunityStatsInput): CommunityStats
+    getCommunityStats(timeRange: TimeRange, dateRange: DateRangeInput): CommunityStats
     getCommunitySignupTrend(
-      input: CommunityStatsInput
+      timeRange: TimeRange
+      dateRange: DateRangeInput
     ): [CommunitySignupTrend!]!
-    getTopActiveCommunities(limit: Int): [TopCommunity!]!
-    getCommunityActivityTrend: [CommunityActivity!]!
-    getCommunitiesStats(timeRange: TimeRange!): CommunitiesStats!
+    getTopActiveCommunities(
+      limit: Int
+      timeRange: TimeRange
+      dateRange: DateRangeInput
+    ): [TopCommunity!]!
+    getCommunityActivityTrend(
+      timeRange: TimeRange
+      dateRange: DateRangeInput
+    ): [CommunityActivity!]!
+    getCommunitiesStats(timeRange: TimeRange, dateRange: DateRangeInput): CommunitiesStats!
   }
 `;
 

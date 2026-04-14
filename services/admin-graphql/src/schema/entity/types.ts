@@ -101,7 +101,14 @@ export const entityTypes = `#graphql
     allowStories: Boolean
     autoApproveStories: Boolean
 
+    # Feed Settings
+    allowEntityCommunityInFeed: Boolean
+    allowEntityDiscussionForumInFeed: Boolean
+    allowEntityPollsInFeed: Boolean
+    allowEntityFeedInFeed: Boolean
+    allowEntityMomentsInFeed: Boolean
    
+    feedOrder: JSON
   }
 
   type ModuleFaq {
@@ -216,6 +223,15 @@ export const entityTypes = `#graphql
   
     termAndConditionsGamification: JSON
     faqGamification: JSON
+
+    # Feed Settings
+    allowEntityMomentsInFeed: Boolean
+    allowEntityCommunityInFeed: Boolean
+    allowEntityDiscussionForumInFeed: Boolean
+    allowEntityPollsInFeed: Boolean
+    allowEntityFeedInFeed: Boolean
+    allowAdminFeedInFeed: Boolean
+    feedOrder: JSON
   }
 
 

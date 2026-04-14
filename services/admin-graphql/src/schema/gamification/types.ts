@@ -240,6 +240,20 @@ export const gamificationTypes = `#graphql
     isActive: Boolean
   }
 
+  enum TimeRange {
+    LAST_24_HOURS
+    LAST_7_DAYS
+    LAST_30_DAYS
+    LAST_90_DAYS
+    THIS_MONTH
+    LAST_MONTH
+  }
+
+  input DateRangeInput {
+    startDate: String!
+    endDate: String!
+  }
+
   # Queries
   extend type Query {
     # Core Gamification Ops
@@ -251,7 +265,7 @@ export const gamificationTypes = `#graphql
     getPointRuleStats: PointRuleStats!
     getRanks(filter: RankFilter): [Rank!]!
     getLeaderboard(pagination: PaginationInput): Leaderboard!
-    getGamificationStats: GamificationStats!
+    getGamificationStats(timeRange: TimeRange, dateRange: DateRangeInput): GamificationStats!
     getGamificationActivityLog(input: GamificationActivityLogInput): [GamificationActivityEntry!]!
     getUserGamificationActivityLog(input: UserGamificationActivityLogInput!): [GamificationActivityEntry!]!
   }

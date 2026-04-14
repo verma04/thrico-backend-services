@@ -1,4 +1,4 @@
-import { AppDatabase, user } from "@thrico/database";
+import { AppDatabase, user, moderationSettings } from "@thrico/database";
 import { eq } from "drizzle-orm";
 import { log } from "@thrico/logging";
 import { AiClassificationService } from "../services/aiClassificationService";
@@ -38,11 +38,20 @@ export const processContentCreated = async (
       return;
     }
 
+    // Fetch moderation settings ahead of AI analysis
+    const settings = await db.query.moderationSettings.findFirst({
+      where: eq(moderationSettings.entityId, payload.entityId),
+    });
+
     // 1. AI Analysis
-    const aiResult = await AiClassificationService.analyzeContent(payload.text);
+    const aiResult = await AiClassificationService.analyzeContent(
+      db,
+      payload.entityId,
+      payload.text,
+    );
 
     // 2. Decision Engine
-    const decision = DecisionEngine.decide(aiResult.score);
+    const decision = DecisionEngine.decide(aiResult.score, aiResult.label, settings);
 
     // 3. Log and Act
     await ModerationService.logAndAct(db, {

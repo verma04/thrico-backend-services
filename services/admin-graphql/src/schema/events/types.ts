@@ -18,6 +18,13 @@ const eventTypes = `#graphql
     LAST_7_DAYS
     LAST_30_DAYS
     LAST_90_DAYS
+    THIS_MONTH
+    LAST_MONTH
+  }
+
+  input DateRangeInput {
+    startDate: String!
+    endDate: String!
   }
 
   # ---------- OBJECT TYPES ----------
@@ -454,13 +461,13 @@ const eventTypes = `#graphql
     getEventBySlug(slug: String!): Event
 
     # Get events statistics
-    getEventStats: EventStats
+    getEventStats(timeRange: TimeRange, dateRange: DateRangeInput): EventStats
 
     # Chart data
-    getEventRegistrationTrend(timeRange: TimeRange): [RegistrationTrend]
-    getEventTypeDistribution: [EventTypeDistribution]
-    getEventAttendeeActivity: [AttendeeActivity]
-    getTopPerformingEvents(limit: Int): [TopPerformingEvent]
+    getEventRegistrationTrend(timeRange: TimeRange, dateRange: DateRangeInput): [RegistrationTrend]
+    getEventTypeDistribution(timeRange: TimeRange, dateRange: DateRangeInput): [EventTypeDistribution]
+    getEventAttendeeActivity(timeRange: TimeRange, dateRange: DateRangeInput): [AttendeeActivity]
+    getTopPerformingEvents(limit: Int, timeRange: TimeRange, dateRange: DateRangeInput): [TopPerformingEvent]
 
     # Get events by entity
     getEventsByEntity(entityId: ID!, status: CommunityEntityStatus): [Event]

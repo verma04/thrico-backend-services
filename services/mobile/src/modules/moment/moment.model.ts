@@ -7,7 +7,7 @@ export const momentTypes = `#graphql
   }
 
   type MomentOwner {
-    id: ID!
+    id: ID
     firstName: String
     lastName: String
     avatar: String

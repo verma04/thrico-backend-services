@@ -45,6 +45,7 @@ import { resolvers as storageResolvers } from "./storage/resolvers";
 import { auditLogResolvers } from "./admin/auditLog.resolvers";
 import { addonPricingResolvers } from "./addon-pricing/resolvers";
 import { emailCampaignResolvers } from "./email-campaigns/resolvers";
+import { automationResolvers } from "./automation/resolvers";
 
 const mainResolvers = {
   Query: {
@@ -259,6 +260,7 @@ export const resolvers: any = {
     ...addonPricingResolvers.Query,
     ...auditLogResolvers.Query,
     ...emailCampaignResolvers.Query,
+    ...automationResolvers.Query,
     ...rbacResolvers.Query,
   },
   Mutation: {
@@ -296,6 +298,7 @@ export const resolvers: any = {
     ...reportResolvers.Mutation,
     ...momentResolvers.Mutation,
     ...emailCampaignResolvers.Mutation,
+    ...automationResolvers.Mutation,
     ...rbacResolvers.Mutation,
   },
 };

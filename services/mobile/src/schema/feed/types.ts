@@ -226,11 +226,22 @@ export const feedTypes = `#graphql
     isAiContent: Boolean
     }
 
+
   type communityFeedData {
     status: String
     priority: String
     isPinned: Boolean
   }
+
+  type FeedSettings {
+    allowEntityCommunityInFeed: Boolean
+    allowEntityDiscussionForumInFeed: Boolean
+    allowEntityPollsInFeed: Boolean
+    allowEntityFeedInFeed: Boolean
+    allowEntityMomentsInFeed: Boolean
+    feedOrder: [String]
+  }
+
   extend type Query {
     getAllOffer: [Offer]
     getCommunitiesFeed: [feed]
@@ -250,6 +261,12 @@ export const feedTypes = `#graphql
     getFeedStats(input: GetFeedStatsInput!): FeedStats!
     getFeedReactions(input: GetFeedReactionsInput!): FeedReactionConnection!
     getFeedActivityByUserId(userId: ID!, input: FeedCursorInput): FeedConnection!
+
+    momentsFeed(input: FeedCursorInput): FeedConnection!
+    pollsFeed(input: FeedCursorInput): FeedConnection!
+    feedByAdmin(input: FeedCursorInput): FeedConnection!
+    getFeedSettings: FeedSettings!
+ 
   }
   input inputPollOption {
     option: String!

@@ -4,7 +4,12 @@ import dotenv from "dotenv";
 import path from "path";
 dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 
+import { createServer } from "http";
+import { WebSocketServer } from "ws";
+import { useServer } from "graphql-ws/use/ws";
+import { makeExecutableSchema } from "@graphql-tools/schema";
 import { ApolloServer } from "@apollo/server";
+import { ApolloServerPluginDrainHttpServer } from "@apollo/server/plugin/drainHttpServer";
 import { expressMiddleware } from "@apollo/server/express4";
 import { graphqlUploadExpress } from "graphql-upload-minimal";
 import cors from "cors";
@@ -71,10 +76,48 @@ async function startServer() {
     res.json({ status: "ok", service: "user" });
   });
 
+  // Build an executable schema so it can be shared between
+  // the HTTP Apollo Server and the WebSocket graphql-ws server.
+  const schema = makeExecutableSchema({ typeDefs, resolvers });
+
+  // Wrap Express in a plain http.Server so we can attach the WS server.
+  const httpServer = createServer(app);
+
+  // WebSocket server — runs on the same port/path as HTTP GraphQL.
+  const wsServer = new WebSocketServer({
+    server: httpServer,
+    path: "/graphql",
+  });
+
+  // useServer returns a cleanup handle we call when Apollo drains.
+  const wsServerCleanup = useServer(
+    {
+      schema,
+      // Forward connection params as context so subscriptions can auth.
+      context: async (ctx: { connectionParams?: Record<string, unknown> }) => {
+        return { headers: ctx.connectionParams ?? {} };
+      },
+    },
+    wsServer
+  );
+
   const server = new ApolloServer<GraphQLContext>({
-    typeDefs,
-    resolvers,
+    schema,
     csrfPrevention: false, // Disable CSRF for easier file uploads handling
+    plugins: [
+      // Gracefully shut down the HTTP server.
+      ApolloServerPluginDrainHttpServer({ httpServer }),
+      // Gracefully shut down the WebSocket server.
+      {
+        async serverWillStart() {
+          return {
+            async drainServer() {
+              await wsServerCleanup.dispose();
+            },
+          };
+        },
+      },
+    ],
     formatError: (error) => {
       log.error("GraphQL error (user)", {
         message: error.message,
@@ -86,7 +129,7 @@ async function startServer() {
   });
 
   await server.start();
-  log.info("Apollo Server started (user)");
+  log.info("Apollo Server started (user) — HTTP + WebSocket");
 
   app.use(
     "/graphql",
@@ -117,10 +160,13 @@ async function startServer() {
     });
   });
 
-  app.listen(PORT, () => {
+  // Use httpServer.listen instead of app.listen so the WS server
+  // shares the same port.
+  httpServer.listen(PORT, () => {
     log.info(`User GraphQL server running`, {
       port: PORT,
-      graphqlPath: "/graphql",
+      graphqlPath: `/graphql`,
+      subscriptionsPath: `ws://localhost:${PORT}/graphql`,
       environment: process.env.NODE_ENV,
     });
   });

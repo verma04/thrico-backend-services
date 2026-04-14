@@ -652,11 +652,11 @@ const communitiesResolvers: any = {
 
     async joinCommunity(_: any, { input }: any, context: any) {
       try {
-        const { id, entityId, db, userId } = await checkAuth(context);
+        const { id, entityId, db, userId, groupId } = await checkAuth(context);
 
         return CommunityActionsService.joinCommunity({
           userId,
-          groupId: input.id,
+          groupId: input.id || input?.groupId,
           reason: input.reason,
           entityId,
           db,

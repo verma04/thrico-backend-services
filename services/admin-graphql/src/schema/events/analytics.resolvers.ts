@@ -1,7 +1,8 @@
-import { and, eq, sql, gte, count, desc } from "drizzle-orm";
+import { and, eq, sql, gte, lt, count, desc } from "drizzle-orm";
 import { events, eventsAttendees, eventsTickets } from "@thrico/database";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import { GraphQLError } from "graphql";
+import { getDaterangeFromInput } from "../dashboard/resolvers";
 
 export const analyticsResolvers = {
   Query: {
@@ -48,24 +49,19 @@ export const analyticsResolvers = {
       }
     },
 
-    async getEventStats(_: any, __: any, context: any) {
+    async getEventStats(_: any, { timeRange, dateRange }: any, context: any) {
       try {
         const { db, entity: rawEntity } = await checkAuth(context);
         const entity = rawEntity as string;
 
-        const now = new Date();
-        const startOfWeek = new Date(now);
-        startOfWeek.setDate(now.getDate() - now.getDay());
-        startOfWeek.setHours(0, 0, 0, 0);
-
-        const lastWeekStart = new Date(startOfWeek);
-        lastWeekStart.setDate(startOfWeek.getDate() - 7);
+        const { startDate, endDate, prevStartDate, prevEndDate } =
+          getDaterangeFromInput(timeRange, dateRange);
 
         // 1. Total Events
         const [totalEventsResult] = await db
           .select({ count: count() })
           .from(events)
-          .where(eq(events.entityId, entity as string));
+          .where(and(eq(events.entityId, entity as string), lt(events.createdAt, endDate)));
         const totalEvents = totalEventsResult?.count || 0;
 
         // 2. Active Events
@@ -76,6 +72,7 @@ export const analyticsResolvers = {
             and(
               eq(events.entityId, entity as string),
               eq(events.status, "APPROVED"),
+              lt(events.createdAt, endDate),
             ),
           );
         const activeEvents = activeEventsResult?.count || 0;
@@ -85,7 +82,7 @@ export const analyticsResolvers = {
           .select({ count: count() })
           .from(eventsAttendees)
           .innerJoin(events, eq(eventsAttendees.eventId, events.id))
-          .where(eq(events.entityId, entity as string));
+          .where(and(eq(events.entityId, entity as string), lt(eventsAttendees.createdAt, endDate)));
         const totalAttendees = totalAttendeesResult?.count || 0;
 
         const [attendeesThisWeekResult] = await db
@@ -95,27 +92,28 @@ export const analyticsResolvers = {
           .where(
             and(
               eq(events.entityId, entity as string),
-              gte(eventsAttendees.createdAt, startOfWeek),
+              gte(eventsAttendees.createdAt, startDate),
+              lt(eventsAttendees.createdAt, endDate),
             ),
           );
-        const attendeesThisWeek = attendeesThisWeekResult?.count || 0;
+        const attendeesThisPeriod = attendeesThisWeekResult?.count || 0;
 
-        const [attendeesLastWeekResult] = await db
+        const [attendeesPrevPeriodResult] = await db
           .select({ count: count() })
           .from(eventsAttendees)
           .innerJoin(events, eq(eventsAttendees.eventId, events.id))
           .where(
             and(
               eq(events.entityId, entity as string),
-              gte(eventsAttendees.createdAt, lastWeekStart),
-              sql`${eventsAttendees.createdAt} < ${startOfWeek}`,
+              gte(eventsAttendees.createdAt, prevStartDate),
+              lt(eventsAttendees.createdAt, prevEndDate),
             ),
           );
-        const attendeesLastWeek = attendeesLastWeekResult?.count || 0;
+        const attendeesPrevPeriod = attendeesPrevPeriodResult?.count || 0;
 
-        const attendeesWeeklyChange =
-          attendeesLastWeek > 0
-            ? ((attendeesThisWeek - attendeesLastWeek) / attendeesLastWeek) *
+        const attendeesPeriodChange =
+          attendeesPrevPeriod > 0
+            ? ((attendeesThisPeriod - attendeesPrevPeriod) / attendeesPrevPeriod) *
               100
             : 0;
 
@@ -125,14 +123,14 @@ export const analyticsResolvers = {
             totalViews: sql`SUM(${events.numberOfViews})`.mapWith(Number),
           })
           .from(events)
-          .where(eq(events.entityId, entity));
+          .where(and(eq(events.entityId, entity), lt(events.createdAt, endDate)));
         const totalViews = totalViewsResult?.totalViews || 0;
 
-        // Note: For actual weekly changes in views, we would need a time-series table.
+        // Note: For actual period changes in views, we would need a time-series table.
         // Returning placeholders for now.
-        const viewsThisWeek = 0;
-        const viewsLastWeek = 0;
-        const viewsWeeklyChange = 0;
+        const viewsThisPeriod = 0;
+        const viewsPrevPeriod = 0;
+        const viewsPeriodChange = 0;
 
         return {
           totalEvents,
@@ -140,12 +138,12 @@ export const analyticsResolvers = {
           totalAttendees,
           totalViews,
           avgAttendees: totalEvents > 0 ? totalAttendees / totalEvents : 0,
-          attendeesThisWeek,
-          attendeesLastWeek,
-          attendeesWeeklyChange: parseFloat(attendeesWeeklyChange.toFixed(1)),
-          viewsThisWeek,
-          viewsLastWeek,
-          viewsWeeklyChange: parseFloat(viewsWeeklyChange.toFixed(1)),
+          attendeesThisWeek: attendeesThisPeriod,
+          attendeesLastWeek: attendeesPrevPeriod,
+          attendeesWeeklyChange: parseFloat(attendeesPeriodChange.toFixed(1)),
+          viewsThisWeek: viewsThisPeriod,
+          viewsLastWeek: viewsPrevPeriod,
+          viewsWeeklyChange: parseFloat(viewsPeriodChange.toFixed(1)),
         };
       } catch (error) {
         console.error("error getEventStats: ", error);
@@ -153,18 +151,18 @@ export const analyticsResolvers = {
       }
     },
 
-    async getEventRegistrationTrend(_: any, { timeRange }: any, context: any) {
+    async getEventRegistrationTrend(
+      _: any,
+      { timeRange, dateRange }: any,
+      context: any,
+    ) {
       try {
         const { db, entity: rawEntity } = await checkAuth(context);
         const entity = rawEntity as string;
 
-        let days = 7;
-        if (timeRange === "LAST_24_HOURS") days = 1;
-        else if (timeRange === "LAST_30_DAYS") days = 30;
-        else if (timeRange === "LAST_90_DAYS") days = 90;
-
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - days);
+        const { startDate, endDate } = getDaterangeFromInput(timeRange, dateRange);
+        const diffInMs = endDate.getTime() - startDate.getTime();
+        const days = Math.ceil(diffInMs / (1000 * 60 * 60 * 24));
 
         // Fetch attendees grouped by date
         const results = await db
@@ -178,6 +176,7 @@ export const analyticsResolvers = {
             and(
               eq(events.entityId, entity),
               gte(eventsAttendees.createdAt, startDate),
+              lt(eventsAttendees.createdAt, endDate),
             ),
           )
           .groupBy(sql`DATE(${eventsAttendees.createdAt})`)
@@ -199,10 +198,16 @@ export const analyticsResolvers = {
       }
     },
 
-    async getEventTypeDistribution(_: any, __: any, context: any) {
+    async getEventTypeDistribution(
+      _: any,
+      { timeRange, dateRange }: any,
+      context: any,
+    ) {
       try {
         const { db, entity: rawEntity } = await checkAuth(context);
         const entity = rawEntity as string;
+
+        const { endDate } = getDaterangeFromInput(timeRange, dateRange);
 
         const results = await db
           .select({
@@ -210,7 +215,7 @@ export const analyticsResolvers = {
             count: count(events.id),
           })
           .from(events)
-          .where(eq(events.entityId, entity as string))
+          .where(and(eq(events.entityId, entity as string), lt(events.createdAt, endDate)))
           .groupBy(events.type);
 
         const colors: Record<string, string> = {
@@ -230,18 +235,18 @@ export const analyticsResolvers = {
       }
     },
 
-    async getEventAttendeeActivity(_: any, { timeRange }: any, context: any) {
+    async getEventAttendeeActivity(
+      _: any,
+      { timeRange, dateRange }: any,
+      context: any,
+    ) {
       try {
         const { db, entity: rawEntity } = await checkAuth(context);
         const entity = rawEntity as string;
 
-        let days = 7;
-        if (timeRange === "LAST_24_HOURS") days = 1;
-        else if (timeRange === "LAST_30_DAYS") days = 30;
-        else if (timeRange === "LAST_90_DAYS") days = 90;
-
-        const startDate = new Date();
-        startDate.setDate(startDate.getDate() - days);
+        const { startDate, endDate } = getDaterangeFromInput(timeRange, dateRange);
+        const diffInMs = endDate.getTime() - startDate.getTime();
+        const days = Math.ceil(diffInMs / (1000 * 60 * 60 * 24));
 
         const results = await db
           .select({
@@ -258,6 +263,7 @@ export const analyticsResolvers = {
             and(
               eq(events.entityId, entity),
               gte(eventsAttendees.createdAt, startDate),
+              lt(eventsAttendees.createdAt, endDate),
             ),
           )
           .groupBy(sql`DATE(${eventsAttendees.createdAt})`)
@@ -279,29 +285,39 @@ export const analyticsResolvers = {
       }
     },
 
-    async getTopPerformingEvents(_: any, { limit = 5 }: any, context: any) {
+    async getTopPerformingEvents(
+      _: any,
+      { limit = 5, timeRange, dateRange }: any,
+      context: any,
+    ) {
       try {
         const { db, entity: rawEntity } = await checkAuth(context);
         const entity = rawEntity as string;
 
-        const results = await db.query.events.findMany({
-          where: (e: any, { eq }: any) => eq(e.entityId, entity as string),
-          with: {
-            eventsAttendees: true,
-          },
-          orderBy: [desc(events.numberOfViews)],
-          limit: limit,
-        });
+        const { endDate } = getDaterangeFromInput(timeRange, dateRange);
+
+        const results = await db
+          .select({
+            id: events.id,
+            title: events.title,
+            type: events.type,
+            views: events.numberOfViews,
+            status: events.status,
+            cover: events.cover,
+            date: events.startDate,
+            attendees: count(eventsAttendees.id).as("attendees"),
+          })
+          .from(events)
+          .leftJoin(eventsAttendees, eq(events.id, eventsAttendees.eventId))
+          .where(and(eq(events.entityId, entity as string), lt(events.createdAt, endDate)))
+          .groupBy(events.id)
+          .orderBy(desc(sql`views`))
+          .limit(limit);
 
         return results.map((e: any) => ({
-          id: e.id,
-          title: e.title,
-          type: e.type,
-          attendees: e.eventsAttendees?.length || 0,
-          views: e.numberOfViews || 0,
-          status: e.status,
-          cover: e.cover,
-          date: e.startDate,
+          ...e,
+          attendees: Number(e.attendees || 0),
+          views: Number(e.views || 0),
         }));
       } catch (error) {
         console.error("error getTopPerformingEvents: ", error);

@@ -1056,8 +1056,9 @@ const communitiesTypes = `#graphql
   }
 
   input inputJoinCommunity {
-    id: ID!
+    id: ID
     reason: String!
+    groupId: ID
   }
 
   # Community Media System Types

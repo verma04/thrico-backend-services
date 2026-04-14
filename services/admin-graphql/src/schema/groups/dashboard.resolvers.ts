@@ -7,34 +7,43 @@ import {
   groupViews,
   user,
 } from "@thrico/database";
+import { getDaterangeFromInput } from "../dashboard/resolvers";
 
 const dashboardResolvers = {
   Query: {
-    async getCommunityStats(_: any, { input }: any, context: any) {
+    async getCommunityStats(
+      _: any,
+      {
+        timeRange,
+        dateRange,
+      }: { timeRange?: string; dateRange?: { startDate: string; endDate: string } },
+      context: any,
+    ) {
       try {
         const { entity, db } = await checkAuth(context);
-        const startDate = input?.startDate ? new Date(input.startDate) : null;
-        const endDate = input?.endDate ? new Date(input.endDate) : new Date();
+        const { startDate, endDate } = getDaterangeFromInput(timeRange, dateRange);
 
         // 1. All-time Filters
-        const totalFilters = eq(groups.entity, entity);
+        const totalFilters = and(eq(groups.entity, entity), lt(groups.createdAt, endDate));
 
         // 2. Date Range Filters
-        const dateFilters: any[] = [eq(groups.entity, entity)];
-        if (startDate) dateFilters.push(gte(groups.createdAt, startDate));
-        if (endDate) dateFilters.push(lte(groups.createdAt, endDate));
+        const dateFilters = [
+          eq(groups.entity, entity),
+          gte(groups.createdAt, startDate),
+          lt(groups.createdAt, endDate),
+        ];
 
-        const memberDateFilters: any[] = [eq(groups.entity, entity)];
-        if (startDate)
-          memberDateFilters.push(gte(groupMember.createdAt, startDate));
-        if (endDate)
-          memberDateFilters.push(lte(groupMember.createdAt, endDate));
+        const memberDateFilters = [
+          eq(groups.entity, entity),
+          gte(groupMember.createdAt, startDate),
+          lt(groupMember.createdAt, endDate),
+        ];
 
-        const postDateFilters: any[] = [eq(communityFeed.entityId, entity)];
-        if (startDate)
-          postDateFilters.push(gte(communityFeed.createdAt, startDate));
-        if (endDate)
-          postDateFilters.push(lte(communityFeed.createdAt, endDate));
+        const postDateFilters = [
+          eq(communityFeed.entityId, entity),
+          gte(communityFeed.createdAt, startDate),
+          lt(communityFeed.createdAt, endDate),
+        ];
 
         // 3. Parallel Queries
         const [
@@ -57,7 +66,9 @@ const dashboardResolvers = {
           db
             .select({ count: count() })
             .from(communityFeed)
-            .where(eq(communityFeed.entityId, entity)),
+            .where(
+              and(eq(communityFeed.entityId, entity), lt(communityFeed.createdAt, endDate)),
+            ),
           db
             .select({ count: count() })
             .from(groupViews)
@@ -107,16 +118,22 @@ const dashboardResolvers = {
       }
     },
 
-    async getCommunitySignupTrend(_: any, { input }: any, context: any) {
+    async getCommunitySignupTrend(
+      _: any,
+      {
+        timeRange,
+        dateRange,
+      }: { timeRange?: string; dateRange?: { startDate: string; endDate: string } },
+      context: any,
+    ) {
       try {
         const { entity, db } = await checkAuth(context);
-        const startDate = input?.startDate
-          ? new Date(input.startDate)
-          : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const { startDate, endDate } = getDaterangeFromInput(timeRange, dateRange);
 
+        const dateExpr = sql`DATE(${groupMember.createdAt})`;
         const results = await db
           .select({
-            date: sql`DATE(${groupMember.createdAt})`.as("date"),
+            date: dateExpr.as("date"),
             signups: count(groupMember.id).as("signups"),
           })
           .from(groupMember)
@@ -125,10 +142,11 @@ const dashboardResolvers = {
             and(
               eq(groups.entity, entity),
               gte(groupMember.createdAt, startDate),
+              lt(groupMember.createdAt, endDate),
             ),
           )
-          .groupBy(sql`DATE(${groupMember.createdAt})`)
-          .orderBy(sql`DATE(${groupMember.createdAt})`);
+          .groupBy(dateExpr)
+          .orderBy(dateExpr);
 
         return results.map((r: any) => ({
           name: new Date(r.date as string).toLocaleDateString("en-US", {
@@ -143,9 +161,22 @@ const dashboardResolvers = {
       }
     },
 
-    async getTopActiveCommunities(_: any, { limit = 5 }: any, context: any) {
+    async getTopActiveCommunities(
+      _: any,
+      {
+        limit = 5,
+        timeRange,
+        dateRange,
+      }: {
+        limit?: number;
+        timeRange?: string;
+        dateRange?: { startDate: string; endDate: string };
+      },
+      context: any,
+    ) {
       try {
         const { entity, db } = await checkAuth(context);
+        const { endDate } = getDaterangeFromInput(timeRange, dateRange);
 
         const results = await db
           .select({
@@ -158,7 +189,7 @@ const dashboardResolvers = {
           })
           .from(groups)
           .leftJoin(groupMember, eq(groups.id, groupMember.groupId))
-          .where(eq(groups.entity, entity))
+          .where(and(eq(groups.entity, entity), lt(groups.createdAt, endDate)))
           .groupBy(groups.id)
           .orderBy(desc(sql`members`))
           .limit(limit);
@@ -174,25 +205,34 @@ const dashboardResolvers = {
       }
     },
 
-    async getCommunityActivityTrend(_: any, __: any, context: any) {
+    async getCommunityActivityTrend(
+      _: any,
+      {
+        timeRange,
+        dateRange,
+      }: { timeRange?: string; dateRange?: { startDate: string; endDate: string } },
+      context: any,
+    ) {
       try {
         const { entity, db } = await checkAuth(context);
-        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const { startDate, endDate } = getDaterangeFromInput(timeRange, dateRange);
 
+        const dateExpr = sql`DATE(${communityFeed.createdAt})`;
         const results = await db
           .select({
-            date: sql`DATE(${communityFeed.createdAt})`.as("date"),
+            date: dateExpr.as("date"),
             registered: count(communityFeed.id).as("registered"), // "registered" maps to Posts in our bar chart
           })
           .from(communityFeed)
           .where(
             and(
               eq(communityFeed.entityId, entity),
-              gte(communityFeed.createdAt, sevenDaysAgo),
+              gte(communityFeed.createdAt, startDate),
+              lt(communityFeed.createdAt, endDate),
             ),
           )
-          .groupBy(sql`DATE(${communityFeed.createdAt})`)
-          .orderBy(sql`DATE(${communityFeed.createdAt})`);
+          .groupBy(dateExpr)
+          .orderBy(dateExpr);
 
         return results.map((r: any) => ({
           name: new Date(r.date as string).toLocaleDateString("en-US", {
@@ -208,41 +248,23 @@ const dashboardResolvers = {
     },
     async getCommunitiesStats(
       _: any,
-      { timeRange }: { timeRange: string },
+      {
+        timeRange,
+        dateRange,
+      }: { timeRange?: string; dateRange?: { startDate: string; endDate: string } },
       context: any,
     ) {
       try {
         const { entity, db } = await checkAuth(context);
 
-        const now = new Date();
-        let startDate = new Date();
-
-        switch (timeRange) {
-          case "LAST_24_HOURS":
-            startDate.setHours(now.getHours() - 24);
-            break;
-          case "LAST_7_DAYS":
-            startDate.setDate(now.getDate() - 7);
-            break;
-          case "LAST_30_DAYS":
-            startDate.setDate(now.getDate() - 30);
-            break;
-          case "LAST_90_DAYS":
-            startDate.setDate(now.getDate() - 90);
-            break;
-          default:
-            startDate.setDate(now.getDate() - 30);
-        }
-
-        const timeDiff = now.getTime() - startDate.getTime();
-        const previousStartDate = new Date(startDate.getTime() - timeDiff);
-        const previousEndDate = startDate;
+        const { startDate, endDate, prevStartDate, prevEndDate } =
+          getDaterangeFromInput(timeRange, dateRange);
 
         // 1. Total Communities
         const totalCommunitiesResult = await db
           .select({ count: count() })
           .from(groups)
-          .where(eq(groups.entity, entity));
+          .where(and(eq(groups.entity, entity), lt(groups.createdAt, endDate)));
         const totalCommunities = Number(totalCommunitiesResult[0]?.count || 0);
 
         const prevTotalCommunitiesResult = await db
@@ -265,7 +287,13 @@ const dashboardResolvers = {
         const activeCommunitiesResult = await db
           .select({ count: count() })
           .from(groups)
-          .where(and(eq(groups.entity, entity), eq(groups.status, "APPROVED")));
+          .where(
+            and(
+              eq(groups.entity, entity),
+              eq(groups.status, "APPROVED"),
+              lt(groups.createdAt, endDate),
+            ),
+          );
         const activeCommunities = Number(
           activeCommunitiesResult[0]?.count || 0,
         );
@@ -295,7 +323,7 @@ const dashboardResolvers = {
           .select({ count: count() })
           .from(groupMember)
           .innerJoin(groups, eq(groupMember.groupId, groups.id))
-          .where(eq(groups.entity, entity));
+          .where(and(eq(groups.entity, entity), lt(groupMember.createdAt, endDate)));
         const totalEnrollments = Number(totalEnrollmentsResult[0]?.count || 0);
 
         const currEnrollmentsResult = await db
@@ -303,7 +331,11 @@ const dashboardResolvers = {
           .from(groupMember)
           .innerJoin(groups, eq(groupMember.groupId, groups.id))
           .where(
-            and(eq(groups.entity, entity), gte(groupMember.createdAt, startDate)),
+            and(
+              eq(groups.entity, entity),
+              gte(groupMember.createdAt, startDate),
+              lt(groupMember.createdAt, endDate),
+            ),
           );
         const currentEnrollments = Number(currEnrollmentsResult[0]?.count || 0);
 
@@ -314,8 +346,8 @@ const dashboardResolvers = {
           .where(
             and(
               eq(groups.entity, entity),
-              gte(groupMember.createdAt, previousStartDate),
-              lt(groupMember.createdAt, previousEndDate),
+              gte(groupMember.createdAt, prevStartDate),
+              lt(groupMember.createdAt, prevEndDate),
             ),
           );
         const prevEnrollments = Number(prevEnrollmentsResult[0]?.count || 0);
@@ -329,17 +361,21 @@ const dashboardResolvers = {
           .select({ count: count() })
           .from(groupViews)
           .innerJoin(groups, eq(groupViews.group, groups.id))
-          .where(eq(groups.entity, entity));
+          .where(and(eq(groups.entity, entity), lt(groupViews.createdAt, endDate)));
         const totalViews = Number(totalViewsResult[0]?.count || 0);
 
-        const currViewsResult = await db
+        const currentViews = await db
           .select({ count: count() })
           .from(groupViews)
           .innerJoin(groups, eq(groupViews.group, groups.id))
           .where(
-            and(eq(groups.entity, entity), gte(groupViews.createdAt, startDate)),
+            and(
+              eq(groups.entity, entity),
+              gte(groupViews.createdAt, startDate),
+              lt(groupViews.createdAt, endDate),
+            ),
           );
-        const currentViews = Number(currViewsResult[0]?.count || 0);
+        const currentViewsCount = Number(currentViews[0]?.count || 0);
 
         const prevViewsResult = await db
           .select({ count: count() })
@@ -348,30 +384,36 @@ const dashboardResolvers = {
           .where(
             and(
               eq(groups.entity, entity),
-              gte(groupViews.createdAt, previousStartDate),
-              lt(groupViews.createdAt, previousEndDate),
+              gte(groupViews.createdAt, prevStartDate),
+              lt(groupViews.createdAt, prevEndDate),
             ),
           );
         const prevViews = Number(prevViewsResult[0]?.count || 0);
         const viewsChange =
-          prevViews > 0 ? ((currentViews - prevViews) / prevViews) * 100 : 0;
+          prevViews > 0 ? ((currentViewsCount - prevViews) / prevViews) * 100 : 0;
 
         // 5. Enrollment Trend
         let groupingInterval = "day";
         if (timeRange === "LAST_90_DAYS") groupingInterval = "week";
 
+        const truncatedDate = sql`date_trunc(${sql.raw(`'${groupingInterval}'`)}, ${groupMember.createdAt})`;
+
         const enrollmentTrendResult = await db
           .select({
-            label: sql`to_char(date_trunc(${groupingInterval}, ${groupMember.createdAt}), 'YYYY-MM-DD')`.as("label"),
+            label: sql`to_char(${truncatedDate}, 'YYYY-MM-DD')`.as("label"),
             count: count(),
           })
           .from(groupMember)
           .innerJoin(groups, eq(groupMember.groupId, groups.id))
           .where(
-            and(eq(groups.entity, entity), gte(groupMember.createdAt, startDate)),
+            and(
+              eq(groups.entity, entity),
+              gte(groupMember.createdAt, startDate),
+              lt(groupMember.createdAt, endDate),
+            ),
           )
-          .groupBy(sql`date_trunc(${groupingInterval}, ${groupMember.createdAt})`)
-          .orderBy(sql`date_trunc(${groupingInterval}, ${groupMember.createdAt})`);
+          .groupBy(truncatedDate)
+          .orderBy(truncatedDate);
 
         const enrollmentTrend = enrollmentTrendResult.map((row: any) => ({
           label: String(row.label),
@@ -385,7 +427,7 @@ const dashboardResolvers = {
             value: count(),
           })
           .from(groups)
-          .where(eq(groups.entity, entity))
+          .where(and(eq(groups.entity, entity), lt(groups.createdAt, endDate)))
           .groupBy(groups.status);
 
         const statusDistribution = statusDistributionResult.map((row: any) => ({
@@ -402,7 +444,13 @@ const dashboardResolvers = {
             views: groups.numberOfViews,
           })
           .from(groups)
-          .where(and(eq(groups.entity, entity), eq(groups.status, "APPROVED")))
+          .where(
+            and(
+              eq(groups.entity, entity),
+              eq(groups.status, "APPROVED"),
+              lt(groups.createdAt, endDate),
+            ),
+          )
           .orderBy(desc(groups.numberOfUser))
           .limit(5);
 
@@ -423,7 +471,7 @@ const dashboardResolvers = {
           })
           .from(groups)
           .innerJoin(user, eq(groups.creator, user.id))
-          .where(eq(groups.entity, entity))
+          .where(and(eq(groups.entity, entity), lt(groups.createdAt, endDate)))
           .groupBy(user.id, user.firstName, user.lastName, user.avatar)
           .orderBy(desc(count(groups.id)))
           .limit(5);

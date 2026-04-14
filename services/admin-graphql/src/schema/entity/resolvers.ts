@@ -28,6 +28,7 @@ import { countryClient, entityClient, subscriptionClient } from "@thrico/grpc";
 import { seedDiscussionCategories } from "../../seed/seedDiscussionCategories";
 import { initializeWebsite as initWebsiteContent } from "../../lib/website/create-default-pages";
 import { changeDomain } from "../../queue/email-rabbit";
+import { EntityService } from "@thrico/services";
 
 export const entityResolvers: any = {
   Query: {
@@ -315,9 +316,7 @@ export const entityResolvers: any = {
         ensurePermission(auth, AdminModule.APPEARANCE, PermissionAction.READ);
         const { entity: entityId } = auth;
 
-        const theme = await ENTITY_THEME.query("entity").eq(entityId).exec();
-
-        return theme.toJSON()[0] ? theme.toJSON()[0] : null;
+        return await EntityService.getEntityTheme({ entityId });
       } catch (error) {
         console.log(error);
         throw error;
@@ -347,33 +346,7 @@ export const entityResolvers: any = {
         ensurePermission(auth, AdminModule.APPEARANCE, PermissionAction.EDIT);
         const { entity: entityId } = auth;
 
-        const existingThemeResult = await ENTITY_THEME.query("entity")
-          .eq(entityId)
-          .exec();
-
-        let themeItem;
-
-        if (existingThemeResult.count > 0) {
-          themeItem = existingThemeResult[0];
-
-          await ENTITY_THEME.update(
-            { id: themeItem.id },
-            {
-              $SET: {
-                ...input,
-                entity: entityId,
-              },
-            },
-          );
-        } else {
-          // Create new item — id will be auto-generated
-          await ENTITY_THEME.create({
-            ...input,
-            entity: entityId,
-          });
-        }
-
-        return { success: true };
+        return await EntityService.editEntityTheme({ entityId, input });
       } catch (error) {
         console.error("Error editing theme:", error);
         throw error;

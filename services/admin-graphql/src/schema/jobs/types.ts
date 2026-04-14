@@ -10,6 +10,20 @@ export const jobsTypes = `#graphql
     DISABLED
     PAUSED
   }
+  
+  enum TimeRange {
+    LAST_24_HOURS
+    LAST_7_DAYS
+    LAST_30_DAYS
+    LAST_90_DAYS
+    THIS_MONTH
+    LAST_MONTH
+  }
+
+  input DateRangeInput {
+    startDate: String!
+    endDate: String!
+  }
 
   input GetJobInput {
     status: jobStatus
@@ -37,7 +51,7 @@ export const jobsTypes = `#graphql
     getJob(input: GetJobInput): [Job]
     getJobCompany(input: JobSearchInput): [Job]
     getAllJobs(input: GetAllJobsInput): [JobWithMeta]
-    getJobStats(timeRange: TimeRange!): getJobStats
+    getJobStats(timeRange: TimeRange, dateRange: DateRangeInput): getJobStats
   }
   input ChangeJobStatusInput {
     action: String
@@ -81,7 +95,7 @@ export const jobsTypes = `#graphql
 
   input CompanyInput {
     id: ID
-    name: String!
+    name: String
     logo: String
   }
 
@@ -97,7 +111,7 @@ export const jobsTypes = `#graphql
     id: ID!
     title: String!
     description: String
-    location: String
+    location: JSON
     jobType: String
     salary: String
     experienceLevel: String
@@ -136,7 +150,7 @@ export const jobsTypes = `#graphql
 
   type Company {
     id: ID
-    name: String!
+    name: String
     logo: String
   }
 `;

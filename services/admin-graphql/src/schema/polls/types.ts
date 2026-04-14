@@ -105,11 +105,25 @@ export const pollTypes = `#graphql
     engagementRateChange: Float!
   }
 
+  enum TimeRange {
+    LAST_24_HOURS
+    LAST_7_DAYS
+    LAST_30_DAYS
+    LAST_90_DAYS
+    THIS_MONTH
+    LAST_MONTH
+  }
+
+  input DateRangeInput {
+    startDate: String!
+    endDate: String!
+  }
+
   extend type Query {
     getPolls(input: inputGetPolls!): [polls]
     getPollByIdForUser(input: inputGetPollByIdForUser!): polls
     getPollResult(input: inputGetPollByIdForUser!): pollResult
-    getPollStats(timeRange: TimeRange!): PollStats!
+    getPollStats(timeRange: TimeRange, dateRange: DateRangeInput): PollStats!
   }
   input inputVoteOnPoll {
     pollId: String!

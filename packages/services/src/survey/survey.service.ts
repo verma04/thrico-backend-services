@@ -1,4 +1,4 @@
-import { and, eq, sql, count, desc } from "drizzle-orm";
+import { and, eq, sql, count, desc, gte, lt } from "drizzle-orm";
 import {
   surveys,
   customForms,
@@ -10,6 +10,59 @@ import {
 import { GraphQLError } from "graphql";
 import { log } from "@thrico/logging";
 import { GamificationEventService } from "../gamification/gamification-event.service";
+
+// ---------------------------------------------------------------------------
+// Date-range utility (mirrors the one in admin-graphql/dashboard/resolvers.ts)
+// ---------------------------------------------------------------------------
+const getDaterangeFromInput = (
+  timeRange?: string,
+  dateRange?: { startDate: string; endDate: string },
+) => {
+  const now = new Date();
+  let startDate = new Date();
+  let endDate = now;
+  let interval: "hour" | "day" = "day";
+
+  if (dateRange) {
+    startDate = new Date(dateRange.startDate);
+    endDate = new Date(dateRange.endDate);
+    // Use hourly interval when the range is <= 2 days
+    const diffMs = endDate.getTime() - startDate.getTime();
+    interval = diffMs <= 2 * 24 * 60 * 60 * 1000 ? "hour" : "day";
+  } else {
+    switch (timeRange) {
+      case "LAST_24_HOURS":
+        startDate.setHours(now.getHours() - 24);
+        interval = "hour";
+        break;
+      case "LAST_7_DAYS":
+        startDate.setDate(now.getDate() - 7);
+        break;
+      case "LAST_30_DAYS":
+        startDate.setDate(now.getDate() - 30);
+        break;
+      case "LAST_90_DAYS":
+        startDate.setDate(now.getDate() - 90);
+        break;
+      case "THIS_MONTH":
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
+      case "LAST_MONTH":
+        startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        endDate = new Date(now.getFullYear(), now.getMonth(), 0);
+        break;
+      default:
+        startDate.setHours(now.getHours() - 24);
+        interval = "hour";
+    }
+  }
+
+  const timeDiff = endDate.getTime() - startDate.getTime();
+  const prevStartDate = new Date(startDate.getTime() - timeDiff);
+  const prevEndDate = startDate;
+
+  return { startDate, endDate, prevStartDate, prevEndDate, interval };
+};
 
 const DEFAULT_FORM_APPEARANCE = {
   primaryColor: "#000000",
@@ -1449,64 +1502,55 @@ export class SurveyService {
   static async getSurveyStats({
     entityId,
     timeRange,
+    dateRange,
     db,
   }: {
     entityId: string;
-    timeRange:
-      | "LAST_24_HOURS"
-      | "LAST_7_DAYS"
-      | "LAST_30_DAYS"
-      | "LAST_90_DAYS";
+    timeRange?: any;
+    dateRange?: any;
     db: any;
   }) {
     try {
-      const now = new Date();
-      let startDate: Date;
-      let prevStartDate: Date;
-      let interval: "hour" | "day" = "day";
+      const { startDate, endDate, prevStartDate, prevEndDate, interval } =
+        getDaterangeFromInput(timeRange, dateRange);
 
-      switch (timeRange) {
-        case "LAST_24_HOURS":
-          startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-          prevStartDate = new Date(startDate.getTime() - 24 * 60 * 60 * 1000);
-          interval = "hour";
-          break;
-        case "LAST_7_DAYS":
-          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          prevStartDate = new Date(
-            startDate.getTime() - 7 * 24 * 60 * 60 * 1000,
-          );
-          break;
-        case "LAST_30_DAYS":
-          startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-          prevStartDate = new Date(
-            startDate.getTime() - 30 * 24 * 60 * 60 * 1000,
-          );
-          break;
-        case "LAST_90_DAYS":
-          startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-          prevStartDate = new Date(
-            startDate.getTime() - 90 * 24 * 60 * 60 * 1000,
-          );
-          break;
-        default:
-          startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-          prevStartDate = new Date(
-            startDate.getTime() - 30 * 24 * 60 * 60 * 1000,
-          );
-      }
+      // 1. Snapshot as of end date
+      const [overallStats] = await db
+        .select({
+          totalSurveys: count(),
+          activeSurveys: sql<number>`count(case when ${surveys.status} = 'ACTIVE' and (${surveys.endDate} is null or ${surveys.endDate} > ${endDate}) then 1 end)`,
+        })
+        .from(surveys)
+        .where(
+          and(eq(surveys.entityId, entityId), lt(surveys.createdAt, endDate)),
+        );
 
-      // 1. Current Period Stats
+      const [overallResponses] = await db
+        .select({
+          totalResponses: count(),
+        })
+        .from(formResponses)
+        .innerJoin(surveys, eq(formResponses.surveyId, surveys.id))
+        .where(
+          and(
+            eq(surveys.entityId, entityId),
+            eq(formResponses.isSubmitted, true),
+            lt(formResponses.submittedAt, endDate),
+          ),
+        );
+
+      // 2. Current period stats (Growth)
       const [currStats] = await db
         .select({
-          totalSurveys: sql<number>`count(${surveys.id})`,
-          activeSurveys: sql<number>`count(case when ${surveys.status} = 'ACTIVE' then 1 end)`,
+          totalSurveys: count(),
+          activeSurveys: sql<number>`count(case when ${surveys.status} = 'ACTIVE' and (${surveys.endDate} is null or ${surveys.endDate} > ${endDate}) then 1 end)`,
         })
         .from(surveys)
         .where(
           and(
             eq(surveys.entityId, entityId),
-            sql`${surveys.createdAt} >= ${startDate}`,
+            gte(surveys.createdAt, startDate),
+            lt(surveys.createdAt, endDate),
           ),
         );
 
@@ -1520,22 +1564,23 @@ export class SurveyService {
           and(
             eq(surveys.entityId, entityId),
             eq(formResponses.isSubmitted, true),
-            sql`${formResponses.submittedAt} >= ${startDate}`,
+            gte(formResponses.submittedAt, startDate),
+            lt(formResponses.submittedAt, endDate),
           ),
         );
 
-      // 2. Previous Period Stats (for change calculation)
+      // 3. Previous period stats (Change)
       const [prevStats] = await db
         .select({
-          totalSurveys: sql<number>`count(${surveys.id})`,
-          activeSurveys: sql<number>`count(case when ${surveys.status} = 'ACTIVE' then 1 end)`,
+          totalSurveys: count(),
+          activeSurveys: sql<number>`count(case when ${surveys.status} = 'ACTIVE' and (${surveys.endDate} is null or ${surveys.endDate} > ${prevEndDate}) then 1 end)`,
         })
         .from(surveys)
         .where(
           and(
             eq(surveys.entityId, entityId),
-            sql`${surveys.createdAt} >= ${prevStartDate}`,
-            sql`${surveys.createdAt} < ${startDate}`,
+            gte(surveys.createdAt, prevStartDate),
+            lt(surveys.createdAt, prevEndDate),
           ),
         );
 
@@ -1549,30 +1594,8 @@ export class SurveyService {
           and(
             eq(surveys.entityId, entityId),
             eq(formResponses.isSubmitted, true),
-            sql`${formResponses.submittedAt} >= ${prevStartDate}`,
-            sql`${formResponses.submittedAt} < ${startDate}`,
-          ),
-        );
-
-      // 3. Overall Stats (No time filter for these basic counts)
-      const [overallStats] = await db
-        .select({
-          totalSurveys: count(),
-          activeSurveys: sql<number>`count(case when ${surveys.status} = 'ACTIVE' then 1 end)`,
-        })
-        .from(surveys)
-        .where(eq(surveys.entityId, entityId));
-
-      const [overallResponses] = await db
-        .select({
-          totalResponses: count(),
-        })
-        .from(formResponses)
-        .innerJoin(surveys, eq(formResponses.surveyId, surveys.id))
-        .where(
-          and(
-            eq(surveys.entityId, entityId),
-            eq(formResponses.isSubmitted, true),
+            gte(formResponses.submittedAt, prevStartDate),
+            lt(formResponses.submittedAt, prevEndDate),
           ),
         );
 
@@ -1591,20 +1614,23 @@ export class SurveyService {
           and(
             eq(surveys.entityId, entityId),
             eq(formResponses.isSubmitted, true),
-            sql`${formResponses.submittedAt} >= ${startDate}`,
+            gte(formResponses.submittedAt, startDate),
+            lt(formResponses.submittedAt, endDate),
           ),
         )
         .groupBy(sql`1`)
         .orderBy(sql`1`);
 
-      // 5. Status Distribution
+      // 5. Status Distribution (Filtered by end date)
       const statusResults = await db
         .select({
           status: surveys.status,
           count: count(),
         })
         .from(surveys)
-        .where(eq(surveys.entityId, entityId))
+        .where(
+          and(eq(surveys.entityId, entityId), lt(surveys.createdAt, endDate)),
+        )
         .groupBy(surveys.status);
 
       // Helper to calculate percentage change
@@ -1639,11 +1665,19 @@ export class SurveyService {
         totalSurveys,
         activeSurveys,
         totalResponses,
-        completionRate,
-        totalSurveysChange: calcChange(curTotSur, preTotSur),
-        activeSurveysChange: calcChange(curActSur, preActSur),
-        totalResponsesChange: calcChange(curResps, preResps),
-        completionRateChange: calcChange(curCompRate, preCompRate),
+        completionRate: parseFloat(completionRate.toFixed(2)),
+        totalSurveysChange: parseFloat(
+          calcChange(curTotSur, preTotSur).toFixed(2),
+        ),
+        activeSurveysChange: parseFloat(
+          calcChange(curActSur, preActSur).toFixed(2),
+        ),
+        totalResponsesChange: parseFloat(
+          calcChange(curResps, preResps).toFixed(2),
+        ),
+        completionRateChange: parseFloat(
+          calcChange(curCompRate, preCompRate).toFixed(2),
+        ),
         responseTrend: trendResults.map((r: any) => ({
           date: r.date,
           count: Number(r.count || 0),

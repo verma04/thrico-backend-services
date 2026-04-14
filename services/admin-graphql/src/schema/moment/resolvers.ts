@@ -1,6 +1,7 @@
 import { and, eq, sql, desc } from "drizzle-orm";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import { moments } from "@thrico/database";
+import { MomentService } from "@thrico/services";
 import {
   ensurePermission,
   AdminModule,
@@ -283,6 +284,142 @@ export const momentResolvers = {
         throw error;
       }
     },
+
+    adminGenerateMomentUploadUrl: async (_: any, { input }: any, context: any) => {
+      try {
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.MOMENTS, PermissionAction.CREATE);
+        const { entityId, db, id: adminId, userId } = auth;
+
+        const data = await MomentService.generateUploadUrl(
+          input,
+          entityId as string,
+          userId,
+          db,
+        );
+
+        // Audit Log
+        await createAuditLog(db, {
+          adminId,
+          entityId: auth.entity,
+          module: AdminModule.MOMENTS,
+          action: "GENERATE_UPLOAD_URL",
+          resourceId: data.momentId,
+          newState: { videoFileName: input.videoFileName, thumbnailFileName: input.thumbnailFileName },
+          ipAddress: context.ip,
+          userAgent: context.userAgent,
+        });
+
+        return data;
+      } catch (error) {
+        console.error("Error in adminGenerateMomentUploadUrl:", error);
+        throw error;
+      }
+    },
+
+    adminConfirmMomentUpload: async (_: any, { input }: any, context: any) => {
+      try {
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.MOMENTS, PermissionAction.CREATE);
+        const { entityId, db, id: adminId, userId: adminUserId } = auth;
+
+        const { fileUrl, caption, thumbnailUrl, shareInFeed = true, isAiContent = false, userId: targetUserId } = input;
+        const momentUserId = targetUserId || adminUserId;
+
+        const moment = await MomentService.confirmUpload(
+          fileUrl,
+          caption,
+          entityId as string,
+          momentUserId,
+          db,
+          thumbnailUrl,
+          shareInFeed,
+          isAiContent,
+          "ENTITY",
+        );
+
+        // Audit Log
+        await createAuditLog(db, {
+          adminId,
+          entityId: auth.entity,
+          module: AdminModule.MOMENTS,
+          action: "CREATE",
+          resourceId: moment.id,
+          newState: { caption, fileUrl, thumbnailUrl, shareInFeed, isAiContent },
+          ipAddress: context.ip,
+          userAgent: context.userAgent,
+        });
+
+        // Refetch with owner info for the AdminMoment type
+        const momentDetails = await db.query.moments.findFirst({
+          where: eq(moments.id, moment.id),
+          with: {
+            user: {
+              with: {
+                about: true,
+              },
+            },
+          },
+        });
+
+        return momentDetails;
+      } catch (error) {
+        console.error("Error in adminConfirmMomentUpload:", error);
+        throw error;
+      }
+    },
+
+    adminMomentUpload: async (_: any, { input }: any, context: any) => {
+      try {
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.MOMENTS, PermissionAction.CREATE);
+        const { entityId, db, id: adminId, userId: adminUserId } = auth;
+
+        const { fileUrl, caption, thumbnailUrl, shareInFeed = true, isAiContent = false, userId: targetUserId } = input;
+        const momentUserId = targetUserId || adminUserId;
+
+        const moment = await MomentService.confirmUpload(
+          fileUrl,
+          caption,
+          entityId as string,
+          momentUserId,
+          db,
+          thumbnailUrl,
+          shareInFeed,
+          isAiContent,
+          "ENTITY",
+        );
+
+        // Audit Log
+        await createAuditLog(db, {
+          adminId,
+          entityId: auth.entity,
+          module: AdminModule.MOMENTS,
+          action: "CREATE",
+          resourceId: moment.id,
+          newState: { caption, fileUrl, thumbnailUrl, shareInFeed, isAiContent },
+          ipAddress: context.ip,
+          userAgent: context.userAgent,
+        });
+
+        // Refetch with owner info for the AdminMoment type
+        const momentDetails = await db.query.moments.findFirst({
+          where: eq(moments.id, moment.id),
+          with: {
+            user: {
+              with: {
+                about: true,
+              },
+            },
+          },
+        });
+
+        return momentDetails;
+      } catch (error) {
+        console.error("Error in adminMomentUpload:", error);
+        throw error;
+      }
+    },
   },
 
   AdminMoment: {
@@ -295,3 +432,4 @@ export const momentResolvers = {
     },
   },
 };
+

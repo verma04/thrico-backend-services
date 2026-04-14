@@ -398,7 +398,7 @@ const marketPlaceResolvers: any = {
 
     async sendMessage(_: any, { input }: any, context: any) {
       try {
-        const { userId, db } = await checkAuth(context);
+        const { userId, entityId, db } = await checkAuth(context);
 
         if (!input.content || input.content.trim().length === 0) {
           throw new GraphQLError("Message content cannot be empty", {
@@ -411,6 +411,7 @@ const marketPlaceResolvers: any = {
           conversationId: input.conversationId,
           senderId: userId,
           content: input.content.trim(),
+          entityId,
         });
       } catch (error) {
         console.log(error);

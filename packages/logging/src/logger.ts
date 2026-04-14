@@ -3,6 +3,8 @@ import DailyRotateFile from 'winston-daily-rotate-file';
 import path from 'path';
 import { ENV } from '@thrico/shared';
 
+const SERVICE_NAME = process.env.OTEL_SERVICE_NAME || 'thrico-service';
+
 const LOG_DIR = ENV.LOG_DIR;
 
 // Define custom log levels
@@ -103,11 +105,39 @@ const logger = winston.createLogger({
   levels: customLevels.levels,
   level: ENV.LOG_LEVEL,
   format: logFormat,
+  defaultMeta: { service: SERVICE_NAME },
   transports,
   exitOnError: false,
 });
 
-// Export logger methods
+// ─── Child logger factory ─────────────────────────────────────────────────────
+// Creates a child logger pre-tagged with a module/component label so every
+// log line emitted by that module carries consistent metadata — useful when
+// correlating across multiple services in the OTel trace viewer.
+//
+//   const moduleLog = createChildLogger('UserService');
+//   moduleLog.info('user created', { userId });
+
+export function createChildLogger(
+  module: string,
+  extra?: Record<string, unknown>
+): winston.Logger {
+  return logger.child({ module, ...extra });
+}
+
+// ─── Morgan-compatible stream ─────────────────────────────────────────────────
+// Pass this to Morgan so HTTP request logs are routed through Winston
+// (and therefore also forwarded to the OTel OTLP log collector).
+//
+//   app.use(morgan('combined', { stream: morganStream }));
+
+export const morganStream = {
+  write: (message: string) => {
+    logger.http(message.trim());
+  },
+};
+
+// ─── Flat convenience exports ─────────────────────────────────────────────────
 export const log = {
   error: (message: string, meta?: any) => logger.error(message, meta),
   warn: (message: string, meta?: any) => logger.warn(message, meta),

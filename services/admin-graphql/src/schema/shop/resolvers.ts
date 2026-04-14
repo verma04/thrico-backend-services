@@ -10,11 +10,13 @@ import {
   shopProductOptions,
   shopBanners,
 } from "@thrico/database";
-import { eq, desc, and, sql, inArray } from "drizzle-orm";
+import { eq, desc, and, sql, inArray, lt } from "drizzle-orm";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import { GraphQLError } from "graphql";
 import { logger } from "@thrico/logging";
 import upload from "../../utils/upload/upload";
+import { getDaterangeFromInput } from "../dashboard/resolvers";
+
 
 export const shopResolvers = {
   Query: {
@@ -100,6 +102,96 @@ export const shopResolvers = {
         });
       } catch (error: any) {
         logger.error(`Error in getShopBanners: ${error.message}`, { error });
+        throw error;
+      }
+    },
+
+    // Get shop stats
+    async getShopStats(_: any, { timeRange, dateRange }: any, context: any) {
+      try {
+        const { db, entity } = await checkAuth(context);
+        const { startDate, endDate, prevStartDate, prevEndDate } =
+          getDaterangeFromInput(timeRange, dateRange);
+
+        // Helper for snapshot stats at a specific point in time
+        const getSnapshots = async (pointInTime: Date) => {
+          const [productsStats] = await db
+            .select({
+              activeCount: sql<number>`count(*) filter (where status = 'ACTIVE')`,
+              totalViews: sql<number>`sum(number_of_views)`,
+              totalCategories: sql<number>`count(distinct category)`,
+            })
+            .from(shopProducts)
+            .where(
+              and(
+                eq(shopProducts.entity, entity),
+                lt(shopProducts.createdAt, pointInTime),
+              ),
+            );
+
+          const [bannersStats] = await db
+            .select({
+              activeCount: sql<number>`count(*)`,
+            })
+            .from(shopBanners)
+            .where(
+              and(
+                eq(shopBanners.entity, entity),
+                eq(shopBanners.isActive, true),
+                lt(shopBanners.createdAt, pointInTime),
+              ),
+            );
+
+          return {
+            activeProducts: Number(productsStats?.activeCount || 0),
+            totalViews: Number(productsStats?.totalViews || 0),
+            totalCategories: Number(productsStats?.totalCategories || 0),
+            activeBanners: Number(bannersStats?.activeCount || 0),
+          };
+        };
+
+        const current = await getSnapshots(endDate);
+        const previous = await getSnapshots(prevStartDate);
+
+        // Low stock items (snapshot of current state only)
+        const [lowStockResult] = await db
+          .select({ count: sql<number>`count(distinct ${shopProductVariants.productId})` })
+          .from(shopProductVariants)
+          .where(
+            and(
+              eq(shopProductVariants.entity, entity),
+              lt(shopProductVariants.inventory, 5),
+              lt(shopProductVariants.createdAt, endDate),
+            ),
+          );
+
+        const calculateChange = (curr: number, prev: number) => {
+          if (prev === 0) return curr > 0 ? 100 : 0;
+          return Number(((curr - prev) / prev) * 100);
+        };
+
+        return {
+          totalViews: current.totalViews,
+          activeProducts: current.activeProducts,
+          activeBanners: current.activeBanners,
+          totalCategories: current.totalCategories,
+          lowStockItems: Number(lowStockResult?.count || 0),
+          viewsChange: calculateChange(current.totalViews, previous.totalViews),
+          productsChange: calculateChange(
+            current.activeProducts,
+            previous.activeProducts,
+          ),
+          bannersChange: calculateChange(
+            current.activeBanners,
+            previous.activeBanners,
+          ),
+          categoriesChange: calculateChange(
+            current.totalCategories,
+            previous.totalCategories,
+          ),
+        };
+      } catch (error: any) {
+        logger.error(`Error in getShopStats: ${error.message}`, { error });
         throw error;
       }
     },

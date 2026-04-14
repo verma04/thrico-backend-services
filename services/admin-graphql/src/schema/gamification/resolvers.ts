@@ -12,10 +12,12 @@ import {
   user,
 } from "@thrico/database";
 // import { equal } from "assert";
-import { eq, desc, and, gte, count, sql } from "drizzle-orm";
+import { eq, desc, and, gte, count, sql, lt } from "drizzle-orm";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import { GraphQLError } from "graphql";
 import { logger } from "@thrico/logging";
+import { getDaterangeFromInput } from "../dashboard/resolvers";
+
 
 import { gamificationClient } from "@thrico/grpc";
 import { GamificationQueryService } from "@thrico/services";
@@ -253,9 +255,15 @@ export const gamificationResolvers = {
       }
     },
 
-    async getGamificationStats(_: any, {}: any, context: any) {
+    async getGamificationStats(
+      _: any,
+      { timeRange, dateRange }: any,
+      context: any,
+    ) {
       try {
         const { db, entity } = await checkAuth(context);
+
+        const { endDate } = getDaterangeFromInput(timeRange, dateRange);
 
         // 1. Basic Counts & Sums
         const [userStats] = await db
@@ -264,36 +272,65 @@ export const gamificationResolvers = {
             totalPoints: sql<number>`sum(${gamificationUser.totalPoints})`,
           })
           .from(gamificationUser)
-          .where(eq(gamificationUser.entityId, entity));
+          .where(
+            and(
+              eq(gamificationUser.entityId, entity),
+              lt(gamificationUser.createdAt, endDate),
+            ),
+          );
 
         const [activePointRulesCount] = await db
           .select({ count: count() })
           .from(pointRules)
           .where(
-            and(eq(pointRules.entityId, entity), eq(pointRules.isActive, true)),
+            and(
+              eq(pointRules.entityId, entity),
+              eq(pointRules.isActive, true),
+              lt(pointRules.createdAt, endDate),
+            ),
           );
 
         const [activeBadgesCount] = await db
           .select({ count: count() })
           .from(badges)
-          .where(and(eq(badges.entityId, entity), eq(badges.isActive, true)));
+          .where(
+            and(
+              eq(badges.entityId, entity),
+              eq(badges.isActive, true),
+              lt(badges.createdAt, endDate),
+            ),
+          );
 
         const [activeRanksCount] = await db
           .select({ count: count() })
           .from(ranks)
-          .where(and(eq(ranks.entityId, entity), eq(ranks.isActive, true)));
+          .where(
+            and(
+              eq(ranks.entityId, entity),
+              eq(ranks.isActive, true),
+              lt(ranks.createdAt, endDate),
+            ),
+          );
 
         const [totalBadgesEarnedCount] = await db
           .select({ count: count() })
           .from(userBadges)
           .innerJoin(badges, eq(userBadges.badgeId, badges.id))
           .where(
-            and(eq(badges.entityId, entity), eq(userBadges.isCompleted, true)),
+            and(
+              eq(badges.entityId, entity),
+              eq(userBadges.isCompleted, true),
+              lt(userBadges.earnedAt, endDate),
+            ),
           );
 
         // 2. Top Rank
         const topRank = await db.query.ranks.findFirst({
-          where: and(eq(ranks.entityId, entity), eq(ranks.isActive, true)),
+          where: and(
+            eq(ranks.entityId, entity),
+            eq(ranks.isActive, true),
+            lt(ranks.createdAt, endDate),
+          ),
           orderBy: [desc(ranks.minPoints)],
         });
 
@@ -303,11 +340,16 @@ export const gamificationResolvers = {
           .from(userBadges)
           .innerJoin(badges, eq(userBadges.badgeId, badges.id))
           .where(
-            and(eq(badges.entityId, entity), eq(userBadges.isCompleted, true)),
+            and(
+              eq(badges.entityId, entity),
+              eq(userBadges.isCompleted, true),
+              lt(userBadges.earnedAt, endDate),
+            ),
           )
           .groupBy(userBadges.badgeId)
           .orderBy(desc(count()))
           .limit(1);
+
 
         let mostPopularBadge = null;
         if (popularBadgeRes) {

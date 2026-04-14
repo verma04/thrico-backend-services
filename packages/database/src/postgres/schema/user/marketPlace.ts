@@ -23,6 +23,8 @@ import {
 } from "./enum";
 import { geometry } from "./geomtry";
 import { moderationStateStatusEnum } from "../moderation";
+import { conversation } from "./chat";
+
 
 export const conditionEnum = pgEnum("listingConditionEnums", [
   "NEW",
@@ -84,7 +86,6 @@ export const marketPlaceRelations = relations(marketPlace, ({ one, many }) => ({
   ratings: many(listingRating),
   reports: many(listingReport),
   logs: many(listingLogs),
-  conversations: many(listingConversation),
 }));
 
 export const listingVerification = pgTable("listingVerification", {
@@ -153,39 +154,6 @@ export const listingLogsRelations = relations(listingLogs, ({ one }) => ({
   }),
 }));
 
-// ============================================================================
-// Marketplace Messaging Schema
-// ============================================================================
-
-export const listingConversation = pgTable("listingConversation", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  listingId: uuid("listingId").notNull(),
-  buyerId: uuid("buyerId").notNull(),
-  sellerId: uuid("sellerId").notNull(),
-  lastMessageAt: timestamp("lastMessageAt"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
-});
-
-export const listingConversationRelations = relations(
-  listingConversation,
-  ({ one, many }) => ({
-    listing: one(marketPlace, {
-      fields: [listingConversation.listingId],
-      references: [marketPlace.id],
-    }),
-    buyer: one(user, {
-      fields: [listingConversation.buyerId],
-      references: [user.id],
-    }),
-    seller: one(user, {
-      fields: [listingConversation.sellerId],
-      references: [user.id],
-    }),
-    messages: many(listingMessage),
-  })
-);
-
 export const listingMessage = pgTable("listingMessage", {
   id: uuid("id").defaultRandom().primaryKey(),
   conversationId: uuid("conversationId").notNull(),
@@ -198,9 +166,9 @@ export const listingMessage = pgTable("listingMessage", {
 });
 
 export const listingMessageRelations = relations(listingMessage, ({ one }) => ({
-  conversation: one(listingConversation, {
+  conversation: one(conversation, {
     fields: [listingMessage.conversationId],
-    references: [listingConversation.id],
+    references: [conversation.id],
   }),
   sender: one(user, {
     fields: [listingMessage.senderId],
@@ -231,9 +199,9 @@ export const listingContactRelations = relations(listingContact, ({ one }) => ({
     fields: [listingContact.sellerId],
     references: [user.id],
   }),
-  conversation: one(listingConversation, {
+  conversation: one(conversation, {
     fields: [listingContact.conversationId],
-    references: [listingConversation.id],
+    references: [conversation.id],
   }),
   message: one(listingMessage, {
     fields: [listingContact.messageId],

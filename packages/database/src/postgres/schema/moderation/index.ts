@@ -41,6 +41,14 @@ export const moderationStateStatusEnum = pgEnum("moderation_state_status", [
 ]);
 
 
+export const aiClassificationEnum = pgEnum("ai_classification", [
+  "safe",
+  "spam",
+  "offensive",
+  "harassment",
+  "unclassifiable",
+]);
+
 export const userRiskProfiles = pgTable("user_risk_profiles", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: uuid("user_id")
@@ -66,11 +74,12 @@ export const moderationLogs = pgTable("moderation_logs", {
   userId: uuid("user_id").references(() => user.id),
 
   aiScore: decimal("ai_score", { precision: 5, scale: 4 }), // 0.0000 to 1.0000
-  aiLabel: text("ai_label"), // toxic, spam, etc
+  aiLabel: aiClassificationEnum("ai_label"), // safe, spam, etc
   aiCategories: jsonb("ai_categories"), // Full category breakdown
 
   decision: moderationDecisionEnum("decision"),
   actionTaken: text("action_taken"), // description of action
+  reason: text("reason"), // explanation from AI or human
 
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -79,9 +88,10 @@ export const aiModerationLogs = pgTable("ai_moderation_logs", {
   id: uuid("id").defaultRandom().primaryKey(),
   contentId: text("content_id").notNull(),
   entityId: uuid("entity_id").references(() => entity.id),
-  classification: text("classification"), // safe, offensive, toxic, etc
+  classification: aiClassificationEnum("classification"), // safe, offensive, toxic, etc
   confidence: decimal("confidence", { precision: 5, scale: 4 }), // 0.0000 to 1.0000
   model: text("model_used"), // e.g. llama3
+  reason: text("reason"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -189,6 +199,7 @@ export const moderationSettings = pgTable("moderation_settings", {
   spamThreshold: integer("spam_threshold").default(50),
   autoFlagThreshold: integer("auto_flag_threshold").default(3),
   autoHideThreshold: integer("auto_hide_threshold").default(5),
+  aiClassificationDefinitions: jsonb("ai_classification_definitions"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

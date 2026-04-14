@@ -28,7 +28,7 @@ export const typeDefs = `#graphql
   }
   type chooseAccount {
     token: String
-    theme: entityTheme
+    entityTheme: entityTheme
     isDeletionPending: Boolean
     deletionRequestedAt: Date
     isActive: Boolean
@@ -50,6 +50,7 @@ export const typeDefs = `#graphql
     lastActive: Date
     country: String
     isMember: Boolean
+    entityTheme: entityTheme
   }
 
   # User type removed here as it is defined in other modules (feed/jobs)
@@ -168,7 +169,7 @@ export const typeDefs = `#graphql
     POLLS
     STORIES
     FEED
-
+    LIVE
    
   }
 

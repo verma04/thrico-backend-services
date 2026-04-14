@@ -4,7 +4,7 @@
   "description": "Thrico Moderation Worker - Asynchronous moderation engine",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "nodemon --exec tsx src/server.ts",
+    "dev": "nodemon --exec tsx src/index.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "clean": "rm -rf dist *.tsbuildinfo"
@@ -13,6 +13,7 @@
     "@thrico/database": "workspace:*",
     "@thrico/logging": "workspace:*",
     "@thrico/shared": "workspace:*",
+    "@thrico/services": "workspace:*",
     "amqp-connection-manager": "^5.0.0",
     "amqplib": "^0.10.9",
     "dotenv": "^16.4.5",

@@ -1,8 +1,16 @@
 export const chatTypes = `#graphql
   scalar Upload
 
+  enum ChatTypeEnum {
+    CONNECTION
+    MARKETPLACE
+    MENTORSHIP
+    ALL
+  }
+
   input chatID {
     userID: ID
+    chatType: ChatTypeEnum
   }
   input inputSendMessage {
     chatId: ID!
@@ -13,12 +21,15 @@ export const chatTypes = `#graphql
     userID: ID
   }
 
-  input messageID {
-    id: ID
+  input MessagesInput {
+    id: ID!
+    first: Int
+    after: String
   }
 
   type chat {
     id: ID
+    chatType: ChatTypeEnum
   }
   type senderDetails {
     firstName: String
@@ -31,6 +42,7 @@ export const chatTypes = `#graphql
   }
   type inbox {
     id: ID
+    chatId: ID
     sender: sender
     message: messages
   }
@@ -40,14 +52,83 @@ export const chatTypes = `#graphql
     content: String
     sender: sender
     messageType: String
+    senderType: String
     createdAt: Date
   }
+
+  type MessageEdge {
+    cursor: String!
+    node: messages!
+  }
+
+  type MessagesPageInfo {
+    hasNextPage: Boolean!
+    endCursor: String
+  }
+
+  type MessagesConnection {
+    edges: [MessageEdge!]!
+    pageInfo: MessagesPageInfo!
+  }
+
+  type InboxEdge {
+    cursor: String!
+    node: inbox!
+  }
+
+  type InboxPageInfo {
+    hasNextPage: Boolean!
+    endCursor: String
+  }
+
+  type InboxConnection {
+    edges: [InboxEdge!]!
+    pageInfo: InboxPageInfo!
+  }
+
+  type ChatProfileUser {
+    id: ID!
+    firstName: String
+    lastName: String
+    avatar: String
+    headline: String
+  }
+
+  type ChatProfileListing {
+    id: ID!
+    title: String
+    price: String
+    currency: String
+    slug: String
+    isSold: Boolean
+    image: String
+  }
+
+  type ChatProfile {
+    chatId: ID!
+    chatType: ChatTypeEnum
+    user: ChatProfileUser!
+    isOnline: Boolean!
+    lastActive: Date
+    listing: ChatProfileListing
+  }
+
+  type SearchConnectionResult {
+    id: ID!
+    userId: ID!
+    firstName: String
+    lastName: String
+    avatar: String
+  }
+
   extend type Query {
-    getAllMessages(input: messageID): [messages]
-    getInbox: [inbox]
+    getAllMessages(input: MessagesInput!): MessagesConnection
+    getInbox(first: Int, after: String, category: ChatTypeEnum): InboxConnection
+    getChatProfile(chatId: ID!): ChatProfile
+    searchConnections(search: String!, first: Int): [SearchConnectionResult!]!
   }
   extend type Mutation {
-    sendMessageInChat(input: inputSendMessage): [chat]
+    sendMessageInChat(input: inputSendMessage): messages
     startChat(input: chatID): chat
   }
   extend type Subscription {

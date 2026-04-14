@@ -17,6 +17,28 @@ export const moderationTypes = `#graphql
     DISMISSED
   }
 
+  enum AiClassification {
+    safe
+    spam
+    offensive
+    harassment
+  }
+
+  enum ModerationContentType {
+    POST
+    COMMENT
+    MARKETPLACE
+    COMMUNITY
+    EVENT
+    SHOP
+    OFFER
+    JOB
+    DISCUSSION_FORUM
+    DISCUSSION_FORUM_COMMENT
+    MESSAGE
+    USER
+  }
+
   type BannedWord {
     id: ID!
     entityId: ID!
@@ -24,8 +46,8 @@ export const moderationTypes = `#graphql
     severity: Severity!
     category: String
     isActive: Boolean!
-    createdAt: String!
-    updatedAt: String!
+    createdAt: Date!
+    updatedAt: Date!
   }
 
   type BlockedLink {
@@ -35,13 +57,13 @@ export const moderationTypes = `#graphql
     type: LinkType!
     isBlocked: Boolean!
     reason: String
-    createdAt: String!
+    createdAt: Date!
   }
 
   type ContentReport {
     id: ID!
     entityId: ID!
-    contentType: String!
+    contentType: ModerationContentType!
     contentId: String!
     contentPreview: String
     reportedBy: User!
@@ -51,7 +73,7 @@ export const moderationTypes = `#graphql
     reportsCount: Int
     resolvedBy: User
     resolvedAt: String
-    createdAt: String!
+    createdAt: Date!
   }
 
   type ModerationSettings {
@@ -64,7 +86,8 @@ export const moderationTypes = `#graphql
     spamThreshold: Int!
     autoFlagThreshold: Int!
     autoHideThreshold: Int!
-    createdAt: String!
+    aiClassificationDefinitions: JSON
+    createdAt: Date!
     updatedAt: String!
   }
 
@@ -85,6 +108,7 @@ export const moderationTypes = `#graphql
     spamThreshold: Int
     autoFlagThreshold: Int
     autoHideThreshold: Int
+    aiClassificationDefinitions: JSON
   }
 
   type PaginatedBannedWordResponse {
@@ -106,14 +130,51 @@ export const moderationTypes = `#graphql
     id: ID!
     contentId: String!
     entityId: String!
-    classification: String
+    classification: AiClassification
     confidence: Float
     model: String
-    createdAt: String!
+    reason: String
+    createdAt: Date!
   }
 
   type PaginatedAiModerationLogResponse {
     items: [AiModerationLog!]!
+    totalCount: Int!
+  }
+
+  type ModerationLog {
+    id: ID!
+    entityId: ID!
+    contentId: String!
+    contentType: ModerationContentType!
+    contentPreview: String
+    userId: ID
+    aiScore: Float
+    aiLabel: AiClassification
+    aiCategories: JSON
+    decision: String
+    actionTaken: String
+    reason: String
+    createdAt: Date!
+    user: User
+  }
+
+  type PaginatedModerationLogResponse {
+    items: [ModerationLog!]!
+    totalCount: Int!
+  }
+
+  type AiTokenUsage {
+    id: ID!
+    entityId: ID!
+    module: String!
+    tokens: Int!
+    model: String!
+    createdAt: Date!
+  }
+
+  type PaginatedAiTokenUsageResponse {
+    items: [AiTokenUsage!]!
     totalCount: Int!
   }
 
@@ -122,6 +183,7 @@ export const moderationTypes = `#graphql
     pendingModeration: Int!
     flaggedContent: Int!
     rejectedPosts: Int!
+    totalTokens: Int!
   }
 
   extend type Query {
@@ -129,14 +191,16 @@ export const moderationTypes = `#graphql
     getBlockedLinks(limit: Int, offset: Int): PaginatedBlockedLinkResponse!
     getContentReports(
       status: ReportStatus
-      contentType: String
+      contentType: ModerationContentType
       limit: Int
       offset: Int
     ): PaginatedContentReportResponse!
     getModerationSettings: ModerationSettings!
-    getModerationStats: ModerationStats!
-    getAiModerationLogs(limit: Int, offset: Int): PaginatedAiModerationLogResponse!
-    getAiModerationDashboard: AiModerationDashboard!
+    getModerationStats(timeRange: TimeRange, dateRange: DateRangeInput): ModerationStats!
+    getAiModerationLogs(limit: Int, offset: Int, classification: AiClassification): PaginatedAiModerationLogResponse!
+    getAiModerationDashboard(timeRange: TimeRange, dateRange: DateRangeInput): AiModerationDashboard!
+    getModerationLogs(limit: Int, offset: Int, contentType: ModerationContentType, userId: ID, aiLabel: AiClassification): PaginatedModerationLogResponse!
+    getAiTokenUsage(limit: Int, offset: Int, module: String): PaginatedAiTokenUsageResponse!
   }
 
   extend type Mutation {

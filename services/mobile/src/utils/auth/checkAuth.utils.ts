@@ -23,6 +23,10 @@ const checkAuth = async (context: any): Promise<any> => {
     return authCache.get(context);
   }
   if (!context.headers?.authorization) {
+    log.error(
+      "Authentication failed: Authorization header missing",
+      context.headers,
+    );
     throw new GraphQLError("Permission Denied", {
       extensions: {
         code: 403,
@@ -71,6 +75,9 @@ const checkAuth = async (context: any): Promise<any> => {
         return result;
       } catch (err) {
         if (err instanceof GraphQLError) throw err;
+        log.error("Authentication failed: Invalid or expired token", {
+          error: err instanceof Error ? err.message : String(err),
+        });
         throw new GraphQLError("Invalid/Expired token", {
           extensions: {
             code: 403,
@@ -79,6 +86,7 @@ const checkAuth = async (context: any): Promise<any> => {
         });
       }
     }
+    log.error("Authentication failed: Bearer token missing in header");
     throw new GraphQLError("Permission Denied", {
       extensions: {
         code: 403,
@@ -86,6 +94,7 @@ const checkAuth = async (context: any): Promise<any> => {
       },
     });
   }
+  log.error("Authentication failed: Token decryption failed");
   throw new GraphQLError("Permission Denied", {
     extensions: {
       code: 403,

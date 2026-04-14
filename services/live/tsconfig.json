@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "baseUrl": ".",
+    "skipLibCheck": true,
+    "paths": {
+      "@thrico/shared": ["../../packages/shared/src"],
+      "@thrico/shared/*": ["../../packages/shared/src/*"],
+      "@thrico/database": ["../../packages/database/src"],
+      "@thrico/database/*": ["../../packages/database/src/*"],
+      "@thrico/logging": ["../../packages/logging/src"],
+      "@thrico/logging/*": ["../../packages/logging/src/*"]
+    }
+  },
+  "include": ["src/**/*", "../../packages/*/src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
