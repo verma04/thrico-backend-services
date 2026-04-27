@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { eventsMedia } from "@thrico/database";
 import checkAuth from "../../utils/auth/checkAuth.utils";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 
 export const mediaResolvers = {
   Query: {
@@ -32,6 +33,17 @@ export const mediaResolvers = {
             isPublic: input.isPublic ?? true,
           })
           .returning();
+
+        const { id: adminId, entity: entityId } = await checkAuth(context);
+        await createAuditLog(db, {
+          adminId,
+          entityId,
+          module: "EVENT_MEDIA",
+          action: "CREATE",
+          resourceId: media.id,
+          newState: media,
+        });
+
         return media;
       } catch (error) {
         console.log("Error adding event media:", error);
@@ -40,7 +52,11 @@ export const mediaResolvers = {
     },
     async updateEventMedia(_: any, { mediaId, input }: any, context: any) {
       try {
-        const { db } = await checkAuth(context);
+        const { db, id: adminId, entity: entityId } = await checkAuth(context);
+        const existing = await db.query.eventsMedia.findFirst({
+          where: eq(eventsMedia.id, mediaId),
+        });
+
         const [media] = await db
           .update(eventsMedia)
           .set({
@@ -53,6 +69,17 @@ export const mediaResolvers = {
           })
           .where(eq(eventsMedia.id, mediaId))
           .returning();
+
+        await createAuditLog(db, {
+          adminId,
+          entityId,
+          module: "EVENT_MEDIA",
+          action: "UPDATE",
+          resourceId: media.id,
+          previousState: existing,
+          newState: media,
+        });
+
         return media;
       } catch (error) {
         console.log("Error updating event media:", error);
@@ -61,8 +88,22 @@ export const mediaResolvers = {
     },
     async deleteEventMedia(_: any, { mediaId }: any, context: any) {
       try {
-        const { db } = await checkAuth(context);
+        const { db, id: adminId, entity: entityId } = await checkAuth(context);
+        const existing = await db.query.eventsMedia.findFirst({
+          where: eq(eventsMedia.id, mediaId),
+        });
+
         await db.delete(eventsMedia).where(eq(eventsMedia.id, mediaId));
+
+        await createAuditLog(db, {
+          adminId,
+          entityId,
+          module: "EVENT_MEDIA",
+          action: "DELETE",
+          resourceId: mediaId,
+          previousState: existing,
+        });
+
         return true;
       } catch (error) {
         console.log("Error deleting event media:", error);
@@ -75,7 +116,11 @@ export const mediaResolvers = {
       context: any,
     ) {
       try {
-        const { db } = await checkAuth(context);
+        const { db, id: adminId, entity: entityId } = await checkAuth(context);
+        const existing = await db.query.eventsMedia.findFirst({
+          where: eq(eventsMedia.id, mediaId),
+        });
+
         const [media] = await db
           .update(eventsMedia)
           .set({
@@ -84,6 +129,17 @@ export const mediaResolvers = {
           })
           .where(eq(eventsMedia.id, mediaId))
           .returning();
+
+        await createAuditLog(db, {
+          adminId,
+          entityId,
+          module: "EVENT_MEDIA",
+          action: "UPDATE_VISIBILITY",
+          resourceId: mediaId,
+          previousState: existing,
+          newState: media,
+        });
+
         return media;
       } catch (error) {
         console.log("Error updating event media visibility:", error);

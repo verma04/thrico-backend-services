@@ -6,7 +6,7 @@ dotenv.config({ path: path.resolve(__dirname, "../../../.env") });
 
 import { createServer } from "http";
 import { WebSocketServer } from "ws";
-import { useServer } from "graphql-ws/use/ws";
+import { useServer } from "graphql-ws/lib/use/ws";
 import { makeExecutableSchema } from "@graphql-tools/schema";
 import { ApolloServer } from "@apollo/server";
 import { ApolloServerPluginDrainHttpServer } from "@apollo/server/plugin/drainHttpServer";

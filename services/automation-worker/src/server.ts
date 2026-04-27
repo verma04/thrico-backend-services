@@ -122,6 +122,7 @@ async function executeAction(
         userId,
         entityId: context?.entityId || action.entityId,
         content: action.message || "New notification",
+        module: "FEED",
         type: action.notificationType || "SYSTEM",
         shouldSendPush: !!action.push,
         pushTitle: action.pushTitle,

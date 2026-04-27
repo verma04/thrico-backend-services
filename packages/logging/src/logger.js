@@ -3,11 +3,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.log = void 0;
+exports.log = exports.morganStream = void 0;
+exports.createChildLogger = createChildLogger;
 const winston_1 = __importDefault(require("winston"));
 const winston_daily_rotate_file_1 = __importDefault(require("winston-daily-rotate-file"));
 const path_1 = __importDefault(require("path"));
 const shared_1 = require("@thrico/shared");
+const SERVICE_NAME = process.env.OTEL_SERVICE_NAME || 'thrico-service';
 const LOG_DIR = shared_1.ENV.LOG_DIR;
 // Define custom log levels
 const customLevels = {
@@ -81,10 +83,31 @@ const logger = winston_1.default.createLogger({
     levels: customLevels.levels,
     level: shared_1.ENV.LOG_LEVEL,
     format: logFormat,
+    defaultMeta: { service: SERVICE_NAME },
     transports,
     exitOnError: false,
 });
-// Export logger methods
+// ─── Child logger factory ─────────────────────────────────────────────────────
+// Creates a child logger pre-tagged with a module/component label so every
+// log line emitted by that module carries consistent metadata — useful when
+// correlating across multiple services in the OTel trace viewer.
+//
+//   const moduleLog = createChildLogger('UserService');
+//   moduleLog.info('user created', { userId });
+function createChildLogger(module, extra) {
+    return logger.child({ module, ...extra });
+}
+// ─── Morgan-compatible stream ─────────────────────────────────────────────────
+// Pass this to Morgan so HTTP request logs are routed through Winston
+// (and therefore also forwarded to the OTel OTLP log collector).
+//
+//   app.use(morgan('combined', { stream: morganStream }));
+exports.morganStream = {
+    write: (message) => {
+        logger.http(message.trim());
+    },
+};
+// ─── Flat convenience exports ─────────────────────────────────────────────────
 exports.log = {
     error: (message, meta) => logger.error(message, meta),
     warn: (message, meta) => logger.warn(message, meta),

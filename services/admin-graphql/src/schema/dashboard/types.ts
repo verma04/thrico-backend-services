@@ -146,6 +146,19 @@ export const dashboardTypes = gql`
     modules: [PlatformModuleActivityItem!]!
   }
 
+  type DeviceDataPoint {
+    date: String!
+    android: Int!
+    ios: Int!
+    web: Int!
+  }
+
+  type LoginSessionReportPoint {
+    time: String!
+    desktop: Int!
+    mobile: Int!
+  }
+
   type MembersStats {
     totalMembers: Int!
     activeMembers: Int!
@@ -201,6 +214,15 @@ export const dashboardTypes = gql`
       timeRange: TimeRange
       dateRange: DateRangeInput
     ): PlatformModuleActivity!
+    getDeviceDistribution(
+      timeRange: TimeRange
+      dateRange: DateRangeInput
+    ): [DeviceDataPoint!]!
+    getLoginSessionsReport(
+      timeRange: TimeRange
+      dateRange: DateRangeInput
+      groupBy: GroupBy
+    ): [LoginSessionReportPoint!]!
   }
 
   extend type Mutation {

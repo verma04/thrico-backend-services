@@ -1,4 +1,4 @@
-import { sql, eq, and, ilike, or } from "drizzle-orm";
+import { sql, eq, and, ilike, or, lt } from "drizzle-orm";
 import {
   offers,
   offerCategories,
@@ -8,12 +8,19 @@ import {
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import { GraphQLError } from "graphql";
 import upload from "../../utils/upload/upload";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
+import { getDaterangeFromInput } from "../dashboard/resolvers";
 
 export const offersResolvers = {
   Query: {
-    async getOfferStats(_: any, { timeRange }: any, context: any) {
+    async getOfferStats(_: any, { timeRange, dateRange }: any, context: any) {
       try {
         const { entity, db } = await checkAuth(context);
+
+        const { startDate, endDate } = getDaterangeFromInput(
+          timeRange,
+          dateRange,
+        );
 
         const stats = await db
           .select({
@@ -26,7 +33,7 @@ export const offersResolvers = {
             views: sql`sum(${offers.viewsCount})`.mapWith(Number),
           })
           .from(offers)
-          .where(eq(offers.entityId, entity));
+          .where(and(eq(offers.entityId, entity), lt(offers.createdAt, endDate)));
 
         const result = stats[0] || {
           totalOffers: 0,
@@ -140,13 +147,24 @@ export const offersResolvers = {
           })
           .returning();
 
-        return await db.query.offers.findFirst({
+        const result = await db.query.offers.findFirst({
           where: eq(offers.id, newOffer.id),
           with: {
             category: true,
             verification: true,
           },
         });
+
+        await createAuditLog(db, {
+          adminId: userId,
+          entityId: entity,
+          module: "OFFERS",
+          action: "CREATE_OFFER",
+          resourceId: newOffer.id,
+          newState: input,
+        });
+
+        return result;
       } catch (error) {
         console.error("Error in createOffer:", error);
         throw error;

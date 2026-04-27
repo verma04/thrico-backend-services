@@ -30,6 +30,8 @@ export const websiteTypes = `#graphql
     borderRadius: Int
     spacing: Float
     fontSize: Int
+    buttonTextColor: String
+    buttonColor: String
   }
   type CustomThemeColors {
     primary: String
@@ -41,6 +43,8 @@ export const websiteTypes = `#graphql
     borderRadius: Int
     spacing: Float
     fontSize: Int
+    buttonTextColor: String
+    buttonColor: String
   }
 
   type Navbar {

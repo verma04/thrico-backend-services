@@ -46,6 +46,9 @@ import { auditLogResolvers } from "./admin/auditLog.resolvers";
 import { addonPricingResolvers } from "./addon-pricing/resolvers";
 import { emailCampaignResolvers } from "./email-campaigns/resolvers";
 import { automationResolvers } from "./automation/resolvers";
+import { mcpResolvers } from "./mcp/resolvers";
+import { wallOfFameResolvers } from "./wall-of-fame/resolvers";
+import { industryResolvers } from "./industry/resolvers";
 
 const mainResolvers = {
   Query: {
@@ -223,6 +226,8 @@ export const resolvers: any = {
   ...addonPricingResolvers,
   ...auditLogResolvers,
   ...rbacResolvers,
+  ...wallOfFameResolvers,
+  ...industryResolvers,
   Query: {
     ...mainResolvers.Query,
     ...adminResolvers.Query,
@@ -262,6 +267,9 @@ export const resolvers: any = {
     ...emailCampaignResolvers.Query,
     ...automationResolvers.Query,
     ...rbacResolvers.Query,
+    ...mcpResolvers.Query,
+    ...wallOfFameResolvers.Query,
+    ...industryResolvers.Query,
   },
   Mutation: {
     ...mainResolvers.Mutation,
@@ -300,5 +308,8 @@ export const resolvers: any = {
     ...emailCampaignResolvers.Mutation,
     ...automationResolvers.Mutation,
     ...rbacResolvers.Mutation,
+    ...mcpResolvers.Mutation,
+    ...wallOfFameResolvers.Mutation,
+    ...industryResolvers.Mutation,
   },
 };

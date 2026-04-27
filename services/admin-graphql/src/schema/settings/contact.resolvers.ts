@@ -1,6 +1,7 @@
 import { ContactService } from "@thrico/services";
 import { log } from "@thrico/logging";
 import checkAuth from "../../utils/auth/checkAuth.utils";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 
 export const contactResolvers = {
   Query: {
@@ -31,12 +32,23 @@ export const contactResolvers = {
   Mutation: {
     updateContactStatus: async (_: any, { id, status }: any, context: any) => {
       try {
-        const { db, entityId } = context.user || (await checkAuth(context));
-        return await ContactService.updateContactStatus(db, {
+        const { db, entityId, id: adminId } = context.user || (await checkAuth(context));
+        const result = await ContactService.updateContactStatus(db, {
           id,
           status,
           entityId,
         });
+
+        await createAuditLog(db, {
+          adminId: adminId,
+          entityId: entityId,
+          module: "SETTINGS",
+          action: "UPDATE_CONTACT_STATUS",
+          resourceId: id,
+          newState: { status },
+        });
+
+        return result;
       } catch (error) {
         log.error("Error in updateContactStatus resolver", { error });
         throw error;

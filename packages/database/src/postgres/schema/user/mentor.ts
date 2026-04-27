@@ -55,9 +55,10 @@ export const mentorShip = pgTable("mentorships", {
   availability: json("availability").notNull(),
   agreement: boolean("agreement").notNull(),
   isFeatured: boolean("isFeatured").notNull().default(false),
+  isTopMentor: boolean("isTopMentor").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
-  category: text("category"),
+  category: uuid("category"),
   skills: jsonb("skills").$type<string[]>(),
   cityId: uuid("city_id"),
 });
@@ -67,9 +68,9 @@ export const mentorShipRelations = relations(mentorShip, ({ one, many }) => ({
     fields: [mentorShip.entity],
     references: [entity.id],
   }),
-  user: one(userToEntity, {
-    fields: [mentorShip.user],
-    references: [userToEntity.id],
+  mentorUser: one(userToEntity, {
+    fields: [mentorShip.user, mentorShip.entity],
+    references: [userToEntity.userId, userToEntity.entityId],
   }),
 
   mentorShipTestimonial: many(mentorShipTestimonials),
@@ -77,6 +78,10 @@ export const mentorShipRelations = relations(mentorShip, ({ one, many }) => ({
   city: one(cities, {
     fields: [mentorShip.cityId],
     references: [cities.id],
+  }),
+  category: one(mentorshipCategory, {
+    fields: [mentorShip.category],
+    references: [mentorshipCategory.id],
   }),
 }));
 
@@ -178,7 +183,7 @@ export const mentorshipCategory = pgTable("mentorshipCategory", {
 export const mentorshipCategoryRelations = relations(
   mentorshipCategory,
   ({ one, many }) => ({
-    // mentorShip: many(mentorShip),
+    mentorShip: many(mentorShip),
     entity: one(entity, {
       fields: [mentorshipCategory.entity],
       references: [entity.id],

@@ -79,6 +79,37 @@ export const rewardsResolvers = {
       return 5;
     },
 
+    async getUserBalances(_: any, __: any, context: any) {
+      try {
+        const auth = context.user || (await checkAuth(context));
+        const { db } = auth;
+        let { userId, entityId } = auth;
+
+        if ((!entityId || !userId) && userId) {
+          const userRecord = await db.query.user.findFirst({
+            where: eq(user.id, userId),
+          });
+          if (userRecord) {
+            userId = userId || userRecord.id;
+            entityId = entityId || userRecord.entityId;
+          }
+        }
+
+        if (!userId || !entityId) {
+          throw new Error("Missing user or entity identity");
+        }
+
+        return await RewardsService.getUserBalances({
+          userId,
+          entityId,
+          db,
+        });
+      } catch (error) {
+        log.error("Error in getUserBalances resolver", { error });
+        throw error;
+      }
+    },
+
     ...spinResolvers.Query,
     ...scratchResolvers.Query,
     ...matchWinResolvers.Query,

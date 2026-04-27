@@ -6,6 +6,7 @@ import {
   eventsRegistrationFields,
 } from "@thrico/database";
 import checkAuth from "../../utils/auth/checkAuth.utils";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 
 export const registrationResolvers = {
   Query: {
@@ -42,7 +43,7 @@ export const registrationResolvers = {
       context: any,
     ) {
       try {
-        const { db } = await checkAuth(context);
+        const { db, id: adminId, entity: entityId } = await checkAuth(context);
 
         // Find existing settings
         const existingSettings =
@@ -71,6 +72,17 @@ export const registrationResolvers = {
             })
             .where(eq(eventsRegistrationSettings.eventId, input.eventId))
             .returning();
+
+          await createAuditLog(db, {
+            adminId,
+            entityId,
+            module: "EVENT_REGISTRATION",
+            action: "UPDATE_SETTINGS",
+            resourceId: input.eventId,
+            previousState: existingSettings,
+            newState: updated,
+          });
+
           return updated;
         } else {
           // Insert
@@ -85,6 +97,16 @@ export const registrationResolvers = {
               confirmationBody: input.confirmationBody,
             })
             .returning();
+
+          await createAuditLog(db, {
+            adminId,
+            entityId,
+            module: "EVENT_REGISTRATION",
+            action: "CREATE_SETTINGS",
+            resourceId: input.eventId,
+            newState: inserted,
+          });
+
           return inserted;
         }
       } catch (error) {
@@ -107,6 +129,17 @@ export const registrationResolvers = {
             displayOrder: input.displayOrder ?? 0,
           })
           .returning();
+
+        const { id: adminId, entity: entityId } = await checkAuth(context);
+        await createAuditLog(db, {
+          adminId,
+          entityId,
+          module: "EVENT_REGISTRATION_FIELD",
+          action: "CREATE",
+          resourceId: field.id,
+          newState: field,
+        });
+
         return field;
       } catch (error) {
         console.log("Error adding registration field:", error);
@@ -119,7 +152,11 @@ export const registrationResolvers = {
       context: any,
     ) {
       try {
-        const { db } = await checkAuth(context);
+        const { db, id: adminId, entity: entityId } = await checkAuth(context);
+        const existing = await db.query.eventsRegistrationFields.findFirst({
+          where: eq(eventsRegistrationFields.id, fieldId),
+        });
+
         const [field] = await db
           .update(eventsRegistrationFields)
           .set({
@@ -133,6 +170,17 @@ export const registrationResolvers = {
           })
           .where(eq(eventsRegistrationFields.id, fieldId))
           .returning();
+
+        await createAuditLog(db, {
+          adminId,
+          entityId,
+          module: "EVENT_REGISTRATION_FIELD",
+          action: "UPDATE",
+          resourceId: field.id,
+          previousState: existing,
+          newState: field,
+        });
+
         return field;
       } catch (error) {
         console.log("Error updating registration field:", error);
@@ -141,10 +189,24 @@ export const registrationResolvers = {
     },
     async deleteEventRegistrationField(_: any, { fieldId }: any, context: any) {
       try {
-        const { db } = await checkAuth(context);
+        const { db, id: adminId, entity: entityId } = await checkAuth(context);
+        const existing = await db.query.eventsRegistrationFields.findFirst({
+          where: eq(eventsRegistrationFields.id, fieldId),
+        });
+
         await db
           .delete(eventsRegistrationFields)
           .where(eq(eventsRegistrationFields.id, fieldId));
+
+        await createAuditLog(db, {
+          adminId,
+          entityId,
+          module: "EVENT_REGISTRATION_FIELD",
+          action: "DELETE",
+          resourceId: fieldId,
+          previousState: existing,
+        });
+
         return true;
       } catch (error) {
         console.log("Error deleting registration field:", error);

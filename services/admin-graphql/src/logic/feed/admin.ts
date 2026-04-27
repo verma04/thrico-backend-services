@@ -5,10 +5,9 @@ import {
   feedReactions,
   media,
 } from "@thrico/database";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, sql, gte, lte } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
-import upload from "../../utils/upload/uploadImageToFolder.utils";
-
+import { StorageService } from "@thrico/services";
 export const getAllFeedEntity = async ({
   db,
   offset = 0,
@@ -122,8 +121,14 @@ export const addFeedAdmin = async ({
     let uploadedMediaUrls: string[] = [];
     if (mediaFiles && mediaFiles.length > 0) {
       // Upload media files
-      const uploadResults = await upload("feed-media", mediaFiles);
-      uploadedMediaUrls = uploadResults.map((res: any) => res.url);
+      const uploadResults = await StorageService.uploadImages(
+        mediaFiles,
+        entity,
+        "FEED",
+        entity,
+        db
+      );
+      uploadedMediaUrls = uploadResults.map((res: any) => res.file);
     }
 
     const [newFeed] = await db
@@ -378,16 +383,90 @@ export const getFeedIntelligenceKPI = async ({
   dateRange?: { startDate: string; endDate: string };
 }) => {
   try {
-    // Initial implementation with placeholder data that can be refined with actual analytics logic
+    const calculateDates = () => {
+      let start: Date;
+      let end = new Date();
+      let prevStart: Date;
+      let prevEnd: Date;
+
+      if (dateRange && dateRange.startDate && dateRange.endDate) {
+        start = new Date(dateRange.startDate);
+        end = new Date(dateRange.endDate);
+        const duration = end.getTime() - start.getTime();
+        prevEnd = new Date(start.getTime());
+        prevStart = new Date(start.getTime() - duration);
+      } else {
+        const now = Date.now();
+        switch (timeRange) {
+          case "LAST_24_HOURS":
+            start = new Date(now - 24 * 60 * 60 * 1000);
+            break;
+          case "LAST_7_DAYS":
+            start = new Date(now - 7 * 24 * 60 * 60 * 1000);
+            break;
+          case "LAST_30_DAYS":
+            start = new Date(now - 30 * 24 * 60 * 60 * 1000);
+            break;
+          case "LAST_90_DAYS":
+            start = new Date(now - 90 * 24 * 60 * 60 * 1000);
+            break;
+          default:
+            start = new Date(now - 30 * 24 * 60 * 60 * 1000);
+        }
+        const duration = end.getTime() - start.getTime();
+        prevEnd = new Date(start.getTime());
+        prevStart = new Date(start.getTime() - duration);
+      }
+      return { start, end, prevStart, prevEnd };
+    };
+
+    const { start, end, prevStart, prevEnd } = calculateDates();
+
+    const getMetrics = async (s: Date, e: Date) => {
+      const result = await db
+        .select({
+          comments: sql`sum(${userFeed.totalComment})`.mapWith(Number),
+          reactions: sql`sum(${userFeed.totalReactions})`.mapWith(Number),
+          shares: sql`sum(${userFeed.totalReShare})`.mapWith(Number),
+          count: sql`count(*)`.mapWith(Number),
+        })
+        .from(userFeed)
+        .where(
+          and(
+            eq(userFeed.entity, entity),
+            gte(userFeed.createdAt, s),
+            lte(userFeed.createdAt, e)
+          )
+        );
+
+      const metrics = result[0] || { comments: 0, reactions: 0, shares: 0, count: 0 };
+      const dialogue = (metrics.comments || 0) + (metrics.reactions || 0);
+      // Reach is not directly tracked in userFeed, using a proxy for demonstration
+      // In a production environment, this would come from a specific tracking table
+      const reach = dialogue * 12 + (metrics.count || 0) * 50; 
+      const velocity = metrics.count > 0 ? dialogue / metrics.count : 0;
+      const yieldVal = reach > 0 ? (dialogue / reach) * 100 : 0;
+
+      return { dialogue, reach, velocity, yieldVal };
+    };
+
+    const current = await getMetrics(start, end);
+    const previous = await getMetrics(prevStart, prevEnd);
+
+    const calculateTrend = (curr: number, prev: number) => {
+      if (prev === 0) return curr > 0 ? 100 : 0;
+      return ((curr - prev) / prev) * 100;
+    };
+
     return {
-      aggregateReach: 1250000,
-      activeDialogue: 42300,
-      networkVelocity: 88.5,
-      engagementYield: 12.4,
-      reachTrend: 15.2,
-      dialogueTrend: 8.4,
-      velocityTrend: -2.3,
-      yieldTrend: 4.1,
+      aggregateReach: current.reach,
+      activeDialogue: current.dialogue,
+      networkVelocity: current.velocity,
+      engagementYield: current.yieldVal,
+      reachTrend: calculateTrend(current.reach, previous.reach),
+      dialogueTrend: calculateTrend(current.dialogue, previous.dialogue),
+      velocityTrend: calculateTrend(current.velocity, previous.velocity),
+      yieldTrend: calculateTrend(current.yieldVal, previous.yieldVal),
     };
   } catch (error) {
     console.error("Error fetching intelligence KPIs:", error);
@@ -477,6 +556,51 @@ export const getPromotedNodeEvents = async ({
     ];
   } catch (error) {
     console.error("Error fetching promoted events:", error);
+    throw error;
+  }
+};
+
+export const getPostAnalytics = async ({
+  db,
+  entity,
+  input,
+}: {
+  db: AppDatabase;
+  entity: string;
+  input: { id: string };
+}) => {
+  try {
+    // This is a mock implementation. In a real scenario, you would fetch this data
+    // from a database or an analytics service based on the feed ID.
+    return {
+      engagement: [
+        { name: "Likes", value: 120, color: "#6366f1" },
+        { name: "Comments", value: 45, color: "#8b5cf6" },
+        { name: "Shares", value: 12, color: "#10b981" },
+      ],
+      demographics: {
+        age: [
+          { group: "18-24", percentage: 25.5 },
+          { group: "25-34", percentage: 40.2 },
+          { group: "35-44", percentage: 20.3 },
+          { group: "45+", percentage: 14.0 },
+        ],
+        location: [
+          { country: "USA", percentage: 35.0 },
+          { country: "India", percentage: 25.0 },
+          { country: "UK", percentage: 15.0 },
+          { country: "Germany", percentage: 10.0 },
+          { country: "Others", percentage: 15.0 },
+        ],
+      },
+      reachData: {
+        total: 15000,
+        organic: 12000,
+        paid: 3000,
+      },
+    };
+  } catch (error) {
+    console.error("Error fetching post analytics:", error);
     throw error;
   }
 };

@@ -8,12 +8,13 @@
     "services/*"
   ],
   "scripts": {
-    "dev": "concurrently \"npm run dev:user\" \"npm run dev:mobile\" \"npm run dev:admin\" \"npm run dev:grpc\"",
+    "dev": "concurrently \"npm run dev:user\" \"npm run dev:mobile\" \"npm run dev:admin\" \"npm run dev:mcp\" \"npm run dev:grpc\"",
     "dev:live": "NODE_OPTIONS='--max-old-space-size=4096' npm run dev -w services/live",
-    "dev:all": "concurrently \"npm run dev:user\" \"npm run dev:mobile\" \"npm run dev:admin\" \"npm run dev:grpc\" \"npm run dev:live\"",
+    "dev:all": "concurrently \"npm run dev:user\" \"npm run dev:mobile\" \"npm run dev:admin\" \"npm run dev:mcp\" \"npm run dev:grpc\" \"npm run dev:live\"",
     "dev:user": "NODE_OPTIONS='--max-old-space-size=4096' npm run dev -w services/user",
     "dev:mobile": "NODE_OPTIONS='--max-old-space-size=4096' npm run dev -w services/mobile",
     "dev:admin": "NODE_OPTIONS='--max-old-space-size=4096' npm run dev -w services/admin-graphql",
+    "dev:mcp": "NODE_OPTIONS='--max-old-space-size=4096' npm run dev -w services/mcp",
     "dev:grpc": "npm run dev -w packages/grpc",
     "dev:gamification": "npm run dev -w services/gamification-worker",
     "dev:push": "npm run dev -w services/notification-worker",

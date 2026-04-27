@@ -21,8 +21,11 @@ import {
   contentReports,
   moderationLogs,
   userRiskProfiles,
+  USER_LOGIN_SESSION,
 } from "@thrico/database";
 import { entityClient, subscriptionClient } from "@thrico/grpc";
+import { logger } from "@thrico/logging";
+
 
 export const getDaterangeFromInput = (
   timeRange?: string,
@@ -495,7 +498,7 @@ const dashboardResolvers = {
             .map((t: any) => t.name);
         }
       } catch (e) {
-        console.error("Error fetching entity details", e);
+        logger.error("Error fetching entity details", { error: e, entityId });
       }
 
       const results = [];
@@ -706,7 +709,7 @@ const dashboardResolvers = {
             .map((t: any) => t.name);
         }
       } catch (e) {
-        console.error("Error fetching entity details", e);
+        logger.error("Error fetching entity details", { error: e, entityId });
       }
 
       const results = [];
@@ -1271,6 +1274,184 @@ const dashboardResolvers = {
         superfanRatio: { value: 8.4, change: 1.2, trend: mockTrend(8) },
       };
     },
+    async getDeviceDistribution(
+      _: any,
+      {
+        timeRange,
+        dateRange,
+      }: {
+        timeRange?: string;
+        dateRange?: { startDate: string; endDate: string };
+      },
+      context: any,
+    ) {
+      const { entityId } = await checkAuth(context);
+      if (!entityId) {
+        throw new GraphQLError("Permission Denied", {
+          extensions: { code: "FORBIDDEN" },
+        });
+      }
+
+      const { startDate, endDate } = getDaterangeFromInput(
+        timeRange,
+        dateRange,
+      );
+
+      try {
+        // Use scan since the GSI might not be configured perfectly with activeEntityId as partition key
+        const allSessions = await USER_LOGIN_SESSION.scan("activeEntityId")
+          .eq(entityId)
+          .all()
+          .exec();
+
+        // Filter by date range in JS since createdAt is not a sort key on the GSI
+        const sessions = allSessions.filter((s: any) => {
+          const ts = new Date(s.createdAt).getTime();
+          return ts >= startDate.getTime() && ts <= endDate.getTime();
+        });
+
+        // Group by date and count platforms
+        const distributionMap = new Map<
+          string,
+          { android: number; ios: number; web: number }
+        >();
+
+        // Initialize range with zeros to ensure smooth chart performance
+        const current = new Date(startDate);
+        while (current <= endDate) {
+          const dateStr = current.toISOString().split("T")[0];
+          distributionMap.set(dateStr, { android: 0, ios: 0, web: 0 });
+          current.setDate(current.getDate() + 1);
+        }
+
+        sessions.forEach((session: any) => {
+          const dateStr = new Date(session.createdAt)
+            .toISOString()
+            .split("T")[0];
+          const platform = (session.deviceOs || "WEB").toUpperCase();
+
+          const data = distributionMap.get(dateStr);
+          if (data) {
+            if (platform === "ANDROID") data.android++;
+            else if (platform === "IOS") data.ios++;
+            else data.web++;
+          }
+        });
+
+        return Array.from(distributionMap.entries()).map(([date, counts]) => ({
+          date,
+          ...counts,
+        }));
+      } catch (error) {
+        logger.error("Error in getDeviceDistribution", { error, entityId });
+        throw new GraphQLError("Failed to fetch device distribution", {
+          extensions: { code: "INTERNAL_SERVER_ERROR" },
+        });
+      }
+    },
+
+    async getLoginSessionsReport(
+      _: any,
+      {
+        timeRange,
+        dateRange,
+        groupBy = "DAY",
+      }: {
+        timeRange?: string;
+        dateRange?: { startDate: string; endDate: string };
+        groupBy?: "HOUR" | "DAY" | "WEEK" | "MONTH";
+      },
+      context: any,
+    ) {
+      const { entityId } = await checkAuth(context);
+      if (!entityId) {
+        throw new GraphQLError("Permission Denied", {
+          extensions: { code: "FORBIDDEN" },
+        });
+      }
+
+      const { startDate, endDate } = getDaterangeFromInput(
+        timeRange,
+        dateRange,
+      );
+
+      try {
+        const allSessions = await USER_LOGIN_SESSION.scan("activeEntityId")
+          .eq(entityId)
+          .all()
+          .exec();
+
+        // Filter by date range in JS since createdAt is not a sort key on the GSI
+        const sessions = allSessions.filter((s: any) => {
+          const ts = new Date(s.createdAt).getTime();
+          return ts >= startDate.getTime() && ts <= endDate.getTime();
+        });
+
+        const distributionMap = new Map<
+          string,
+          { desktop: number; mobile: number }
+        >();
+
+        const getGroupingKey = (date: Date) => {
+          if (groupBy === "MONTH") {
+            return date.toLocaleString("en-US", { month: "long" });
+          }
+          if (groupBy === "DAY") {
+            return date.toISOString().split("T")[0];
+          }
+          if (groupBy === "HOUR") {
+            const d = new Date(date);
+            d.setMinutes(0, 0, 0);
+            return d.toISOString();
+          }
+          if (groupBy === "WEEK") {
+            // Getting start of week
+            const d = new Date(date);
+            const day = d.getDay();
+            const diff = d.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
+            const startOfWeek = new Date(d.setDate(diff));
+            return startOfWeek.toISOString().split("T")[0];
+          }
+          return date.toISOString().split("T")[0];
+        };
+
+        // Initialize range based on groupBy
+        const current = new Date(startDate);
+        while (current <= endDate) {
+          const key = getGroupingKey(current);
+          if (!distributionMap.has(key)) {
+            distributionMap.set(key, { desktop: 0, mobile: 0 });
+          }
+          if (groupBy === "MONTH") current.setMonth(current.getMonth() + 1);
+          else if (groupBy === "DAY") current.setDate(current.getDate() + 1);
+          else if (groupBy === "HOUR") current.setHours(current.getHours() + 1);
+          else if (groupBy === "WEEK") current.setDate(current.getDate() + 7);
+          else current.setDate(current.getDate() + 1);
+        }
+
+        sessions.forEach((session: any) => {
+          const key = getGroupingKey(new Date(session.createdAt));
+          const platform = (session.deviceOs || "WEB").toUpperCase();
+
+          const data = distributionMap.get(key);
+          if (data) {
+            if (platform === "WEB") data.desktop++;
+            else data.mobile++;
+          }
+        });
+
+        return Array.from(distributionMap.entries()).map(([time, counts]) => ({
+          time,
+          ...counts,
+        }));
+      } catch (error) {
+        logger.error("Error in getLoginSessionsReport", { error, entityId });
+        throw new GraphQLError("Failed to generate login sessions report", {
+          extensions: { code: "INTERNAL_SERVER_ERROR" },
+        });
+      }
+    },
+
   },
   Mutation: {},
 };

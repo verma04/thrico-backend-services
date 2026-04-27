@@ -1,6 +1,6 @@
 import { log } from "@thrico/logging";
 import { GraphQLError } from "graphql";
-import { asc, desc, eq, and } from "drizzle-orm";
+import { asc, desc, eq, and, or, sql } from "drizzle-orm";
 import {
   mentorShip,
   mentorShipBooking,
@@ -10,6 +10,7 @@ import {
   users,
   user,
 } from "@thrico/database";
+import { EmailService } from "../email/email.service";
 
 export class MentorshipService {
   static async registerAsMentorship({
@@ -101,6 +102,13 @@ export class MentorshipService {
           user: userDetails,
         });
       }
+
+      await this.sendMentorshipStatusEmail({
+        db,
+        userId,
+        entityId,
+        status: "PENDING",
+      });
 
       log.info("Mentorship registration created", {
         userId,
@@ -293,6 +301,7 @@ export class MentorshipService {
                   user: {
                     with: {
                       about: true,
+                      profile: true,
                     },
                   },
                 },
@@ -405,11 +414,13 @@ export class MentorshipService {
           eq(mentorShip.entity, entityId),
         ),
         with: {
-          user: {
+          category: true,
+          mentorUser: {
             with: {
               user: {
                 with: {
                   about: true,
+                  profile: true,
                 },
               },
             },
@@ -417,7 +428,7 @@ export class MentorshipService {
         },
       });
 
-      return find;
+      return this.mapMentorArray(find);
     } catch (error) {
       log.error(error as any);
       throw error;
@@ -455,15 +466,17 @@ export class MentorshipService {
     try {
       const find = await db.query.mentorShip.findFirst({
         where: and(
-          eq(mentorShip.slug, input.id),
+          eq(mentorShip.id, input.id),
           eq(mentorShip.entity, entityId),
         ),
         with: {
-          user: {
+          category: true,
+          mentorUser: {
             with: {
               user: {
                 with: {
                   about: true,
+                  profile: true,
                 },
               },
             },
@@ -471,7 +484,7 @@ export class MentorshipService {
         },
       });
 
-      return find;
+      return this.mapMentorData(find);
     } catch (error) {
       log.error(error as any);
       throw error;
@@ -526,6 +539,7 @@ export class MentorshipService {
                 user: {
                   with: {
                     about: true,
+                    profile: true,
                   },
                 },
               },
@@ -562,6 +576,7 @@ export class MentorshipService {
                 user: {
                   with: {
                     about: true,
+                    profile: true,
                   },
                 },
               },
@@ -598,6 +613,7 @@ export class MentorshipService {
                 user: {
                   with: {
                     about: true,
+                    profile: true,
                   },
                 },
               },
@@ -634,6 +650,7 @@ export class MentorshipService {
                 user: {
                   with: {
                     about: true,
+                    profile: true,
                   },
                 },
               },
@@ -797,11 +814,13 @@ export class MentorshipService {
         offset,
         orderBy: desc(mentorShip.createdAt),
         with: {
-          user: {
+          category: true,
+          mentorUser: {
             with: {
               user: {
                 with: {
                   about: true,
+                  profile: true,
                 },
               },
             },
@@ -809,7 +828,7 @@ export class MentorshipService {
         },
       });
 
-      return pendingMentors;
+      return this.mapMentorArray(pendingMentors);
     } catch (error) {
       log.error(error as any);
       throw error;
@@ -887,6 +906,13 @@ export class MentorshipService {
         });
       }
 
+      await this.sendMentorshipStatusEmail({
+        db,
+        userId: mentorship.user,
+        entityId: mentorship.entity,
+        status,
+      });
+
       log.info("Mentorship status updated", {
         mentorshipId,
         status,
@@ -949,6 +975,239 @@ export class MentorshipService {
     } catch (error) {
       log.error("Error in featureMentor", { error, mentorshipId });
       throw error;
+    }
+  }
+  // ─── Cursor helpers ───────────────────────────────────────────────────────
+  private static encodeCursor(mentor: {
+    createdAt: Date | null;
+    id: string;
+  }): string {
+    const date = mentor.createdAt
+      ? mentor.createdAt.toISOString()
+      : new Date().toISOString();
+    return Buffer.from(`${date}|${mentor.id}`).toString("base64");
+  }
+
+  private static decodeCursor(cursor: string): { createdAt: Date; id: string } {
+    const decoded = Buffer.from(cursor, "base64").toString("utf8");
+    const [createdAtStr, id] = decoded.split("|");
+    return { createdAt: new Date(createdAtStr), id };
+  }
+
+  private static mapMentorData(mentor: any) {
+    if (!mentor) return null;
+    return {
+      ...mentor,
+      user: mentor.mentorUser?.user
+        ? {
+            id: mentor.mentorUser.user.id,
+            firstName: mentor.mentorUser.user.firstName,
+            lastName: mentor.mentorUser.user.lastName,
+            avatar: mentor.mentorUser.user.avatar,
+            headline: mentor.mentorUser.user.about?.headline,
+            bio: mentor.mentorUser.user.about?.about,
+            socialLinks: mentor.mentorUser.user.profile?.socialLinks || [],
+          }
+        : null,
+    };
+  }
+
+  private static mapMentorArray(mentors: any[]) {
+    return mentors.map((m) => this.mapMentorData(m));
+  }
+
+  static async getAllMentorsWithCursor({
+    db,
+    entityId,
+    cursor,
+    limit = 20,
+    category,
+    searchQuery,
+    skills,
+  }: {
+    db: any;
+    entityId: string;
+    cursor?: string;
+    limit?: number;
+    category?: string;
+    searchQuery?: string;
+    skills?: string[];
+  }) {
+    try {
+      const conditions: any[] = [
+        eq(mentorShip.entity, entityId),
+        eq(mentorShip.isApproved, true),
+      ];
+
+      if (category) {
+        conditions.push(eq(mentorShip.category, category));
+      }
+
+      if (searchQuery) {
+        conditions.push(
+          sql`${mentorShip.displayName} ILIKE ${`%${searchQuery}%`}`,
+        );
+      }
+
+      if (skills && skills.length > 0) {
+        conditions.push(sql`${mentorShip.skills} ?| ${skills}`);
+      }
+
+      const baseConditions = [...conditions];
+
+      if (cursor) {
+        const { createdAt: cursorDate, id: cursorId } =
+          this.decodeCursor(cursor);
+        conditions.push(
+          or(
+            sql`${mentorShip.createdAt} < ${cursorDate}`,
+            and(
+              sql`${mentorShip.createdAt} = ${cursorDate}`,
+              sql`${mentorShip.id} < ${cursorId}`,
+            ),
+          ),
+        );
+      }
+
+      const results = await db.query.mentorShip.findMany({
+        where: and(...conditions),
+        limit: limit + 1,
+        orderBy: [desc(mentorShip.createdAt), desc(mentorShip.id)],
+        with: {
+          category: true,
+          mentorUser: {
+            with: {
+              user: {
+                with: {
+                  about: true,
+                  profile: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      const hasNextPage = results.length > limit;
+      const nodes = hasNextPage ? results.slice(0, limit) : results;
+
+      const edges = nodes.map((mentor: any) => ({
+        cursor: this.encodeCursor(mentor),
+        node: this.mapMentorData(mentor),
+      }));
+
+      const endCursor =
+        edges.length > 0 ? edges[edges.length - 1].cursor : null;
+
+      const [countResult] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(mentorShip)
+        .where(and(...baseConditions));
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          endCursor,
+        },
+        totalCount: Number(countResult?.count || 0),
+      };
+    } catch (error) {
+      log.error("Error in getAllMentorsWithCursor", {
+        error,
+        entityId,
+        cursor,
+      });
+      throw error;
+    }
+  }
+  static async sendMentorshipStatusEmail({
+    db,
+    userId,
+    entityId,
+    status,
+  }: {
+    db: any;
+    userId: string;
+    entityId: string;
+    status: string;
+  }) {
+    try {
+      const userDetails = await db.query.user.findFirst({
+        where: eq(user.id, userId),
+      });
+
+      if (!userDetails?.email) return;
+
+      const entityDetails = await db.query.entity.findFirst({
+        where: eq(entity.id, entityId),
+      });
+
+      let subject = "";
+      let html = "";
+
+      if (status === "APPROVED") {
+        subject = `Congratulations! Your mentorship application for ${entityDetails?.name || "the community"} has been approved`;
+        html = `
+          <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px; background-color: #ffffff; color: #1e293b;">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <h2 style="color: #6366f1; margin: 0;">Mentorship Approved! 🎉</h2>
+            </div>
+            <p>Hi ${userDetails.firstName},</p>
+            <p>We are thrilled to inform you that your application to become a mentor in <strong>${entityDetails?.name || "our community"}</strong> has been approved!</p>
+            <p>Your expertise and guidance will be invaluable to our members. You can now start setting up your profile, listing your services, and connecting with mentees.</p>
+           
+            <p style="color: #64748b; font-size: 14px;">If the button above doesn't work, copy and paste this URL into your browser: https://thrico.network/mentorship/dashboard</p>
+            <p>Welcome to the program!</p>
+            <p>Best regards,<br/>The ${entityDetails?.name || "Thrico"} Team</p>
+          </div>
+        `;
+      } else if (status === "REJECTED") {
+        subject = `Update regarding your mentorship application for ${entityDetails?.name || "the community"}`;
+        html = `
+          <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px; background-color: #ffffff; color: #1e293b;">
+             <div style="text-align: center; margin-bottom: 24px;">
+              <h2 style="color: #f43f5e; margin: 0;">Application Status Update</h2>
+            </div>
+            <p>Hi ${userDetails.firstName},</p>
+            <p>Thank you for your interest in the mentorship program at <strong>${entityDetails?.name || "our community"}</strong>.</p>
+            <p>After careful review of your application, we regret to inform you that we are unable to approve it at this time.</p>
+            <p>While we appreciate your enthusiasm, our current requirements or program focus didn't quite align with your profile. We encourage you to keep contributing to the community and consider applying again in the future.</p>
+            <p>If you have any specific questions, please feel free to reach out to our support team.</p>
+            <p>Best regards,<br/>The ${entityDetails?.name || "Thrico"} Team</p>
+          </div>
+        `;
+      } else if (status === "PENDING" || status === "REQUESTED") {
+        subject = `Your mentorship application for ${entityDetails?.name || "the community"} has been received`;
+        html = `
+           <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px; background-color: #ffffff; color: #1e293b;">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <h2 style="color: #6366f1; margin: 0;">Application Received 📬</h2>
+            </div>
+            <p>Hi ${userDetails.firstName},</p>
+            <p>We've received your application to become a mentor in <strong>${entityDetails?.name || "our community"}</strong>!</p>
+            <p>Our team will review your profile and experience to ensure the best fit for our mentorship program. This process typically takes a few business days.</p>
+            <p>We'll notify you via email as soon as we have an update on your status.</p>
+            <p>Thank you for your patience and for wanting to share your knowledge with the community!</p>
+            <p>Best regards,<br/>The ${entityDetails?.name || "Thrico"} Team</p>
+          </div>
+        `;
+      }
+
+      if (subject && html) {
+        await EmailService.sendEmail({
+          db,
+          entityId: entityId,
+          input: {
+            to: userDetails.email,
+            subject,
+            html,
+          },
+        });
+        log.info(`Mentorship ${status} email sent to ${userDetails.email}`);
+      }
+    } catch (error) {
+      log.error("Error sending mentorship email:", error);
     }
   }
 }

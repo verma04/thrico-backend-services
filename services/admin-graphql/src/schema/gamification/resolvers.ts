@@ -17,6 +17,7 @@ import checkAuth from "../../utils/auth/checkAuth.utils";
 import { GraphQLError } from "graphql";
 import { logger } from "@thrico/logging";
 import { getDaterangeFromInput } from "../dashboard/resolvers";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 
 
 import { gamificationClient } from "@thrico/grpc";
@@ -444,6 +445,16 @@ export const gamificationResolvers = {
         };
 
         const [newBadge] = await db.insert(badges).values(payload).returning();
+
+        await createAuditLog(db, {
+          adminId: entity,
+          entityId: entity,
+          module: "GAMIFICATION",
+          action: "CREATE_BADGE",
+          resourceId: newBadge.id,
+          newState: input,
+        });
+
         return newBadge;
       } catch (error: any) {
         logger.error(`Error in createBadge: ${error.message}`, {
@@ -602,6 +613,16 @@ export const gamificationResolvers = {
           .insert(pointRules)
           .values(payload)
           .returning();
+
+        await createAuditLog(db, {
+          adminId: entity,
+          entityId: entity,
+          module: "GAMIFICATION",
+          action: "CREATE_POINT_RULE",
+          resourceId: newRule.id,
+          newState: input,
+        });
+
         return newRule;
       } catch (error: any) {
         logger.error(`Error in createPointRule: ${error.message}`, {
@@ -730,6 +751,16 @@ export const gamificationResolvers = {
         };
 
         const [newRank] = await db.insert(ranks).values(payload).returning();
+
+        await createAuditLog(db, {
+          adminId: entity,
+          entityId: entity,
+          module: "GAMIFICATION",
+          action: "CREATE_RANK",
+          resourceId: newRank.id,
+          newState: input,
+        });
+
         return newRank;
       } catch (error: any) {
         logger.error(`Error in createRank: ${error.message}`, {

@@ -52,6 +52,11 @@ export const connectionTypes = `#graphql
     about: String
   }
 
+  type Industry {
+    id: ID
+    title: String
+  }
+
   type profile {
     experience: JSON
     education: JSON
@@ -74,6 +79,11 @@ export const connectionTypes = `#graphql
     cursor: String
     limit: Int
     search: String
+    industryId: ID
+    cityId: ID
+    skills: [String]
+    interests: [String]
+    isOnline: Boolean
   }
 
   type PageInfo {
@@ -201,6 +211,7 @@ export const connectionTypes = `#graphql
     getBlockedUsers(input: NetworkCursorInput): BlockedUserConnection!
     getConnectionStats: connectionStats
     getCloseFriends(input: NetworkCursorInput): NetworkUserConnection!
+    getAllIndustries: [Industry]
   }
 
   extend type Mutation {

@@ -1,5 +1,9 @@
 import winston from 'winston';
 declare const logger: winston.Logger;
+export declare function createChildLogger(module: string, extra?: Record<string, unknown>): winston.Logger;
+export declare const morganStream: {
+    write: (message: string) => void;
+};
 export declare const log: {
     error: (message: string, meta?: any) => winston.Logger;
     warn: (message: string, meta?: any) => winston.Logger;

@@ -91,6 +91,7 @@ export * from "./feed/types";
 export { ContactService } from "./contact/contact.service";
 export { AutomationEventService } from "./automation/automation-event.service";
 export { AutomationService } from "./automation/automation.service";
+export { AutomationQueueService } from "./automation/automation-queue.service";
 export { EmailService } from "./email/email.service";
 export { LiveService } from "./live/live.service";
 // Export types

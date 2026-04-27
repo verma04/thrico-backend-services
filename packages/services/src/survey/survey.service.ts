@@ -836,6 +836,13 @@ export class SurveyService {
     db: any;
   }) {
     try {
+      // Basic UUID validation to prevent Postgres errors
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(id)) {
+        return null; // Or throw GraphQLError("Invalid survey ID")
+      }
+
       const surveyRecord = await db.query.surveys.findFirst({
         where: and(eq(surveys.id, id), eq(surveys.entityId, entityId)),
         with: { form: true, responses: true },

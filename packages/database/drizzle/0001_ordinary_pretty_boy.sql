@@ -1,0 +1,1 @@
+ALTER TABLE "mentorships" ALTER COLUMN "category" SET DATA TYPE uuid USING category::uuid;

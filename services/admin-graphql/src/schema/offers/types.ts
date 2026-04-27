@@ -123,8 +123,22 @@ export const offersTypes = gql`
     reason: String
   }
 
+  enum TimeRange {
+    LAST_24_HOURS
+    LAST_7_DAYS
+    LAST_30_DAYS
+    LAST_90_DAYS
+    THIS_MONTH
+    LAST_MONTH
+  }
+
+  input DateRangeInput {
+    startDate: String!
+    endDate: String!
+  }
+
   extend type Query {
-    getOfferStats(timeRange: TimeRange!): OfferStats!
+    getOfferStats(timeRange: TimeRange, dateRange: DateRangeInput): OfferStats!
     getOffers(input: GetOffersInput): [Offer!]!
     getOfferCategories: [OfferCategory!]!
   }

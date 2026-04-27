@@ -114,15 +114,16 @@ export const spinResolvers = {
     async createSpinWheelPrize(_: any, { input }: any, context: any) {
       const { entity, db } = await checkAuth(context);
       try {
-        const config = await db.query.spinWheelConfig.findFirst({
+        let config = await db.query.spinWheelConfig.findFirst({
           where: eq(spinWheelConfig.entityId, entity),
         });
 
         if (!config) {
-          throw new GraphQLError(
-            "Spin wheel config not found. Create a config first.",
-            { extensions: { code: "NOT_FOUND" } },
-          );
+          const [created] = await db
+            .insert(spinWheelConfig)
+            .values({ entityId: entity })
+            .returning();
+          config = created;
         }
 
         const [prize] = await db

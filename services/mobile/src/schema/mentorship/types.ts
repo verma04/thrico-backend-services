@@ -30,18 +30,31 @@ export const mentorshipTypes = `#graphql
     from: String
   }
   type Mentor {
+    id: ID
     displayName: String
-    about: String
-    id: String
     slug: String
+    intro: String
+    about: String
+    introVideo: String
+    featuredArticle: String
+    whyDoWantBecomeMentor: String
+    greatestAchievement: String
+    isFeatured: Boolean
+    isTopMentor: Boolean
     user: MentorUser
+    category: MentorCategory
+    skills: [String]
+    createdAt: Date
   }
-  type Alumni {
+
+  type MentorUser {
+    id: ID
     firstName: String
     lastName: String
-  }
-  type MentorUser {
-    user: Alumni
+    avatar: String
+    headline: String
+    bio: String
+    socialLinks: [social]
   }
 
   type Services {
@@ -137,10 +150,29 @@ export const mentorshipTypes = `#graphql
     bookingID: ID!
   }
 
+  input MentorCursorInput {
+    cursor: String
+    limit: Int
+    category: String
+    searchQuery: String
+    skills: [String]
+  }
+
+  type MentorEdge {
+    cursor: String!
+    node: Mentor!
+  }
+
+  type MentorConnection {
+    edges: [MentorEdge!]!
+    pageInfo: PageInfo!
+    totalCount: Int!
+  }
+
   extend type Query {
     getMentorProfileBySlug(input: inputId): Mentor
     getAllMentorServicesByID(input: inputId): [Services]
-    getAllApprovedMentor: [Mentor]
+    getAllMentor(input: MentorCursorInput): MentorConnection!
     getAllMentorServices: [Services]
     getAllMentorTestimonial: [Testimonial]
     getCurrency: Currency

@@ -4,6 +4,7 @@ import checkAuth from "../../utils/auth/checkAuth.utils";
 import { userOrg } from "../../utils/common/userOrg";
 import { GraphQLError } from "graphql";
 import { groupTheme } from "@thrico/database";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 
 const themeResolvers = {
   Query: {
@@ -61,6 +62,15 @@ const themeResolvers = {
           })
           .returning();
 
+        await createAuditLog(db, {
+          adminId: data.id,
+          entityId: userOrgId,
+          module: "COMMUNITIES",
+          action: "ADD_GROUP_THEME",
+          resourceId: newGroupTheme[0]?.id,
+          newState: input,
+        });
+
         return newGroupTheme;
       } catch (error) {
         console.log(error);
@@ -77,6 +87,15 @@ const themeResolvers = {
           .delete(groupTheme)
           .where(eq(groupTheme.id, input.id))
           .returning();
+
+        await createAuditLog(db, {
+          adminId: data.id,
+          entityId: theme[0]?.entity,
+          module: "COMMUNITIES",
+          action: "DELETE_GROUP_THEME",
+          resourceId: input.id,
+          previousState: theme[0],
+        });
 
         return {
           id: input.id,

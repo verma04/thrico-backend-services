@@ -69,7 +69,7 @@ export class FeedQueryService {
   }
 
   // Helper to set common fields
-  static async setField(currentUserId: string) {
+  static setField(currentUserId: string) {
     return {
       id: userFeed.id,
       description: userFeed.description,
@@ -107,9 +107,7 @@ export class FeedQueryService {
         firstName: user.firstName,
         lastName: user.lastName,
         avatar: user.avatar,
-        about: {
-          headline: aboutUser.headline,
-        },
+        headline: aboutUser.headline,
       },
       isLiked: sql<boolean>`EXISTS (
         SELECT 1 FROM ${feedReactions}
@@ -754,7 +752,7 @@ export class FeedQueryService {
     db: any;
   }) {
     try {
-      const fields = await this.setField(currentUserId);
+      const fields = this.setField(currentUserId);
 
       const result = await db
         .select({
@@ -812,9 +810,7 @@ export class FeedQueryService {
               firstName: user.firstName,
               lastName: user.lastName,
               avatar: user.avatar,
-              about: {
-                headline: aboutUser.headline,
-              },
+              headline: aboutUser.headline,
             },
             isLiked: exists(
               db

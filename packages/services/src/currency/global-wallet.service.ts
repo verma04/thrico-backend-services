@@ -1,5 +1,5 @@
 import { tcCoinWallet } from "@thrico/database";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and } from "drizzle-orm";
 import { log } from "@thrico/logging";
 
 export class GlobalWalletService {
@@ -101,16 +101,28 @@ export class GlobalWalletService {
         );
       }
 
-      const balanceAfter = balanceBefore - amount;
+    const [updatedWallet] = await db
+      .update(tcCoinWallet)
+      .set({
+        balance: sql`${tcCoinWallet.balance} - ${amount}`,
+        totalSpent: sql`${tcCoinWallet.totalSpent} + ${amount}`,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(tcCoinWallet.id, wallet.id),
+          sql`${tcCoinWallet.balance} >= ${amount}`,
+        ),
+      )
+      .returning();
 
-      await db
-        .update(tcCoinWallet)
-        .set({
-          balance: sql`${tcCoinWallet.balance} - ${amount}`,
-          totalSpent: sql`${tcCoinWallet.totalSpent} + ${amount}`,
-          updatedAt: new Date(),
-        })
-        .where(eq(tcCoinWallet.id, wallet.id));
+    if (!updatedWallet) {
+      throw new Error(
+        `Insufficient TC balance or transaction race condition. Have: ${balanceBefore}, Need: ${amount}`,
+      );
+    }
+
+    const balanceAfter = Number(updatedWallet.balance);
 
       log.info("TC debited", { thricoId, amount, balanceBefore, balanceAfter });
 

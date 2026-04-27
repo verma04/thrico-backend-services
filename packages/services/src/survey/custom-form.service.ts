@@ -46,6 +46,13 @@ export class CustomFormService {
     db: any;
   }) {
     try {
+      // Basic UUID validation to prevent Postgres errors (e.g. when id is 'create')
+      const uuidRegex =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(id)) {
+        return null;
+      }
+
       const form = await db.query.customForms.findFirst({
         where: (table: any, { eq, and }: any) =>
           and(eq(table.id, id), eq(table.entityId, entityId)),

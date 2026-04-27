@@ -105,6 +105,8 @@ export const moderationJobsStatusEnum = pgEnum("moderation_job_status", [
 export const moderationJobs = pgTable("moderation_jobs", {
   id: uuid("id").defaultRandom().primaryKey(),
   contentId: text("content_id").notNull(),
+  contentType: text("content_type"), // USER, POST, etc
+  entityId: uuid("entity_id").references(() => entity.id),
   status: moderationJobsStatusEnum("status").default("PENDING"),
   attempts: integer("attempts").default(0),
   createdAt: timestamp("created_at").defaultNow(),

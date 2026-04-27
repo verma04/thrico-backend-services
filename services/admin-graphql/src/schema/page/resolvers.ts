@@ -1,8 +1,9 @@
-import uploadImageToFolder from "../../utils/upload/uploadImageToFolder.utils";
+import { StorageService } from "@thrico/services";
 import { PAGE } from "@thrico/database";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import { GraphQLError } from "graphql";
 import { pageClient } from "@thrico/grpc";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 
 const pageResolvers: any = {
   Query: {
@@ -27,16 +28,20 @@ const pageResolvers: any = {
   Mutation: {
     async addPage(_: any, { input }: any, context: any) {
       try {
-        const { id, db } = await checkAuth(context);
+        const { id, entity, db } = await checkAuth(context);
         const { name } = input;
 
         let logo: string | undefined = undefined;
         if (input?.logo?.file) {
-          const uploaded = await uploadImageToFolder("pages", [
-            input.logo.file,
-          ]);
+          const uploaded = await StorageService.uploadImages(
+            [input.logo.file],
+            entity,
+            "PAGES",
+            id,
+            db,
+          );
           if (uploaded && uploaded.length > 0) {
-            logo = uploaded[0].url;
+            logo = uploaded[0].file;
           }
         }
 
@@ -49,6 +54,15 @@ const pageResolvers: any = {
           logo: logo ? logo : "defaultPageImage.png",
         });
         const data = await newPage.save();
+
+        // await createAuditLog(db, {
+        //   adminId: id,
+        //   entityId: entity,
+        //   module: "PAGES",
+        //   action: "ADD_PAGE",
+        //   resourceId: data.id,
+        //   newState: input,
+        // });
 
         return data; // Dynamoose document usually behaves like JSON on serialization
       } catch (error) {

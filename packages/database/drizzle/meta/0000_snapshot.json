@@ -1,5 +1,5 @@
 {
-  "id": "da2fb0f0-e967-49b9-b061-8ce87b14e395",
+  "id": "f3b579d6-589d-46f8-80e1-95bd6944cfe6",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "5",
   "dialect": "pg",
@@ -539,6 +539,137 @@
         },
         "created_at": {
           "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "mcp_keys": {
+      "name": "mcp_keys",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "api_key": {
+          "name": "api_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "permissions": {
+          "name": "permissions",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'active'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "mcp_keys_api_key_unique": {
+          "name": "mcp_keys_api_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "api_key"
+          ]
+        }
+      }
+    },
+    "mcp_logs": {
+      "name": "mcp_logs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "action_name": {
+          "name": "action_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trigger_source": {
+          "name": "trigger_source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "result": {
+          "name": "result",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "timestamp": {
+          "name": "timestamp",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": false,
@@ -1120,9 +1251,15 @@
           "notNull": false,
           "default": true
         },
-        "feedOrder": {
-          "name": "feedOrder",
+        "feedOrders": {
+          "name": "feedOrders",
           "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "feedEntityName": {
+          "name": "feedEntityName",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         }
@@ -1522,8 +1659,8 @@
         }
       }
     },
-    "site_social_media": {
-      "name": "site_social_media",
+    "entity_footer": {
+      "name": "entity_footer",
       "schema": "",
       "columns": {
         "id": {
@@ -1533,23 +1670,17 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "platform": {
-          "name": "platform",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "url": {
-          "name": "url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "entity_id": {
           "name": "entity_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
+        },
+        "footer": {
+          "name": "footer",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
         }
       },
       "indexes": {},
@@ -1586,8 +1717,8 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
-    "entity_footer": {
-      "name": "entity_footer",
+    "site_social_media": {
+      "name": "site_social_media",
       "schema": "",
       "columns": {
         "id": {
@@ -1597,17 +1728,23 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
+        "platform": {
+          "name": "platform",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "url": {
+          "name": "url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "entity_id": {
           "name": "entity_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
-        },
-        "footer": {
-          "name": "footer",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
+          "notNull": false
         }
       },
       "indexes": {},
@@ -10335,6 +10472,13 @@
           "notNull": true,
           "default": false
         },
+        "isTopMentor": {
+          "name": "isTopMentor",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -16645,6 +16789,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "claimed_at": {
+          "name": "claimed_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -16789,6 +16939,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "discount_value": {
+          "name": "discount_value",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "is_active": {
           "name": "is_active",
           "type": "boolean",
@@ -16809,6 +16966,13 @@
           "primaryKey": false,
           "notNull": false,
           "default": "CURRENT_TIMESTAMP"
+        },
+        "reward_mechanism": {
+          "name": "reward_mechanism",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "ARRAY['COUPON']::text[]"
         }
       },
       "indexes": {},
@@ -19324,6 +19488,18 @@
           "primaryKey": false,
           "notNull": true
         },
+        "content_type": {
+          "name": "content_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "entity_id": {
+          "name": "entity_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "status": {
           "name": "status",
           "type": "moderation_job_status",
@@ -19347,7 +19523,21 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "moderation_jobs_entity_id_entity_id_fk": {
+          "name": "moderation_jobs_entity_id_entity_id_fk",
+          "tableFrom": "moderation_jobs",
+          "tableTo": "entity",
+          "columnsFrom": [
+            "entity_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {}
     },
@@ -19857,13 +20047,6 @@
         "HTML": "HTML"
       }
     },
-    "paymentsType": {
-      "name": "paymentsType",
-      "values": {
-        "events": "events",
-        "mentorship": "mentorship"
-      }
-    },
     "paymentMerchant": {
       "name": "paymentMerchant",
       "values": {
@@ -19877,6 +20060,13 @@
         "refunded": "refunded",
         "captured": "captured",
         "Failed": "Failed"
+      }
+    },
+    "paymentsType": {
+      "name": "paymentsType",
+      "values": {
+        "events": "events",
+        "mentorship": "mentorship"
       }
     },
     "emailDomainStatus": {
@@ -19928,7 +20118,8 @@
         "REJECTED": "REJECTED",
         "FLAGGED": "FLAGGED",
         "DISABLED": "DISABLED",
-        "SUSPENDED": "SUSPENDED"
+        "SUSPENDED": "SUSPENDED",
+        "DELETED": "DELETED"
       }
     },
     "userPronounsStatus": {
@@ -19987,8 +20178,8 @@
     "hostType": {
       "name": "hostType",
       "values": {
-        "HOST": "HOST",
-        "CO_HOST": "CO_HOST"
+        "host": "host",
+        "co_host": "co_host"
       }
     },
     "layout": {
@@ -20002,8 +20193,8 @@
     "mediaType": {
       "name": "mediaType",
       "values": {
-        "VIDEO": "VIDEO",
-        "IMAGE": "IMAGE"
+        "video": "video",
+        "image": "image"
       }
     },
     "registrationFieldType": {
@@ -20882,7 +21073,9 @@
         "SURVEY": "SURVEY",
         "MESSAGING": "MESSAGING",
         "GENERAL": "GENERAL",
-        "OFFERS": "OFFERS"
+        "OFFERS": "OFFERS",
+        "PAGES": "PAGES",
+        "REWARDS": "REWARDS"
       }
     }
   },

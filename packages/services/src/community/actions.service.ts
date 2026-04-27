@@ -649,7 +649,7 @@ export class CommunityActionsService {
 
     return feeds.map((feed) => {
       const userMembership = userMembershipMap.get(feed.group?.id);
-      const isOwner = feed.user === currentUserId;
+      const isOwner = feed.user?.id === currentUserId;
       const isMember = !!userMembership;
 
       const permissions = this.calculatePermissions(
@@ -1379,7 +1379,7 @@ export class CommunityActionsService {
     }
   }
 
-  private static async getFeedFields(currentUserId: string) {
+  private static getFeedFields(currentUserId: string) {
     return FeedQueryService.setField(currentUserId);
   }
 
@@ -1433,7 +1433,7 @@ export class CommunityActionsService {
         conditions.push(sql`${userFeed.createdAt} < ${new Date(cursor)}`);
       }
 
-      const fields = await this.getFeedFields(currentUserId || "");
+      const fields = this.getFeedFields(currentUserId || "");
       const additionalFields = this.getAdditionalFeedFields();
 
       const result = await db

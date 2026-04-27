@@ -9,6 +9,8 @@ import {
 } from "@thrico/database";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import { getDaterangeFromInput } from "../dashboard/resolvers";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
+
 
 export const pollsResolvers = {
   Query: {
@@ -627,6 +629,18 @@ export const pollsResolvers = {
             },
             entity,
           });
+
+          await createAuditLog(db, {
+            adminId: id,
+            entityId: entity,
+            module: "POLLS",
+            action: "EDIT_POLL",
+            resourceId: input.id,
+            newState: {
+              ...updatedPoll,
+              options: updatedOptions,
+            },
+          });
         });
 
         return {
@@ -666,6 +680,15 @@ export const pollsResolvers = {
             newState: null,
             entity,
           });
+
+          await createAuditLog(db, {
+            adminId: id,
+            entityId: entity,
+            module: "POLLS",
+            action: "DELETE_POLL",
+            resourceId: pollId,
+            previousState: poll,
+          });
         });
 
         return { id: pollId, deleted: true };
@@ -704,6 +727,15 @@ export const pollsResolvers = {
             previousState: poll,
             newState: updatedPoll,
             entity,
+          });
+
+          await createAuditLog(db, {
+            adminId: id,
+            entityId: entity,
+            module: "POLLS",
+            action: "CHANGE_POLL_STATUS",
+            resourceId: pollId,
+            newState: updatedPoll,
           });
         });
 

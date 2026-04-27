@@ -1,6 +1,6 @@
 import { log } from "@thrico/logging";
 import { GraphQLError } from "graphql";
-import { and, eq, ne, or, sql, desc, lt, count, gte } from "drizzle-orm";
+import { and, eq, ne, or, sql, desc, lt, count, gte, exists } from "drizzle-orm";
 import {
   aboutUser,
   connections,
@@ -15,6 +15,7 @@ import {
   AppDatabase,
   incrementUnreadCount,
   profileViews,
+  memberToIndustry,
 } from "@thrico/database";
 import { GamificationEventService } from "../gamification/gamification-event.service";
 import { NotificationService } from "../notification/notification.service";
@@ -75,6 +76,7 @@ export class NetworkService {
               (c2.user2_id = ${targetUserId} AND c2.user_id = ${userToEntity.id})
             )
           )`,
+          sql`${userToEntity.status} NOT IN ('PENDING', 'BLOCKED', 'DELETED', 'REJECTED')`,
         ),
       )
       .limit(limit);
@@ -173,6 +175,7 @@ export class NetworkService {
     limit = 10,
     offset,
     search = "",
+    industryId,
   }: {
     db: any;
     currentUserId: string;
@@ -181,6 +184,11 @@ export class NetworkService {
     cursor?: string | null;
     offset?: number;
     search?: string;
+    industryId?: string;
+    cityId?: string;
+    skills?: string[];
+    interests?: string[];
+    isOnline?: boolean;
   }) {
     try {
       if (!currentUserId || !entityId) {
@@ -275,7 +283,34 @@ export class NetworkService {
           .innerJoin(user, eq(userToEntity.userId, user.id))
           .innerJoin(aboutUser, eq(userToEntity.userId, aboutUser.userId))
           .leftJoin(userProfile, eq(userToEntity.userId, userProfile.userId))
-          .where(sql`${blockedUsers.id} IS NULL`),
+          .where(
+            and(
+              sql`${blockedUsers.id} IS NULL`,
+              sql`${userToEntity.status} NOT IN ('PENDING', 'BLOCKED', 'DELETED', 'REJECTED')`,
+              industryId
+                ? exists(
+                    db
+                      .select()
+                      .from(memberToIndustry)
+                      .where(
+                        and(
+                          eq(memberToIndustry.memberId, userToEntity.id),
+                          eq(memberToIndustry.industryId, industryId),
+                        ),
+                      ),
+                  )
+                : sql`true`,
+              cityId ? eq(userToEntity.cityId, cityId) : sql`true`,
+              isOnline === true ? sql`${userToEntity.lastActive} + interval '10 minutes' > now()` : sql`true`,
+              isOnline === false ? sql`${userToEntity.lastActive} + interval '10 minutes' <= now()` : sql`true`,
+              skills && skills.length > 0
+                ? sql`${userProfile.skills}::jsonb ?| array[${sql.join(skills, sql`, `)}]`
+                : sql`true`,
+              interests && interests.length > 0
+                ? sql`${userToEntity.interests} && array[${sql.join(interests, sql`, `)}]`
+                : sql`true`,
+            ),
+          ),
       );
 
       const searchCondition = search
@@ -394,7 +429,35 @@ export class NetworkService {
           )
           .leftJoin(blockedUsers, this.getBlockedUsersCondition(currentUserId))
           .innerJoin(user, eq(userToEntity.userId, user.id))
-          .where(sql`${blockedUsers.id} IS NULL`),
+          .leftJoin(userProfile, eq(userToEntity.userId, userProfile.userId))
+          .where(
+            and(
+              sql`${blockedUsers.id} IS NULL`,
+              sql`${userToEntity.status} NOT IN ('PENDING', 'BLOCKED', 'DELETED', 'REJECTED')`,
+              industryId
+                ? exists(
+                    db
+                      .select()
+                      .from(memberToIndustry)
+                      .where(
+                        and(
+                          eq(memberToIndustry.memberId, userToEntity.id),
+                          eq(memberToIndustry.industryId, industryId),
+                        ),
+                      ),
+                  )
+                : sql`true`,
+              cityId ? eq(userToEntity.cityId, cityId) : sql`true`,
+              isOnline === true ? sql`${userToEntity.lastActive} + interval '10 minutes' > now()` : sql`true`,
+              isOnline === false ? sql`${userToEntity.lastActive} + interval '10 minutes' <= now()` : sql`true`,
+              skills && skills.length > 0
+                ? sql`${userProfile.skills}::jsonb ?| array[${sql.join(skills, sql`, `)}]`
+                : sql`true`,
+              interests && interests.length > 0
+                ? sql`${userToEntity.interests} && array[${sql.join(interests, sql`, `)}]`
+                : sql`true`,
+            ),
+          ),
       );
 
       const [totalCountResult] = await db
@@ -496,8 +559,12 @@ export class NetworkService {
         .limit(1);
 
       const condition = await db.query.userToEntity.findFirst({
-        where: (userToEntity: any, { eq }: any) =>
-          and(eq(userToEntity.id, id), eq(userToEntity.entityId, entityId)),
+        where: (userToEntity: any, { eq, and, notInArray, sql }: any) =>
+          and(
+            eq(userToEntity.id, id),
+            eq(userToEntity.entityId, entityId),
+            sql`${userToEntity.status} NOT IN ('PENDING', 'BLOCKED', 'DELETED', 'REJECTED')`,
+          ),
         with: {
           user: {
             with: {
@@ -713,6 +780,7 @@ export class NetworkService {
           and(
             eq(profileViews.viewedId, currentUserId),
             eq(profileViews.entityId, entityId),
+            sql`${userToEntity.status} NOT IN ('PENDING', 'BLOCKED', 'DELETED', 'REJECTED')`,
           ),
         )
         .orderBy(desc(profileViews.viewedAt))
@@ -749,10 +817,12 @@ export class NetworkService {
       const [totalCount] = await db
         .select({ count: count() })
         .from(profileViews)
+        .innerJoin(userToEntity, eq(profileViews.viewerId, userToEntity.id))
         .where(
           and(
             eq(profileViews.viewedId, currentUserId),
             eq(profileViews.entityId, entityId),
+            sql`${userToEntity.status} NOT IN ('PENDING', 'BLOCKED', 'DELETED', 'REJECTED')`,
           ),
         );
 
@@ -765,22 +835,26 @@ export class NetworkService {
       const [lastWeekViews] = await db
         .select({ count: count() })
         .from(profileViews)
+        .innerJoin(userToEntity, eq(profileViews.viewerId, userToEntity.id))
         .where(
           and(
             eq(profileViews.viewedId, currentUserId),
             eq(profileViews.entityId, entityId),
             gte(profileViews.viewedAt, lastWeekDate),
+            sql`${userToEntity.status} NOT IN ('PENDING', 'BLOCKED', 'DELETED', 'REJECTED')`,
           ),
         );
 
       const [lastMonthViews] = await db
         .select({ count: count() })
         .from(profileViews)
+        .innerJoin(userToEntity, eq(profileViews.viewerId, userToEntity.id))
         .where(
           and(
             eq(profileViews.viewedId, currentUserId),
             eq(profileViews.entityId, entityId),
             gte(profileViews.viewedAt, lastMonthDate),
+            sql`${userToEntity.status} NOT IN ('PENDING', 'BLOCKED', 'DELETED', 'REJECTED')`,
           ),
         );
 
@@ -1994,6 +2068,7 @@ export class NetworkService {
       const whereConditions = [
         eq(blockedUsers.blockerId, currentUserId),
         eq(blockedUsers.entityId, entityId),
+        sql`${userToEntity.status} NOT IN ('PENDING', 'BLOCKED', 'DELETED', 'REJECTED')`,
       ];
 
       // Add search term condition
@@ -2432,6 +2507,7 @@ export class NetworkService {
         eq(connections.entity, entityId),
         eq(connections.connectionStatusEnum, "ACCEPTED"),
         sql`${blockedUsers.id} IS NULL`,
+        sql`${userToEntity.status} NOT IN ('PENDING', 'BLOCKED', 'DELETED', 'REJECTED')`,
       ];
 
       // Add search term condition
@@ -2564,6 +2640,7 @@ export class NetworkService {
         eq(connections.entity, entityId),
         eq(connections.connectionStatusEnum, "ACCEPTED"),
         sql`${blockedUsers.id} IS NULL`,
+        sql`${userToEntity.status} NOT IN ('PENDING', 'BLOCKED', 'DELETED', 'REJECTED')`,
       ];
       if (search) {
         totalWhere.push(
@@ -2658,6 +2735,7 @@ export class NetworkService {
         eq(connectionsRequest.connectionStatusEnum, "PENDING"),
         eq(connectionsRequest.entity, entityId),
         sql`${blockedUsers.id} IS NULL`,
+        sql`${userToEntity.status} NOT IN ('PENDING', 'BLOCKED', 'DELETED', 'REJECTED')`,
       ];
 
       if (search) {
@@ -2777,6 +2855,7 @@ export class NetworkService {
         eq(connectionsRequest.connectionStatusEnum, "PENDING"),
         eq(connectionsRequest.entity, entityId),
         sql`${blockedUsers.id} IS NULL`,
+        sql`${userToEntity.status} NOT IN ('PENDING', 'BLOCKED', 'DELETED', 'REJECTED')`,
       ];
 
       if (search) {
@@ -3494,7 +3573,9 @@ export class NetworkService {
           .where(
             and(
               eq(closeFriends.userId, currentUserId),
+              eq(closeFriends.friendId, userToEntity.id),
               eq(closeFriends.entityId, entityId),
+              sql`${userToEntity.status} NOT IN ('PENDING', 'BLOCKED', 'DELETED', 'REJECTED')`,
             ),
           ),
       );

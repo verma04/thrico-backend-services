@@ -483,10 +483,11 @@ const profileResolvers: any = {
           );
         }
         if (cover) {
+          console.log("cover", cover);
           await db
             .update(user)
             .set({
-              cover,
+              cover: cover?.key,
             })
             .where(eq(user.id, userId));
         }

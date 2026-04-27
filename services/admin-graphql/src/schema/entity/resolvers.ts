@@ -20,7 +20,8 @@ import {
 } from "@thrico/database";
 
 import { eq } from "drizzle-orm";
-import upload from "../../utils/upload/uploadImageToFolder.utils";
+import { StorageService } from "@thrico/services";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 // import { userOrg } from "./mentorship.resolvers"; // Replaced with context.entity check
 
 import { countryClient, entityClient, subscriptionClient } from "@thrico/grpc";
@@ -346,7 +347,17 @@ export const entityResolvers: any = {
         ensurePermission(auth, AdminModule.APPEARANCE, PermissionAction.EDIT);
         const { entity: entityId } = auth;
 
-        return await EntityService.editEntityTheme({ entityId, input });
+        const result = await EntityService.editEntityTheme({ entityId, input });
+
+        await createAuditLog(auth.db, {
+          adminId: auth.id,
+          entityId,
+          module: "APPEARANCE",
+          action: "EDIT_ENTITY_THEME",
+          newState: input,
+        });
+
+        return result;
       } catch (error) {
         console.error("Error editing theme:", error);
         throw error;
@@ -389,6 +400,14 @@ export const entityResolvers: any = {
           .set({ ...input })
           .where(eq(entitySettings.entity, entityId))
           .returning();
+
+        await createAuditLog(db, {
+          adminId: auth.id,
+          entityId,
+          module: "SETTINGS",
+          action: "UPDATE_ENTITY_SETTINGS",
+          newState: input,
+        });
 
         return updated[0];
       } catch (error) {
@@ -529,14 +548,14 @@ export const entityResolvers: any = {
         const user = await checkAuth(context);
 
         // Upload the file - utility now handles folder (entityId/purpose) and DB tracking
-        const uploadResult = await upload(
-          user.entity,
+        const uploadResult = await StorageService.uploadImages(
           [file],
-          user.db,
-          user.userId,
+          user.entity,
           "GENERAL",
+          user.userId,
+          user.db,
         );
-        const uploadedLogo = uploadResult[0]?.url;
+        const uploadedLogo = uploadResult[0]?.file;
 
         // Update via gRPC
         const response = await entityClient.editEntityLogo({
@@ -642,6 +661,15 @@ export const entityResolvers: any = {
           newDomain: `https://${domain}.thrico.community/`,
         });
 
+        // await createAuditLog(auth.db, {
+        //   adminId: auth.id,
+        //   entityId,
+        //   module: "DOMAIN",
+        //   action: "CHANGE_ENTITY_DOMAIN",
+        //   previousState: { domain: oldDomain },
+        //   newState: { domain },
+        // });
+
         return {
           success: true,
         };
@@ -731,6 +759,26 @@ export const entityResolvers: any = {
         return true;
       } catch (error) {
         console.error("Error initializing website:", error);
+        throw error;
+      }
+    },
+    async updateFeedEntityName(_: any, { name }: any, context: any) {
+      try {
+        const { entity: entityId, db } = await checkAuth(context);
+
+        await db
+          .update(entitySettings)
+          .set({ feedEntityName: name })
+          .where(eq(entitySettings.entity, entityId));
+
+        return {
+          success: true,
+        };
+      } catch (error: any) {
+        log.error("Failed to update feed entity name", {
+          error: error.message,
+          stack: error.stack,
+        });
         throw error;
       }
     },

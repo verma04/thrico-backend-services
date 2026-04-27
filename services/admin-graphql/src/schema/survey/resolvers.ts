@@ -157,7 +157,11 @@ export const surveyResolvers = {
         .from(surveys)
         .where(and(eq(surveys.id, id), eq(surveys.entityId, entity)));
 
-      const result = await SurveyService.deleteSurvey({ id, entityId: entity, db });
+      const result = await SurveyService.deleteSurvey({
+        id,
+        entityId: entity,
+        db,
+      });
 
       await createAuditLog(db, {
         adminId: adminId,
@@ -177,7 +181,11 @@ export const surveyResolvers = {
       const auth = await checkAuth(context);
       ensurePermission(auth, AdminModule.SURVEYS, PermissionAction.EDIT);
       const { entity, db, id: adminId } = auth;
-      const result = await SurveyService.publishSurvey({ id, entityId: entity, db });
+      const result = await SurveyService.publishSurvey({
+        id,
+        entityId: entity,
+        db,
+      });
 
       await createAuditLog(db, {
         adminId: adminId,
@@ -196,7 +204,11 @@ export const surveyResolvers = {
       const auth = await checkAuth(context);
       ensurePermission(auth, AdminModule.SURVEYS, PermissionAction.EDIT);
       const { entity, db, id: adminId } = auth;
-      const result = await SurveyService.draftSurvey({ id, entityId: entity, db });
+      const result = await SurveyService.draftSurvey({
+        id,
+        entityId: entity,
+        db,
+      });
 
       await createAuditLog(db, {
         adminId: adminId,

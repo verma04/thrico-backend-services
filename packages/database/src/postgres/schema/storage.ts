@@ -27,6 +27,8 @@ export const storageModuleEnum = pgEnum("storageModule", [
   "MESSAGING",
   "GENERAL",
   "OFFERS",
+  "PAGES",
+  "REWARDS",
 ]);
 
 export type StorageModule = (typeof storageModuleEnum.enumValues)[number];

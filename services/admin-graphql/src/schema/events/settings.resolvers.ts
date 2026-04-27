@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { eventsSettings } from "@thrico/database";
 import checkAuth from "../../utils/auth/checkAuth.utils";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 
 export const settingsResolvers = {
   Query: {
@@ -20,7 +21,7 @@ export const settingsResolvers = {
   Mutation: {
     async upsertEventSettings(_: any, { input }: any, context: any) {
       try {
-        const { db } = await checkAuth(context);
+        const { db, id: adminId, entity: entityId } = await checkAuth(context);
 
         const existing = await db.query.eventsSettings.findFirst({
           where: (s: any, { eq }: any) => eq(s.eventId, input.eventId),
@@ -35,6 +36,17 @@ export const settingsResolvers = {
             })
             .where(eq(eventsSettings.id, existing.id))
             .returning();
+
+          await createAuditLog(db, {
+            adminId,
+            entityId,
+            module: "EVENT_SETTINGS",
+            action: "UPDATE",
+            resourceId: input.eventId,
+            previousState: existing,
+            newState: updated,
+          });
+
           return updated;
         } else {
           const [created] = await db
@@ -44,6 +56,16 @@ export const settingsResolvers = {
               layout: input.layout ?? "layout-1",
             })
             .returning();
+
+          await createAuditLog(db, {
+            adminId,
+            entityId,
+            module: "EVENT_SETTINGS",
+            action: "CREATE",
+            resourceId: input.eventId,
+            newState: created,
+          });
+
           return created;
         }
       } catch (error) {

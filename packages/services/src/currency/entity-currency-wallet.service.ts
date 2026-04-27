@@ -103,16 +103,28 @@ export class EntityCurrencyWalletService {
       );
     }
 
-    const balanceAfter = balanceBefore - amount;
-
-    await db
+    const [updatedWallet] = await db
       .update(entityCurrencyWallet)
       .set({
         balance: sql`${entityCurrencyWallet.balance} - ${amount}`,
         totalSpent: sql`${entityCurrencyWallet.totalSpent} + ${amount}`,
         updatedAt: new Date(),
       })
-      .where(eq(entityCurrencyWallet.id, wallet.id));
+      .where(
+        and(
+          eq(entityCurrencyWallet.id, wallet.id),
+          sql`${entityCurrencyWallet.balance} >= ${amount}`,
+        ),
+      )
+      .returning();
+
+    if (!updatedWallet) {
+      throw new Error(
+        `Insufficient EC balance or transaction race condition. Have: ${balanceBefore}, Need: ${amount}`,
+      );
+    }
+
+    const balanceAfter = Number(updatedWallet.balance);
 
     log.info("EC debited", {
       userId,

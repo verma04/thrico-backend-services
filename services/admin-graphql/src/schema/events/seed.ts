@@ -54,7 +54,7 @@ export async function seedEventDetails(
   await tx.insert(eventHost).values({
     eventId,
     userId,
-    hostType: "HOST",
+    hostType: "host",
     entity: entityId,
   });
 
@@ -62,7 +62,7 @@ export async function seedEventDetails(
   await tx.insert(eventsMedia).values({
     eventId,
     url: "https://images.unsplash.com/photo-1540575861501-7ad060e39fe1?q=80&w=2670&auto=format&fit=crop",
-    mediaType: "IMAGE",
+    mediaType: "image",
     title: "Event Cover",
     isPublic: true,
   });

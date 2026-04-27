@@ -11,6 +11,13 @@ export const rewardsTypes = [
     NOTHING
   }
 
+  enum RewardMechanism {
+    SPIN_WHEEL
+    SCRATCH_CARD
+    MATCH_AND_WIN
+    COUPON
+  }
+
   type Reward {
     id: ID!
     title: String!
@@ -20,6 +27,7 @@ export const rewardsTypes = [
     inventoryRequired: Boolean!
     perUserLimit: Int!
     status: String!
+    rewardMechanism: [RewardMechanism!]
     createdAt: Date!
   }
 

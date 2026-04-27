@@ -32,6 +32,7 @@ export const typeDefs = `#graphql
     isDeletionPending: Boolean
     deletionRequestedAt: Date
     isActive: Boolean
+    theme:entityTheme
   }
   type token {
     token: String
@@ -212,6 +213,7 @@ export const typeDefs = `#graphql
     logoutUser: GenericResponse
     allowPushNotification(token: String!): GenericResponse
     requestAccountDeletion: GenericResponse
+    deleteAccount: GenericResponse
     restoreAccount: GenericResponse
     deactivateAccount: GenericResponse
     reactivateAccount: GenericResponse

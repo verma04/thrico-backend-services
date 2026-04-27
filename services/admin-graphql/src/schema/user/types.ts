@@ -5,6 +5,7 @@ export const userTypes = `#graphql
     verification: verification
     isApproved: Boolean
     isRequested: Boolean
+    industries: [Industry]
 
     user: User
     status: Status
@@ -115,6 +116,7 @@ export const userTypes = `#graphql
     FLAGGED
     ENABLED
     DISABLED
+    DELETED
   }
   enum action {
     APPROVE
@@ -142,6 +144,7 @@ export const userTypes = `#graphql
     status: Status!
     limit: Int
     offset: Int
+    industryId: ID
   }
   input userSettings {
     autoApprove: Boolean
@@ -154,6 +157,18 @@ export const userTypes = `#graphql
     headline: String
     about: String
     DOB: String
+    industryIds: [ID]
+  }
+  input UpdateMemberInput {
+    id: ID!
+    email: String
+    firstName: String
+    lastName: String
+    avatar: String
+    headline: String
+    about: String
+    DOB: String
+    industryIds: [ID]
   }
   input UserReportInput {
     userId: ID!
@@ -234,6 +249,7 @@ export const userTypes = `#graphql
     getUserEarnedBadges(input: UserReportInput!): UserBadgeConnection
     getUserAuditLogs(input: UserReportInput!): [UserAuditLog!]
     getAllEntityAuditLogs(limit: Int, offset: Int): [UserAuditLog!]
+    searchUserByName(name: String!): [userToEntity]
   }
 
   extend type Mutation {
@@ -242,5 +258,6 @@ export const userTypes = `#graphql
     updateUserSettings(input: userSettings): userSetting
     changeUserVerification(input: statusInput): userToEntity
     addNewMember(input: AddNewMemberInput!): userToEntity
+    updateMember(input: UpdateMemberInput!): userToEntity
   }
 `;

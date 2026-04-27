@@ -6,6 +6,7 @@ import { EntityService } from "../entity/entity.service";
 import {
   and,
   eq,
+  ne,
   sql,
   desc,
   lt,
@@ -73,7 +74,10 @@ export class AuthService {
       });
 
       const filteredUsers = allUsers
-        .filter((u: any) => u.entity && u.userEntity)
+        .filter(
+          (u: any) =>
+            u.entity && u.userEntity && u.userEntity.status !== "DELETED",
+        )
         .map((u: any) => ({
           id: u.entity.id,
           name: u.entity.name,
@@ -125,6 +129,7 @@ export class AuthService {
         where: and(
           eq(userToEntity?.id, id),
           eq(userToEntity?.entityId, entityId),
+          ne(userToEntity?.status, "DELETED"),
         ),
         with: {
           user: {
@@ -479,17 +484,18 @@ export class AuthService {
       });
 
       const image = await uploadImageFn(entityId, [cover]);
+      console.log(image);
 
       await db
         .update(user)
-        .set({ cover: image[0].url })
+        .set({ cover: image[0]?.key })
         .where(eq(user.id, userId));
 
       // Track storage usage
       try {
-        if (image && image[0] && image[0].url) {
+        if (image && image[0] && image[0].key) {
           await StorageService.trackUploadedFile(
-            image[0].url,
+            image[0].key,
             entityId,
             "USER",
             userId,
@@ -678,6 +684,7 @@ export class AuthService {
         where: and(
           eq(userToEntity?.userId, thricoUser.id),
           eq(userToEntity?.entityId, input.entityId),
+          ne(userToEntity?.status, "DELETED"),
         ),
         with: {
           entity: true,
@@ -733,6 +740,7 @@ export class AuthService {
         deletionRequestedAt: thricoUser.deletionRequestedAt,
         isActive: thricoUser.isActive,
       };
+      // };
     } catch (error) {
       log.error("Error in chooseAccount", { error, userId: input.userId });
       throw error;
@@ -813,7 +821,6 @@ export class AuthService {
           }),
         );
       }
-
 
       const thricoUser = await db.query.user.findFirst({
         where: and(
@@ -904,7 +911,10 @@ export class AuthService {
       const { id, cursor, limit = 10, searchTerm } = input;
       log.debug("checkUserEntity starting", { id, cursor, limit, searchTerm });
 
-      const whereConditions: SQL[] = [eq(user.thricoId, id) as SQL];
+      const whereConditions: SQL[] = [
+        eq(user.thricoId, id) as SQL,
+        ne(userToEntity.status, "DELETED") as SQL,
+      ];
 
       if (cursor) {
         const decoded = this.decodeCursor(cursor);
@@ -1136,16 +1146,20 @@ export class AuthService {
     db: any;
   }): Promise<any> {
     try {
-      const [check, themeData] = await Promise.all([
+      const [check, themeData, settings] = await Promise.all([
         db.query.entity.findFirst({
           where: (d: any, { eq }: any) => eq(d.id, entityId),
         }),
         EntityService.getEntityTheme({ entityId }),
+        db.query.entitySettings.findFirst({
+          where: (es: any, { eq }: any) => eq(es.entity, entityId),
+        }),
       ]);
 
       return {
         ...check,
         entityTheme: themeData,
+        feedEntityName: settings?.feedEntityName || null,
       };
     } catch (error) {
       log.error("Error in getOrgDetails", { error, entityId });
@@ -1197,7 +1211,6 @@ export class AuthService {
       throw error;
     }
   }
-
 
   static async updateSession({
     sessionId,
@@ -1428,7 +1441,6 @@ export class AuthService {
           }),
         );
       }
-
 
       // Fetch the newly created records for session generation
       const thricoUser = await db.query.user.findFirst({

@@ -3,6 +3,7 @@ import { announcements, highlights } from "@thrico/database";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import moment from "moment";
 import { GraphQLError } from "graphql";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 
 export const announcementsResolvers = {
   Query: {
@@ -25,7 +26,7 @@ export const announcementsResolvers = {
   Mutation: {
     async addAnnouncement(_: any, { input }: any, context: any) {
       try {
-        const { entity, db } = await checkAuth(context);
+        const { entity, db, id } = await checkAuth(context);
         // const userOrgId = await userOrg(data.id); // Replaced with entity from checkAuth
 
         const add = await db
@@ -55,6 +56,16 @@ export const announcementsResolvers = {
           .returning();
 
         console.log(newhighlights);
+
+        await createAuditLog(db, {
+          adminId: id,
+          entityId: entity,
+          module: "ANNOUNCEMENTS",
+          action: "ADD_ANNOUNCEMENT",
+          resourceId: add[0].id,
+          newState: input,
+        });
+
         return newhighlights[0];
       } catch (error) {
         console.log(error);

@@ -8,7 +8,7 @@ const UserSchema = new dynamoose.Schema(
     id: {
       type: String, // Partition key for unique user ID
       hashKey: true,
-      default: uuidv4(),
+      default: () => uuidv4(),
     },
     firstName: {
       type: String,
@@ -101,7 +101,13 @@ const LoginSessionSchema = new dynamoose.Schema(
       },
     },
     ipAddress: String,
-    activeEntityId: String, // Added this line as per instruction
+    activeEntityId: {
+      type: String,
+      index: {
+        name: "entitySessionIndex",
+        type: "global",
+      },
+    },
     deviceToken: String,
     deviceName: String,
     logout: {

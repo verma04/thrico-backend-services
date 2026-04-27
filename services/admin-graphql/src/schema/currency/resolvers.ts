@@ -10,6 +10,7 @@ import { CurrencyHistoryService } from "@thrico/services";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import { GraphQLError } from "graphql";
 import { log } from "@thrico/logging";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 
 export const currencyResolvers = {
   Query: {
@@ -111,12 +112,33 @@ export const currencyResolvers = {
             .set({ ...input, updatedAt: new Date() })
             .where(eq(entityCurrencyConfig.entityId, entityId))
             .returning();
+
+          await createAuditLog(db, {
+            adminId: (await checkAuth(context)).id,
+            entityId,
+            module: "CURRENCY",
+            action: "UPDATE_CONFIG",
+            resourceId: updated.id,
+            previousState: existing,
+            newState: updated,
+          });
+
           return updated;
         } else {
           const [created] = await db
             .insert(entityCurrencyConfig)
             .values({ ...input, entityId })
             .returning();
+
+          await createAuditLog(db, {
+            adminId: (await checkAuth(context)).id,
+            entityId,
+            module: "CURRENCY",
+            action: "CREATE_CONFIG",
+            resourceId: created.id,
+            newState: created,
+          });
+
           return created;
         }
       } catch (error: any) {
@@ -145,12 +167,33 @@ export const currencyResolvers = {
             .set({ ...input })
             .where(eq(activityCaps.id, existing.id))
             .returning();
+
+          await createAuditLog(db, {
+            adminId: (await checkAuth(context)).id,
+            entityId,
+            module: "CURRENCY",
+            action: "UPDATE_ACTIVITY_CAP",
+            resourceId: updated.id,
+            previousState: existing,
+            newState: updated,
+          });
+
           return updated;
         } else {
           const [created] = await db
             .insert(activityCaps)
             .values({ ...input, entityId })
             .returning();
+
+          await createAuditLog(db, {
+            adminId: (await checkAuth(context)).id,
+            entityId,
+            module: "CURRENCY",
+            action: "CREATE_ACTIVITY_CAP",
+            resourceId: created.id,
+            newState: created,
+          });
+
           return created;
         }
       } catch (error: any) {
@@ -175,12 +218,33 @@ export const currencyResolvers = {
             .set({ ...input })
             .where(eq(tcConversionCaps.entityId, entityId))
             .returning();
+
+          await createAuditLog(db, {
+            adminId: (await checkAuth(context)).id,
+            entityId,
+            module: "CURRENCY",
+            action: "UPDATE_TC_CONVERSION_CAP",
+            resourceId: updated.id,
+            previousState: existing,
+            newState: updated,
+          });
+
           return updated;
         } else {
           const [created] = await db
             .insert(tcConversionCaps)
             .values({ ...input, entityId })
             .returning();
+
+          await createAuditLog(db, {
+            adminId: (await checkAuth(context)).id,
+            entityId,
+            module: "CURRENCY",
+            action: "CREATE_TC_CONVERSION_CAP",
+            resourceId: created.id,
+            newState: created,
+          });
+
           return created;
         }
       } catch (error: any) {
@@ -205,12 +269,33 @@ export const currencyResolvers = {
             .set({ ...input })
             .where(eq(redemptionCaps.entityId, entityId))
             .returning();
+
+          await createAuditLog(db, {
+            adminId: (await checkAuth(context)).id,
+            entityId,
+            module: "CURRENCY",
+            action: "UPDATE_REDEMPTION_CAP",
+            resourceId: updated.id,
+            previousState: existing,
+            newState: updated,
+          });
+
           return updated;
         } else {
           const [created] = await db
             .insert(redemptionCaps)
             .values({ ...input, entityId })
             .returning();
+
+          await createAuditLog(db, {
+            adminId: (await checkAuth(context)).id,
+            entityId,
+            module: "CURRENCY",
+            action: "CREATE_REDEMPTION_CAP",
+            resourceId: created.id,
+            newState: created,
+          });
+
           return created;
         }
       } catch (error: any) {

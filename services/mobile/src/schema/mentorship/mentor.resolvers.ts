@@ -4,10 +4,14 @@ import { log } from "@thrico/logging";
 
 const mentorResolvers = {
   Query: {
-    async getAllApprovedMentor(_: any, {}: any, context: any) {
+    async getAllMentor(_: any, { input }: any, context: any) {
       try {
         const { db, entityId } = (await checkAuth(context)) as any;
-        return MentorshipService.getAllApprovedMentor({ db, entityId });
+        return await MentorshipService.getAllMentorsWithCursor({
+          db,
+          entityId,
+          ...input,
+        });
       } catch (error) {
         log.error(error as any);
         throw error;
@@ -27,6 +31,7 @@ const mentorResolvers = {
     async getMentorProfileBySlug(_: any, { input }: any, context: any) {
       try {
         const { db, entityId } = (await checkAuth(context)) as any;
+        console.log(input);
         return MentorshipService.getMentorProfileBySlug({
           db,
           entityId,

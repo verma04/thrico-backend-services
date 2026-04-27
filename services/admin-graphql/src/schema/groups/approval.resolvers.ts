@@ -9,7 +9,8 @@ import {
   groupRequest,
 } from "@thrico/database";
 import generateSlug from "../../utils/slug.utils";
-import uploadImageToFolder from "../../utils/upload/uploadImageToFolder.utils";
+import { StorageService } from "@thrico/services";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 
 const approvalResolvers = {
   Query: {
@@ -184,6 +185,17 @@ const approvalResolvers = {
           where: (groups: any, { eq }: any) => eq(groups.id, communityId),
         });
 
+        await createAuditLog(db, {
+          adminId: id,
+          entityId: entity,
+          module: "COMMUNITIES",
+          action: `CHANGE_COMMUNITY_STATUS_${action}`,
+          resourceId: communityId,
+          previousState: { status: group.status },
+          newState: { status: newStatus },
+          reason,
+        });
+
         return result;
       } catch (error) {
         console.error("Failed to change status:", error);
@@ -240,6 +252,17 @@ const approvalResolvers = {
             verification: true,
           },
         });
+
+        await createAuditLog(db, {
+          adminId: id,
+          entityId: entity,
+          module: "COMMUNITIES",
+          action: `CHANGE_COMMUNITY_VERIFICATION_${action}`,
+          resourceId: communityId,
+          newState: { action },
+          reason,
+        });
+
         return result;
       } catch (error) {
         console.error("Failed to change status:", error);
@@ -253,10 +276,14 @@ const approvalResolvers = {
         // Handle cover upload if provided
         let cover = "communities-default-cover-photo.jpg";
         if (input?.cover?.file) {
-          const uploaded = await uploadImageToFolder("communities", [
-            input.cover.file,
-          ]);
-          if (uploaded && uploaded.length > 0) cover = uploaded[0].url;
+          const uploaded = await StorageService.uploadImages(
+            [input.cover.file],
+            entity,
+            "COMMUNITY",
+            id,
+            db
+          );
+          if (uploaded && uploaded.length > 0) cover = uploaded[0].file;
         }
 
         // Prepare group data
@@ -307,6 +334,15 @@ const approvalResolvers = {
           return { ...insertedGroup, verification: insertedVerification };
         });
 
+        await createAuditLog(db, {
+          adminId: id,
+          entityId: entity,
+          module: "COMMUNITIES",
+          action: "ADD_COMMUNITY",
+          resourceId: result.id,
+          newState: input,
+        });
+
         return result;
       } catch (error) {
         console.log(error);
@@ -316,7 +352,7 @@ const approvalResolvers = {
 
     async updateBasicInfo(_: any, { input }: any, context: any) {
       try {
-        const { entity, db } = await checkAuth(context);
+        const { entity, db, id } = await checkAuth(context);
 
         // Check if the group exists
         const group = await db.query.groups.findFirst({
@@ -330,10 +366,15 @@ const approvalResolvers = {
 
         let cover = group?.cover;
         if (input?.cover?.file) {
-          const uploaded = await uploadImageToFolder("communities", [
-            input.cover.file,
-          ]);
-          if (uploaded && uploaded.length > 0) cover = uploaded[0].url;
+          const uploaded = await StorageService.uploadImages(
+            [input.cover.file],
+            entity,
+            "COMMUNITY",
+            id,
+            db,
+            group.id
+          );
+          if (uploaded && uploaded.length > 0) cover = uploaded[0].file;
         }
 
         // Update basic group info
@@ -351,6 +392,16 @@ const approvalResolvers = {
             and(eq(groups.id, input.communityId), eq(groups.entity, entity))
           )
           .returning();
+
+        await createAuditLog(db, {
+          adminId: id,
+          entityId: entity,
+          module: "COMMUNITIES",
+          action: "UPDATE_COMMUNITY_BASIC_INFO",
+          resourceId: input.communityId,
+          previousState: group,
+          newState: input,
+        });
 
         return updatedGroup;
       } catch (error) {

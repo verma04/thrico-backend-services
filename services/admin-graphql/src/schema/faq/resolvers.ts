@@ -2,6 +2,7 @@ import { SQL, and, eq, inArray, sql } from "drizzle-orm";
 import { GraphQLError } from "graphql";
 import { moduleFaqs } from "@thrico/database";
 import checkAuth from "../../utils/auth/checkAuth.utils";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 
 export const faqResolvers = {
   Query: {
@@ -52,6 +53,15 @@ export const faqResolvers = {
           })
           .returning();
 
+        await createAuditLog(db, {
+          adminId: entityId, // or user id if fetched
+          entityId,
+          module: "FAQ",
+          action: "ADD_FAQ",
+          resourceId: newFaq[0]?.id,
+          newState: input,
+        });
+
         return newFaq;
       } catch (error) {
         console.log(error);
@@ -77,6 +87,15 @@ export const faqResolvers = {
           )
           .returning();
 
+        await createAuditLog(db, {
+          adminId: entityId,
+          entityId,
+          module: "FAQ",
+          action: "EDIT_FAQ",
+          resourceId: input.id,
+          newState: input,
+        });
+
         return update;
       } catch (error) {
         console.log(error);
@@ -99,6 +118,15 @@ export const faqResolvers = {
         if (!deleted.length) {
           throw new GraphQLError("FAQ not found or access denied");
         }
+
+        await createAuditLog(db, {
+          adminId: entityId,
+          entityId,
+          module: "FAQ",
+          action: "DELETE_FAQ",
+          resourceId: input.id,
+          previousState: deleted[0],
+        });
 
         return {
           id: input.id,

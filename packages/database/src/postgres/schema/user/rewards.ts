@@ -26,9 +26,14 @@ export const rewards = pgTable("rewards", {
   cooldownPeriod: integer("cooldown_period").default(0).notNull(),
   status: varchar("status", { length: 50 }).notNull().default("ACTIVE"),
   entityId: uuid("org_id").notNull(),
+  discountValue: integer("discount_value").default(0).notNull(),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
+  rewardMechanism: text("reward_mechanism")
+    .array()
+    .notNull()
+    .default(sql`ARRAY['COUPON']::text[]`),
 });
 
 export const vouchers = pgTable("vouchers", {
@@ -58,6 +63,7 @@ export const redemptions = pgTable("redemptions_log", {
   totalCost: integer("total_cost").notNull(),
   status: varchar("status", { length: 50 }).notNull().default("COMPLETED"),
   metadata: text("metadata"), // JSON string
+  claimedAt: timestamp("claimed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   entityId: uuid("org_id").notNull(),
 });

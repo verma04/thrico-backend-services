@@ -34,6 +34,9 @@ import { storageTypes } from "./storage/types";
 import { addonPricingTypes } from "./addon-pricing/types";
 import { emailCampaignTypes } from "./email-campaigns/types";
 import { automationTypes } from "./automation/types";
+import { mcpTypes } from "./mcp/types";
+import { wallOfFameTypes } from "./wall-of-fame/types";
+import { industryTypes } from "./industry/types";
 
 const mainTypeDefs = `#graphql
   # User Types
@@ -367,4 +370,7 @@ export const typeDefs = [
   rbacTypeDefs,
   loginTypeDefs,
   automationTypes,
+  mcpTypes,
+  wallOfFameTypes,
+  industryTypes,
 ];

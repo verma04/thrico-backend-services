@@ -264,6 +264,7 @@ export const entitySettings = pgTable("entitySettings", {
   allowEntityFeedInFeed: boolean("allowEntityFeedInFeed").default(true),
   allowEntityMomentsInFeed: boolean("allowEntityMomentsInFeed").default(true),
   feedOrder: jsonb("feedOrders"),
+  feedEntityName: text("feedEntityName"),
 });
 
 export const entitySettingsRelations = relations(entitySettings, ({ one }) => ({

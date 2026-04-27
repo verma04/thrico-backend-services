@@ -15,6 +15,7 @@ import checkAuth from "../../utils/auth/checkAuth.utils";
 import generateSlug from "../../utils/slug.utils";
 import { ensurePermission, AdminModule, PermissionAction } from "../../utils/auth/permissions.utils";
 import { getDaterangeFromInput } from "../dashboard/resolvers";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 
 export const jobsResolvers = {
   Query: {
@@ -299,6 +300,17 @@ export const jobsResolvers = {
           where: (job: any, { eq }: any) => eq(job.id, jobId),
         });
 
+        await createAuditLog(db, {
+          adminId: id,
+          entityId: entity,
+          module: AdminModule.JOBS,
+          action: `CHANGE_JOB_STATUS_${action}`,
+          resourceId: jobId,
+          previousState: { status: job.status },
+          newState: { status: mapped.status },
+          reason,
+        });
+
         return updatedJob;
       } catch (error) {
         console.error("Failed to change status:", error);
@@ -369,6 +381,16 @@ export const jobsResolvers = {
           })
           .where(eq(jobVerification.jobId, jobId))
           .returning();
+
+        await createAuditLog(db, {
+          adminId: id,
+          entityId: entity,
+          module: AdminModule.JOBS,
+          action: `CHANGE_JOB_VERIFICATION_${action}`,
+          resourceId: jobId,
+          newState: { isVerified: mapped.isVerified },
+          reason,
+        });
 
         return job;
       } catch (error) {
@@ -456,6 +478,16 @@ export const jobsResolvers = {
         );
 
         console.log("Job created:", createdJob, insertedVerification);
+
+        await createAuditLog(db, {
+          adminId: id,
+          entityId: entity,
+          module: AdminModule.JOBS,
+          action: "ADD_JOB",
+          resourceId: createdJob.id,
+          newState: input,
+        });
+
         return {
           ...createdJob,
           verification: insertedVerification,

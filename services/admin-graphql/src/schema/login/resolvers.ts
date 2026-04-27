@@ -41,7 +41,7 @@ import sendOtp from "../../utils/sendOtp.utils";
 import { decryptOtp } from "../../utils/crypto/otp.crypto";
 
 import { entityClient } from "@thrico/grpc";
-import upload from "../../utils/upload/uploadImageToFolder.utils";
+import { StorageService } from "@thrico/services";
 import { seedDiscussionCategories } from "../../seed/seedDiscussionCategories";
 import { initializeWebsite as initWebsiteContent } from "../../lib/website/create-default-pages";
 import { seedDefaultGamification } from "../../lib/website/gamification-defaults.seed";
@@ -498,8 +498,15 @@ export const loginResolvers: any = {
         let uploadedLogo;
 
         if (logo) {
-          const result = await upload("entity-logos", [logo]);
-          uploadedLogo = result[0]?.url;
+          const tempDb = await getDbByCountry(country);
+          const result = await StorageService.uploadImages(
+            [logo],
+            "SYSTEM",
+            "GENERAL",
+            data?.id || "SYSTEM",
+            tempDb,
+          );
+          uploadedLogo = result[0]?.file;
         }
 
         if (!data?.id) {
@@ -532,7 +539,6 @@ export const loginResolvers: any = {
         const result = await entityClient.registerEntity(entityData);
         // Using id from input or result? User code implicitly used entity.id from result
 
-        console.log(result);
         await shardCountry({
           entityDomain,
           address,

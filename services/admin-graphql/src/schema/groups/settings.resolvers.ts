@@ -6,6 +6,7 @@ import {
   trendingConditionsGroups,
 } from "@thrico/database";
 import { eq } from "drizzle-orm";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 
 const settingsResolvers = {
   Query: {
@@ -86,6 +87,14 @@ const settingsResolvers = {
           })
           .where(eq(trendingConditionsGroups.entity, userOrgId))
           .returning();
+        await createAuditLog(db, {
+          adminId: id,
+          entityId: entity,
+          module: "COMMUNITIES",
+          action: "UPDATE_GROUP_SETTINGS",
+          newState: input,
+        });
+
         return {
           autoApprove: settings[0].autoApprove,
           ...trendingSettings[0],
@@ -111,6 +120,14 @@ const settingsResolvers = {
           .where(eq(entitySettingsGroups.entity, userOrgId))
           .returning();
 
+        await createAuditLog(db, {
+          adminId: id,
+          entityId: entity,
+          module: "COMMUNITIES",
+          action: "UPDATE_COMMUNITY_TERMS",
+          newState: { content: input.content },
+        });
+
         console.log(settings);
         return settings[0].termAndCondition;
       } catch (error) {
@@ -128,6 +145,14 @@ const settingsResolvers = {
           .set({ guideLine: input.content })
           .where(eq(entitySettingsGroups.entity, userOrgId))
           .returning();
+
+        await createAuditLog(db, {
+          adminId: id,
+          entityId: entity,
+          module: "COMMUNITIES",
+          action: "UPDATE_COMMUNITY_GUIDELINES",
+          newState: { content: input.content },
+        });
 
         console.log(settings);
         return settings[0].guideLine;

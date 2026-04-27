@@ -2,6 +2,7 @@ import { GraphQLError } from "graphql";
 import { eq, desc, and } from "drizzle-orm";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import { automationCampaign } from "@thrico/database";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 
 export const emailCampaignResolvers = {
   Query: {
@@ -77,6 +78,15 @@ export const emailCampaignResolvers = {
         })
         .returning();
 
+      await createAuditLog(db, {
+        adminId: (await checkAuth(context)).id,
+        entityId,
+        module: "EMAIL_CAMPAIGN",
+        action: "CREATE_CAMPAIGN",
+        resourceId: newCampaign.id,
+        newState: newCampaign,
+      });
+
       return {
         ...newCampaign,
         createdAt: newCampaign.createdAt?.toISOString(),
@@ -106,6 +116,17 @@ export const emailCampaignResolvers = {
           )
         )
         .returning();
+
+      if (updatedCampaign) {
+        await createAuditLog(db, {
+          adminId: (await checkAuth(context)).id,
+          entityId,
+          module: "EMAIL_CAMPAIGN",
+          action: "UPDATE_CAMPAIGN",
+          resourceId: updatedCampaign.id,
+          newState: updatedCampaign,
+        });
+      }
 
       if (!updatedCampaign) {
         throw new GraphQLError("Campaign not found or update failed", {

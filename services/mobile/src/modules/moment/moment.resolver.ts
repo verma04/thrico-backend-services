@@ -5,7 +5,6 @@ import {
 } from "@thrico/services";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import { log } from "@thrico/logging";
-import { moments } from "@thrico/database";
 
 export const momentResolvers = {
   Query: {
@@ -279,7 +278,13 @@ export const momentResolvers = {
       try {
         const { db, userId, entityId } =
           context.user || (await checkAuth(context));
-        const { fileUrl, caption, thumbnailUrl, shareInFeed = true, isAiContent = false } = input;
+        const {
+          fileUrl,
+          caption,
+          thumbnailUrl,
+          shareInFeed = true,
+          isAiContent = false,
+        } = input;
         const data = await MomentService.confirmUpload(
           fileUrl,
           caption,
@@ -305,7 +310,13 @@ export const momentResolvers = {
           id: userId,
           entityId,
         } = context.user || (await checkAuth(context));
-        const { fileUrl, caption, thumbnailUrl, shareInFeed, isAiContent = false } = input;
+        const {
+          fileUrl,
+          caption,
+          thumbnailUrl,
+          shareInFeed,
+          isAiContent = false,
+        } = input;
         return await MomentService.confirmUpload(
           fileUrl,
           caption,

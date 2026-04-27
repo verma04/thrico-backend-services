@@ -3,7 +3,8 @@ import generateSlug from "../../utils/slug.utils";
 import { eventVerification, events } from "@thrico/database";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import { formatDateInput } from "../../utils/date.utils";
-import uploadImageToFolder from "../../utils/upload/uploadImageToFolder.utils";
+import { StorageService } from "@thrico/services";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 import { seedEventDetails } from "./seed";
 
 const eventResolvers = {
@@ -49,7 +50,6 @@ const eventResolvers = {
       try {
         const { id, db, entity } = await checkAuth(context);
 
-        console.log("Event Input:", input);
         const checkAutoApprove = await db.query.entitySettings.findFirst({
           where: (entitySettings: any, { eq }: any) =>
             eq(entitySettings.entity, entity),
@@ -57,11 +57,15 @@ const eventResolvers = {
 
         let cover: string | undefined;
         if (input?.coverImage) {
-          const uploadedFiles = await uploadImageToFolder("events", [
-            input.coverImage,
-          ]);
+          const uploadedFiles = await StorageService.uploadImages(
+            [input.coverImage],
+            entity,
+            "EVENT",
+            id,
+            db,
+          );
           if (uploadedFiles && uploadedFiles.length > 0) {
-            cover = uploadedFiles[0].url;
+            cover = uploadedFiles[0].file;
           }
         }
 
@@ -75,7 +79,7 @@ const eventResolvers = {
                 status: checkAutoApprove?.autoApproveEvents
                   ? "APPROVED"
                   : "PENDING",
-                visibility: input.visibility || "PUBLIC",
+                visibility: (input.visibility?.toUpperCase() as any) || "PUBLIC",
                 startDate: formatDateInput(input.startDate),
                 endDate: formatDateInput(input.endDate),
                 lastDateOfRegistration: formatDateInput(
@@ -84,7 +88,7 @@ const eventResolvers = {
                 startTime: "12:00 AM",
                 title: input.title,
                 slug: generateSlug(input.title),
-                type: input.type,
+                type: input.type?.toUpperCase(),
                 eventCreatedBy: "ENTITY",
                 cover: cover ? cover : "defaultEventCover.png",
                 location: input?.location?.name
@@ -109,6 +113,15 @@ const eventResolvers = {
 
             await seedEventDetails(tx, event.id, entity, id);
 
+            await createAuditLog(tx, {
+              adminId: id,
+              entityId: entity,
+              module: "EVENT",
+              action: "CREATE",
+              resourceId: event.id,
+              newState: event,
+            });
+
             return [event, verification];
           },
         );
@@ -125,17 +138,26 @@ const eventResolvers = {
     },
     async updateEvent(_: any, { eventId, input }: any, context: any) {
       try {
-        const { db } = await checkAuth(context);
+        const { id, entity, db } = await checkAuth(context);
 
         let cover: string | undefined;
         if (input?.coverImage) {
-          const uploadedFiles = await uploadImageToFolder("events", [
-            input.coverImage,
-          ]);
+          const uploadedFiles = await StorageService.uploadImages(
+            [input.coverImage],
+            entity,
+            "EVENT",
+            id,
+            db,
+            eventId,
+          );
           if (uploadedFiles && uploadedFiles.length > 0) {
-            cover = uploadedFiles[0].url;
+            cover = uploadedFiles[0].file;
           }
         }
+
+        const existing = await db.query.events.findFirst({
+          where: eq(events.id, eventId),
+        });
 
         const [event] = await db
           .update(events)
@@ -145,16 +167,26 @@ const eventResolvers = {
             startDate: formatDateInput(input.startDate) || undefined,
             endDate: formatDateInput(input.endDate) || undefined,
             startTime: input.startTime,
-            type: input.type,
+            type: input.type?.toUpperCase(),
             lastDateOfRegistration:
               formatDateInput(input.lastDateOfRegistration) || undefined,
             cover: cover,
             location: input.location,
-            visibility: input.visibility,
+            visibility: input.visibility?.toUpperCase() as any,
             updatedAt: new Date(),
           })
           .where(eq(events.id, eventId))
           .returning();
+
+        await createAuditLog(db, {
+          adminId: id,
+          entityId: entity,
+          module: "EVENT",
+          action: "UPDATE",
+          resourceId: event.id,
+          previousState: existing,
+          newState: event,
+        });
 
         return event;
       } catch (error) {
@@ -164,8 +196,22 @@ const eventResolvers = {
     },
     async deleteEvent(_: any, { eventId }: any, context: any) {
       try {
-        const { db } = await checkAuth(context);
+        const { db, id, entity } = await checkAuth(context);
+        const existing = await db.query.events.findFirst({
+          where: eq(events.id, eventId),
+        });
+
         await db.delete(events).where(eq(events.id, eventId));
+
+        await createAuditLog(db, {
+          adminId: id,
+          entityId: entity,
+          module: "EVENT",
+          action: "DELETE",
+          resourceId: eventId,
+          previousState: existing,
+        });
+
         return true;
       } catch (error) {
         console.log("Error deleting event:", error);

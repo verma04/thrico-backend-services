@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 const EntityTypeSchema = new dynamoose.Schema({
   id: {
     type: String,
-    default: uuidv4(),
+    default: () => uuidv4(),
     hashKey: true,
   },
   title: { type: String, required: true },
@@ -15,7 +15,7 @@ const EntityTypeSchema = new dynamoose.Schema({
 const EntityIndustrySchema = new dynamoose.Schema({
   id: {
     type: String,
-    default: uuidv4(),
+    default: () => uuidv4(),
     hashKey: true,
   },
   title: { type: String, required: true },
@@ -91,8 +91,6 @@ const OTPSchema = new dynamoose.Schema(
   },
 );
 
-
-
 const LoginSessionSchema = new dynamoose.Schema(
   {
     id: String,
@@ -130,7 +128,7 @@ const LoginSessionSchema = new dynamoose.Schema(
 const MentorshipCategorySchema = new dynamoose.Schema({
   id: {
     type: String,
-    default: uuidv4(),
+    default: () => uuidv4(),
     hashKey: true,
   },
   title: { type: String, required: true },
@@ -138,7 +136,7 @@ const MentorshipCategorySchema = new dynamoose.Schema({
 const mentorshipSkillsSchema = new dynamoose.Schema({
   id: {
     type: String,
-    default: uuidv4(),
+    default: () => uuidv4(),
     hashKey: true,
   },
   title: { type: String, required: true },
@@ -164,7 +162,7 @@ const customDomain = new dynamoose.Schema(
   {
     id: {
       type: String,
-      default: uuidv4(),
+      default: () => uuidv4(),
       hashKey: true,
     },
 
@@ -269,7 +267,7 @@ const entityFont = new dynamoose.Schema(
   {
     id: {
       type: String,
-      default: uuidv4(),
+      default: () => uuidv4(),
       hashKey: true,
     },
 
@@ -365,7 +363,7 @@ const entityThemeSchema = new dynamoose.Schema(
   {
     id: {
       type: String,
-      default: uuidv4(),
+      default: () => uuidv4(),
       hashKey: true,
     },
     entity: {

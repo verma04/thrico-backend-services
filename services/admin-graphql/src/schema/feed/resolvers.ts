@@ -10,6 +10,7 @@ import {
   getFeedInterestMatrix,
   getFeedYieldVelocity,
   getPromotedNodeEvents,
+  getPostAnalytics,
   likeFeedAdmin,
   pinFeedAdmin,
 } from "../../logic/feed/admin";
@@ -219,6 +220,10 @@ export const feedResolvers = {
     ) {
       const { entity, db } = await checkAuth(context);
       return getPromotedNodeEvents({ db, entity, timeRange, dateRange });
+    },
+    async getPostAnalytics(_: any, { input }: any, context: any) {
+      const { entity, db } = await checkAuth(context);
+      return getPostAnalytics({ db, entity, input });
     },
 
     async numberOfFeeds(_: any, {}: any, context: any) {

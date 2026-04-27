@@ -5,6 +5,7 @@ import {
   aboutUser,
   user,
   gamificationUser,
+  moderationJobs,
 } from "@thrico/database";
 
 import { log } from "@thrico/logging";
@@ -337,20 +338,47 @@ export class UserService {
 
       log.debug("Requesting account deletion", { userId });
 
-      await db
+      const [updatedUser] = await db
         .update(user)
         .set({
           isDeletionPending: true,
           deletionRequestedAt: new Date(),
         })
-        .where(eq(user.id, userId));
+        .where(eq(user.id, userId))
+        .returning({ entityId: user.entityId });
 
-      log.info("Account deletion requested", { userId });
+      if (updatedUser) {
+        await db
+          .update(userToEntity)
+          .set({ status: "DELETED" })
+          .where(
+            and(
+              eq(userToEntity.userId, userId),
+              eq(userToEntity.entityId, updatedUser.entityId)
+            )
+          );
+
+        // Push to moderation queue for data deletion
+        await db.insert(moderationJobs).values({
+          contentId: userId,
+          contentType: "USER_DATA_DELETION",
+          entityId: updatedUser.entityId,
+          status: "PENDING",
+        });
+      }
+
+      log.info("Account deletion requested and pushed to moderation queue", {
+        userId,
+      });
       return true;
     } catch (error) {
       log.error("Error in requestAccountDeletion", { error, userId });
       throw error;
     }
+  }
+
+  static async deleteAccount({ userId, db }: { userId: string; db: any }) {
+    return this.requestAccountDeletion({ userId, db });
   }
 
   static async restoreAccount({ userId, db }: { userId: string; db: any }) {

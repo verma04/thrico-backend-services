@@ -490,12 +490,14 @@ const feedResolvers: any = {
             allowEntityFeedInFeed: true,
             allowEntityMomentsInFeed: true,
             feedOrder: settings?.feedOrders || [],
+            feedEntityName: null,
           };
         }
 
         return {
           ...settings,
           feedOrder: settings.feedOrder || [],
+          feedEntityName: settings.feedEntityName || "By Brand",
         };
       } catch (error) {
         log.error("Error in getFeedSettings", { error });

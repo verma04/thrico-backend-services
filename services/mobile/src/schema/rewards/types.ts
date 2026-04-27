@@ -42,11 +42,18 @@ export const rewardsTypes = [
     error: String
   }
 
+  type UserBalances {
+    ecBalance: Float!
+    tcBalance: Float!
+    currencyName: String!
+  }
+
   extend type Query {
     getRewards: [Reward!]!
     getRewardById(id: ID!): Reward
     getUserRedemptions: [UserRedemption!]!
     getPlayRemainingToday: Int!
+    getUserBalances: UserBalances!
   }
 
   extend type Mutation {

@@ -1,7 +1,7 @@
 export declare enum DatabaseRegion {
-    INDIA = "india",
-    US = "us",
-    UAE = "uae"
+    IND = "IND",
+    US = "US",
+    UAE = "UAE"
 }
 export declare enum UserRole {
     USER = "user",
@@ -26,6 +26,8 @@ export declare const REDIS_KEYS: {
     readonly ENTITY_CACHE: "entity:";
     readonly RATE_LIMIT: "rate_limit:";
     readonly REFRESH_TOKEN: "refresh_token:";
+    readonly NOTIFICATION_CACHE: "notification:";
+    readonly NOTIFICATION_AGGREGATION: "agg_notif:";
 };
 export declare enum ErrorCode {
     INVALID_CREDENTIALS = "INVALID_CREDENTIALS",

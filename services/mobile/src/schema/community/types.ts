@@ -220,8 +220,7 @@ const communitiesTypes = `#graphql
     communityType: String
     memberRange: memberRangeInput
     privacy: String
-    categories: [String]
-    interests: [String]
+ 
     minRating: Float
     verifiedOnly: Boolean
     location: JSON

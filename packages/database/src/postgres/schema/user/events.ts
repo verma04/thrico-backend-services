@@ -45,8 +45,8 @@ export const attendeeStatusEnum = pgEnum("attendeeStatus", [
 export const visibilityEnum = pgEnum("eventVisibility", ["PRIVATE", "PUBLIC"]);
 export const eventCostTypeEnum = pgEnum("eventCostTypeEnum", ["FREE", "PAID"]);
 
-export const mediaType = pgEnum("mediaType", ["VIDEO", "IMAGE"]);
-export const hostType = pgEnum("hostType", ["HOST", "CO_HOST"]);
+export const mediaTypeEnum = pgEnum("mediaType", ["video", "image"]);
+export const hostTypeEnum = pgEnum("hostType", ["host", "co_host"]);
 export const ticketTypeEnum = pgEnum("ticketType", [
   "free",
   "paid",
@@ -183,7 +183,7 @@ export const eventSpeakersRelations = relations(
 export const eventsMedia = pgTable("eventsMedia", {
   id: uuid("id").defaultRandom().primaryKey(),
   url: text("url"),
-  mediaType: mediaType("mediaType"),
+  mediaType: mediaTypeEnum("mediaType"),
   title: text("title"),
   tags: jsonb("tags").$type<string[]>(),
   isPublic: boolean("isPublic").default(true),
@@ -332,7 +332,7 @@ export const eventHost = pgTable(
   {
     userId: uuid("user_id").notNull(),
     eventId: uuid("event_Id").notNull(),
-    hostType: hostType("hostType").notNull(),
+    hostType: hostTypeEnum("hostType").notNull(),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
     entity: uuid("entity_id").notNull(),

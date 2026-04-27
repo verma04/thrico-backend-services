@@ -147,6 +147,17 @@ export const connectionResolvers = {
         throw error;
       }
     },
+    async getAllIndustries(_: any, __: any, context: any) {
+      try {
+        const { db, entityId } = await checkAuth(context);
+        return await db.query.industry.findMany({
+          where: (ind: any, { eq }: any) => eq(ind.entityId, entityId),
+        });
+      } catch (error) {
+        log.error("Error in getAllIndustries", { error });
+        throw error;
+      }
+    },
   },
 
   Mutation: {

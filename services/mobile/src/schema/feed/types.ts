@@ -7,8 +7,8 @@ export const feedTypes = `#graphql
     PENDING
     REJECTED
     FLAGGED
-
     DISABLED
+    DELETED
   }
   enum feedPrivacy {
     PUBLIC
@@ -240,6 +240,7 @@ export const feedTypes = `#graphql
     allowEntityFeedInFeed: Boolean
     allowEntityMomentsInFeed: Boolean
     feedOrder: [String]
+    feedEntityName: String
   }
 
   extend type Query {

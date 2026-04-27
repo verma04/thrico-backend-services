@@ -85,7 +85,7 @@ export class RedemptionService {
       }
 
       // 4. Calculate how much EC to use (use all available, up to cost)
-      const ecToUse = Math.min(ecBalance, rewardCostEC);
+      const ecToUse = Math.max(0, Math.min(ecBalance, rewardCostEC));
       let remainingAfterEC = rewardCostEC - ecToUse;
       let tcToUse = 0;
 
@@ -110,10 +110,9 @@ export class RedemptionService {
         const tcBalance = Number(tcWallet?.balance || 0);
 
         // TC to use = min(remaining, maxTcEquivalent, tcBalance)
-        const potentialTcUse = Math.min(
-          remainingAfterEC,
-          maxTcEquivalent,
-          tcBalance,
+        const potentialTcUse = Math.max(
+          0,
+          Math.min(remainingAfterEC, maxTcEquivalent, tcBalance),
         );
 
         // Check redemption caps
@@ -144,63 +143,73 @@ export class RedemptionService {
         };
       }
 
-      // 7. Execute the redemption — debit wallets
-      if (ecToUse > 0) {
-        const { balanceBefore, balanceAfter } =
-          await EntityCurrencyWalletService.debitEC({
+      // 7. Execute the redemption — debit wallets in a transaction
+      const finalResult = await db.transaction(async (tx: any) => {
+        if (ecToUse > 0) {
+          const { balanceBefore, balanceAfter } =
+            await EntityCurrencyWalletService.debitEC({
+              userId,
+              entityId,
+              amount: ecToUse,
+              db: tx,
+            });
+
+          await CurrencyHistoryService.logTransaction({
             userId,
+            type: "EC_DEBIT",
             entityId,
             amount: ecToUse,
-            db,
+            balanceBefore,
+            balanceAfter,
+            metadata: { rewardId, reason: "redemption" },
           });
+        }
 
-        await CurrencyHistoryService.logTransaction({
-          userId,
-          type: "EC_DEBIT",
-          entityId,
-          amount: ecToUse,
-          balanceBefore,
-          balanceAfter,
-          metadata: { rewardId, reason: "redemption" },
-        });
-      }
+        if (tcToUse > 0) {
+          const { balanceBefore, balanceAfter } =
+            await GlobalWalletService.debitTC({
+              thricoId,
+              amount: tcToUse,
+              db: tx,
+            });
 
-      if (tcToUse > 0) {
-        const { balanceBefore, balanceAfter } =
-          await GlobalWalletService.debitTC({
+          await CurrencyHistoryService.logGlobalTransaction({
             thricoId,
+            type: "TC_DEBIT",
+            entityId,
             amount: tcToUse,
-            db,
+            balanceBefore,
+            balanceAfter,
+            metadata: { rewardId, reason: "redemption" },
           });
 
-        await CurrencyHistoryService.logGlobalTransaction({
-          thricoId,
-          type: "TC_DEBIT",
-          entityId,
-          amount: tcToUse,
-          balanceBefore,
-          balanceAfter,
-          metadata: { rewardId, reason: "redemption" },
-        });
+          // Record redemption against caps
+          await CurrencyCapService.recordRedemption({
+            userId,
+            entityId,
+            tcAmount: tcToUse,
+          });
+        }
 
-        // Record redemption against caps
-        await CurrencyCapService.recordRedemption({
+        // 8. Log redemption to DynamoDB (or Postgres if this is what this service does)
+        const redemptionId = await CurrencyHistoryService.logRedemption({
           userId,
           entityId,
-          tcAmount: tcToUse,
+          rewardId,
+          ecUsed: ecToUse,
+          tcUsed: tcToUse,
+          totalCost: rewardCostEC,
+          status: "COMPLETED",
+          metadata: metadata || {},
         });
-      }
 
-      // 8. Log redemption to DynamoDB
-      const redemptionId = await CurrencyHistoryService.logRedemption({
-        userId,
-        entityId,
-        rewardId,
-        ecUsed: ecToUse,
-        tcUsed: tcToUse,
-        totalCost: rewardCostEC,
-        status: "COMPLETED",
-        metadata: metadata || {},
+        return {
+          success: true,
+          ecUsed: ecToUse,
+          tcUsed: tcToUse,
+          remaining: 0,
+          redemptionId: redemptionId || undefined,
+        };
       });
 
       log.info("Reward redeemed successfully", {
@@ -209,16 +218,10 @@ export class RedemptionService {
         ecUsed: ecToUse,
         tcUsed: tcToUse,
         rewardCostEC,
-        redemptionId,
+        redemptionId: finalResult.redemptionId,
       });
 
-      return {
-        success: true,
-        ecUsed: ecToUse,
-        tcUsed: tcToUse,
-        remaining: 0,
-        redemptionId: redemptionId || undefined,
-      };
+      return finalResult;
     } catch (err: any) {
       log.error("Redemption failed", {
         err: err.message,

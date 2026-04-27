@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { events, eventsAttendees, user, userToEntity } from "@thrico/database";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import { v4 as uuidv4 } from "uuid";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 
 export const attendeeResolvers = {
   Query: {
@@ -82,7 +83,7 @@ export const attendeeResolvers = {
             user: userId as string,
             eventId: eventId as string,
             ticketId: ticketId as string | null,
-            status: (status || "CONFIRMED") as any,
+            status: (status?.toUpperCase() || "CONFIRMED") as any,
           })
           .returning();
 
@@ -93,6 +94,16 @@ export const attendeeResolvers = {
             numberOfAttendees: sql`${events.numberOfAttendees} + 1`,
           })
           .where(eq(events.id, eventId));
+
+        const { id: adminId, entity: entityId } = await checkAuth(context);
+        await createAuditLog(db, {
+          adminId,
+          entityId,
+          module: "EVENT_ATTENDEE",
+          action: "CREATE",
+          resourceId: newAttendee.id,
+          newState: newAttendee,
+        });
 
         // Refetch with relations
         return await db.query.eventsAttendees.findFirst({
@@ -113,7 +124,11 @@ export const attendeeResolvers = {
       context: any,
     ) {
       try {
-        const { db } = await checkAuth(context);
+        const { db, id: adminId, entity: entityId } = await checkAuth(context);
+        const existing = await db.query.eventsAttendees.findFirst({
+          where: eq(eventsAttendees.id, attendeeId),
+        });
+
         const [updated] = await db
           .update(eventsAttendees)
           .set({
@@ -122,6 +137,16 @@ export const attendeeResolvers = {
           })
           .where(eq(eventsAttendees.id, attendeeId))
           .returning();
+
+        await createAuditLog(db, {
+          adminId,
+          entityId,
+          module: "EVENT_ATTENDEE",
+          action: "UPDATE_STATUS",
+          resourceId: attendeeId,
+          previousState: existing,
+          newState: updated,
+        });
 
         // Refetch with relations
         return await db.query.eventsAttendees.findFirst({
@@ -138,7 +163,7 @@ export const attendeeResolvers = {
     },
     async toggleAttendeeCheckIn(_: any, { attendeeId }: any, context: any) {
       try {
-        const { db } = await checkAuth(context);
+        const { db, id: adminId, entity: entityId } = await checkAuth(context);
         const existing = await db.query.eventsAttendees.findFirst({
           where: (a: any, { eq }: any) => eq(a.id, attendeeId),
         });
@@ -153,6 +178,16 @@ export const attendeeResolvers = {
           })
           .where(eq(eventsAttendees.id, attendeeId))
           .returning();
+
+        await createAuditLog(db, {
+          adminId,
+          entityId,
+          module: "EVENT_ATTENDEE",
+          action: "TOGGLE_CHECKIN",
+          resourceId: attendeeId,
+          previousState: existing,
+          newState: updated,
+        });
 
         // Refetch with relations
         return await db.query.eventsAttendees.findFirst({

@@ -1,5 +1,5 @@
 import { eq, and, sql, desc } from "drizzle-orm";
-import { rewards, vouchers, redemptions, user } from "@thrico/database";
+import { rewards, vouchers, redemptions, user, entityCurrencyWallet, entityCurrencyConfig, tcCoinWallet } from "@thrico/database";
 import { log } from "@thrico/logging";
 import { RedemptionService } from "../currency/redemption.service";
 import { RewardNotificationService } from "./reward-notification.service";
@@ -80,86 +80,86 @@ export class RewardsService {
         );
       }
 
-      // 3. Check inventory if required
-      let voucherId: string | null = null;
-      if (reward.inventoryRequired) {
-        const availableVoucher = await db.query.vouchers.findFirst({
-          where: and(
-            eq(vouchers.rewardId, rewardId),
-            eq(vouchers.isUsed, false),
-          ),
-        });
+      // 3. Check inventory if required and perform redemption in a transaction
+      return await db.transaction(async (tx: any) => {
+        let voucherId: string | null = null;
+        if (reward.inventoryRequired) {
+          const availableVoucher = await tx.query.vouchers.findFirst({
+            where: and(
+              eq(vouchers.rewardId, rewardId),
+              eq(vouchers.isUsed, false),
+            ),
+          });
 
-        if (!availableVoucher) {
-          throw new Error("Reward is currently out of stock.");
+          if (!availableVoucher) {
+            throw new Error("Reward is currently out of stock.");
+          }
+          voucherId = availableVoucher.id;
         }
-        voucherId = availableVoucher.id;
-      }
 
-      // 4. Use RedemptionService to handle currency debiting (EC first, then TC discount)
-      // Note: In our rewards table, tcCost represents the base cost in EC-equivalent terms
-      // which follows the platform redemption logic.
-      const redemptionResult = await RedemptionService.redeemReward({
-        userId,
-        entityId,
-        rewardCostEC: reward.tcCost,
-        rewardId,
-        db,
-      });
-
-      if (!redemptionResult.success) {
-        throw new Error(redemptionResult.error || "Redemption failed");
-      }
-
-      // 5. Update inventory and log redemption mapping
-      let voucherCode: string | undefined;
-      if (voucherId) {
-        await db
-          .update(vouchers)
-          .set({
-            isUsed: true,
-            assignedTo: userId,
-            assignedAt: new Date(),
-          })
-          .where(eq(vouchers.id, voucherId));
-
-        const v = await db.query.vouchers.findFirst({
-          where: eq(vouchers.id, voucherId),
+        // 4. Use RedemptionService to handle currency debiting (EC first, then TC discount)
+        const redemptionResult = await RedemptionService.redeemReward({
+          userId,
+          entityId,
+          rewardCostEC: reward.tcCost,
+          rewardId,
+          db: tx,
         });
-        voucherCode = v?.code;
-      }
 
-      // 6. Record in rewards log (this is already partially done by RedemptionService
-      // but we use our dedicated redemptions_log table as well for rewards)
-      await db.insert(redemptions).values({
-        userId,
-        rewardId,
-        entityId,
-        ecUsed: redemptionResult.ecUsed,
-        tcUsed: redemptionResult.tcUsed,
-        totalCost: reward.tcCost,
-        status: "COMPLETED",
-        metadata: JSON.stringify({
+        if (!redemptionResult.success) {
+          throw new Error(redemptionResult.error || "Redemption failed");
+        }
+
+        // 5. Update inventory and log redemption mapping
+        let voucherCode: string | undefined;
+        if (voucherId) {
+          await tx
+            .update(vouchers)
+            .set({
+              isUsed: true,
+              assignedTo: userId,
+              assignedAt: new Date(),
+            })
+            .where(eq(vouchers.id, voucherId));
+
+          const v = await tx.query.vouchers.findFirst({
+            where: eq(vouchers.id, voucherId),
+          });
+          voucherCode = v?.code;
+        }
+
+        // 6. Record in rewards log
+        await tx.insert(redemptions).values({
+          userId,
+          rewardId,
+          entityId,
+          ecUsed: redemptionResult.ecUsed,
+          tcUsed: redemptionResult.tcUsed,
+          totalCost: reward.tcCost,
+          status: "COMPLETED",
+          metadata: JSON.stringify({
+            voucherCode,
+            redemptionId: redemptionResult.redemptionId,
+          }),
+        });
+
+        // Send push notification to user (outside transaction or inside? 
+        // usually better outside if it can be deferred, but here we just await it)
+        await RewardNotificationService.publishRewardRedeemed({
+          userId,
+          entityId,
+          rewardId,
+          rewardTitle: reward.title,
+          voucherCode,
+          db: tx,
+        });
+
+        return {
+          success: true,
           voucherCode,
           redemptionId: redemptionResult.redemptionId,
-        }),
+        };
       });
-
-      // Send push notification to user
-      await RewardNotificationService.publishRewardRedeemed({
-        userId,
-        entityId,
-        rewardId,
-        rewardTitle: reward.title,
-        voucherCode,
-        db,
-      });
-
-      return {
-        success: true,
-        voucherCode,
-        redemptionId: redemptionResult.redemptionId,
-      };
     } catch (error: any) {
       log.error("Error in redeemReward service", {
         error: error.message,
@@ -195,6 +195,54 @@ export class RewardsService {
       });
     } catch (error) {
       log.error("Error in getUserRedemptions service", { error, userId });
+      throw error;
+    }
+  }
+  /**
+   * Get user's balances and entity currency name
+   */
+  static async getUserBalances({
+    userId,
+    entityId,
+    db,
+  }: {
+    userId: string;
+    entityId: string;
+    db: any;
+  }) {
+    try {
+      // 1. Get user record for thricoId
+      const userRecord = await db.query.user.findFirst({
+        where: eq(user.id, userId),
+        columns: { thricoId: true },
+      });
+      const thricoId = userRecord?.thricoId || userId;
+
+      // 2. Get EC balance
+      const ecWallet = await db.query.entityCurrencyWallet.findFirst({
+        where: and(
+          eq(entityCurrencyWallet.userId, userId),
+          eq(entityCurrencyWallet.entityId, entityId),
+        ),
+      });
+
+      // 3. Get TC balance
+      const tcWallet = await db.query.tcCoinWallet.findFirst({
+        where: eq(tcCoinWallet.thricoId, thricoId),
+      });
+
+      // 4. Get currency name
+      const config = await db.query.entityCurrencyConfig.findFirst({
+        where: eq(entityCurrencyConfig.entityId, entityId),
+      });
+
+      return {
+        ecBalance: Number(ecWallet?.balance || 0),
+        tcBalance: Number(tcWallet?.balance || 0),
+        currencyName: config?.currencyName || "Coins",
+      };
+    } catch (error) {
+      log.error("Error in getUserBalances service", { error, userId, entityId });
       throw error;
     }
   }

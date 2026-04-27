@@ -4,9 +4,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.TOKEN_EXPIRY = exports.PAGINATION = exports.ENV = exports.ErrorCode = exports.REDIS_KEYS = exports.EntityStatus = exports.UserStatus = exports.UserRole = exports.DatabaseRegion = void 0;
 var DatabaseRegion;
 (function (DatabaseRegion) {
-    DatabaseRegion["INDIA"] = "india";
-    DatabaseRegion["US"] = "us";
-    DatabaseRegion["UAE"] = "uae";
+    DatabaseRegion["IND"] = "IND";
+    DatabaseRegion["US"] = "US";
+    DatabaseRegion["UAE"] = "UAE";
 })(DatabaseRegion || (exports.DatabaseRegion = DatabaseRegion = {}));
 // User Roles
 var UserRole;
@@ -33,11 +33,13 @@ var EntityStatus;
 })(EntityStatus || (exports.EntityStatus = EntityStatus = {}));
 // Redis Key Prefixes
 exports.REDIS_KEYS = {
-    SESSION: 'session:',
-    USER_CACHE: 'user:',
-    ENTITY_CACHE: 'entity:',
-    RATE_LIMIT: 'rate_limit:',
-    REFRESH_TOKEN: 'refresh_token:',
+    SESSION: "session:",
+    USER_CACHE: "user:",
+    ENTITY_CACHE: "entity:",
+    RATE_LIMIT: "rate_limit:",
+    REFRESH_TOKEN: "refresh_token:",
+    NOTIFICATION_CACHE: "notification:",
+    NOTIFICATION_AGGREGATION: "agg_notif:",
 };
 // Error Codes
 var ErrorCode;
@@ -66,22 +68,22 @@ var ErrorCode;
 console.log(process.env);
 // Environment Variables
 exports.ENV = {
-    NODE_ENV: process.env.NODE_ENV || 'development',
+    NODE_ENV: process.env.NODE_ENV || "development",
     // JWT
-    JWT_SECRET: process.env.JWT_SECRET || '123466',
-    JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '7d',
-    JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET || 'default-refresh-secret-change-me',
-    JWT_REFRESH_EXPIRES_IN: process.env.JWT_REFRESH_EXPIRES_IN || '30d',
+    JWT_SECRET: process.env.JWT_SECRET || "123466",
+    JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "7d",
+    JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET || "default-refresh-secret-change-me",
+    JWT_REFRESH_EXPIRES_IN: process.env.JWT_REFRESH_EXPIRES_IN || "30d",
     // Database Regions
     DEFAULT_DB_REGION: process.env.DEFAULT_DB_REGION || DatabaseRegion.IND,
     // Redis
-    REDIS_HOST: process.env.REDIS_HOST || 'localhost',
-    REDIS_PORT: parseInt(process.env.REDIS_PORT || '6379', 10),
+    REDIS_HOST: process.env.REDIS_HOST || "localhost",
+    REDIS_PORT: parseInt(process.env.REDIS_PORT || "6379", 10),
     REDIS_PASSWORD: process.env.REDIS_PASSWORD,
-    REDIS_DB: parseInt(process.env.REDIS_DB || '0', 10),
+    REDIS_DB: parseInt(process.env.REDIS_DB || "0", 10),
     // Logging
-    LOG_LEVEL: process.env.LOG_LEVEL || 'info',
-    LOG_DIR: process.env.LOG_DIR || './logs',
+    LOG_LEVEL: process.env.LOG_LEVEL || "info",
+    LOG_DIR: process.env.LOG_DIR || "./logs",
 };
 // Pagination
 exports.PAGINATION = {

@@ -8,6 +8,7 @@ export const feedTypes = `#graphql
     REJECTED
     FLAGGED
     DISABLED
+    DELETED
   }
   enum feedPrivacy {
     PUBLIC

@@ -14,9 +14,9 @@ import { eq, desc, and, sql, inArray, lt } from "drizzle-orm";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import { GraphQLError } from "graphql";
 import { logger } from "@thrico/logging";
-import upload from "../../utils/upload/upload";
+import { StorageService } from "@thrico/services";
 import { getDaterangeFromInput } from "../dashboard/resolvers";
-
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 
 export const shopResolvers = {
   Query: {
@@ -155,7 +155,9 @@ export const shopResolvers = {
 
         // Low stock items (snapshot of current state only)
         const [lowStockResult] = await db
-          .select({ count: sql<number>`count(distinct ${shopProductVariants.productId})` })
+          .select({
+            count: sql<number>`count(distinct ${shopProductVariants.productId})`,
+          })
           .from(shopProductVariants)
           .where(
             and(
@@ -225,12 +227,23 @@ export const shopResolvers = {
           await db.insert(shopProductMedia).values(mediaPayload);
         }
 
-        return await db.query.shopProducts.findFirst({
+        const result = await db.query.shopProducts.findFirst({
           where: eq(shopProducts.id, newProduct.id),
           with: {
             media: true,
           },
         });
+
+        await createAuditLog(db, {
+          adminId: userId,
+          entityId: entity,
+          module: "SHOP",
+          action: "CREATE_SHOP_PRODUCT",
+          resourceId: newProduct.id,
+          newState: input,
+        });
+
+        return result;
       } catch (error: any) {
         logger.error(`Error in createShopProduct: ${error.message}`, { error });
         throw error;
@@ -258,7 +271,7 @@ export const shopResolvers = {
           );
         }
 
-        return await db.query.shopProducts.findFirst({
+        const result = await db.query.shopProducts.findFirst({
           where: and(eq(shopProducts.id, id), eq(shopProducts.entity, entity)),
           with: {
             media: true,
@@ -266,6 +279,17 @@ export const shopResolvers = {
             options: true,
           },
         });
+
+        await createAuditLog(db, {
+          adminId: entity,
+          entityId: entity,
+          module: "SHOP",
+          action: "UPDATE_SHOP_PRODUCT",
+          resourceId: id,
+          newState: input,
+        });
+
+        return result;
       } catch (error: any) {
         logger.error(`Error in updateShopProduct: ${error.message}`, { error });
         throw error;
@@ -289,6 +313,15 @@ export const shopResolvers = {
           );
         }
 
+        await createAuditLog(db, {
+          adminId: entity,
+          entityId: entity,
+          module: "SHOP",
+          action: "DELETE_SHOP_PRODUCT",
+          resourceId: id,
+          previousState: deletedProduct,
+        });
+
         return true;
       } catch (error: any) {
         logger.error(`Error in deleteShopProduct: ${error.message}`, { error });
@@ -308,7 +341,14 @@ export const shopResolvers = {
         };
 
         if (input.image) {
-          payload.image = await upload(input.image, entity, db, userId, "SHOP_PRODUCT");
+          const uploaded = await StorageService.uploadImages(
+            [input.image],
+            entity,
+            "SHOP",
+            userId,
+            db,
+          );
+          payload.image = uploaded[0].file;
         }
 
         const [newVariant] = await db
@@ -388,7 +428,14 @@ export const shopResolvers = {
             const payload: any = { ...item, updatedAt: new Date() };
 
             if (item.image && typeof item.image !== "string") {
-              payload.image = await upload(item.image, entity, tx, userId, "SHOP_PRODUCT");
+              const uploaded = await StorageService.uploadImages(
+                [item.image],
+                entity,
+                "SHOP",
+                userId,
+                tx,
+              );
+              payload.image = uploaded[0].file;
             }
 
             if (item.id) {
@@ -488,13 +535,29 @@ export const shopResolvers = {
         };
 
         if (input.image) {
-          payload.image = await upload(input.image, entity, db, userId, "SHOP_BANNER");
+          const uploaded = await StorageService.uploadImages(
+            [input.image],
+            entity,
+            "SHOP",
+            userId,
+            db,
+          );
+          payload.image = uploaded[0].file;
         }
 
         const [newBanner] = await db
           .insert(shopBanners)
           .values(payload)
           .returning();
+
+        await createAuditLog(db, {
+          adminId: userId,
+          entityId: entity,
+          module: "SHOP",
+          action: "CREATE_SHOP_BANNER",
+          resourceId: newBanner.id,
+          newState: input,
+        });
 
         return newBanner;
       } catch (error: any) {
@@ -511,7 +574,14 @@ export const shopResolvers = {
         const payload: any = { ...input, updatedAt: new Date() };
 
         if (input.image) {
-          payload.image = await upload(input.image, entity, db, userId, "SHOP_BANNER");
+          const uploaded = await StorageService.uploadImages(
+            [input.image],
+            entity,
+            "SHOP",
+            userId,
+            db,
+          );
+          payload.image = uploaded[0].file;
         }
 
         const [updatedBanner] = await db
@@ -525,6 +595,15 @@ export const shopResolvers = {
             "Banner not found or you do not have permission to update it",
           );
         }
+
+        await createAuditLog(db, {
+          adminId: userId,
+          entityId: entity,
+          module: "SHOP",
+          action: "UPDATE_SHOP_BANNER",
+          resourceId: id,
+          newState: input,
+        });
 
         return updatedBanner;
       } catch (error: any) {
@@ -548,6 +627,15 @@ export const shopResolvers = {
             "Banner not found or you do not have permission to delete it",
           );
         }
+
+        await createAuditLog(db, {
+          adminId: entity,
+          entityId: entity,
+          module: "SHOP",
+          action: "DELETE_SHOP_BANNER",
+          resourceId: id,
+          previousState: deletedBanner,
+        });
 
         return true;
       } catch (error: any) {

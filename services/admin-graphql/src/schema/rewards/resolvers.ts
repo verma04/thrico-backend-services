@@ -1,15 +1,27 @@
 import { rewards, vouchers, redemptions } from "@thrico/database";
 import { eq, and, ilike, or, desc, sql, lt, gte } from "drizzle-orm";
-import uploadImageToFolder from "../../utils/upload/uploadImageToFolder.utils";
+import { StorageService } from "@thrico/services";
 import checkAuth from "../../utils/auth/checkAuth.utils";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 import { getDaterangeFromInput } from "../dashboard/resolvers";
 import { spinResolvers } from "./spin/resolvers";
 import { scratchResolvers } from "./scratch/resolvers";
 import { matchWinResolvers } from "./match-win/resolvers";
 import { spinScratchStatsResolvers } from "./stats/resolvers";
+import { GraphQLError } from "graphql";
 
 export const rewardsResolvers = {
   Query: {
+    async getRewardById(_: any, { id }: any, context: any) {
+      const { entity, db } = await checkAuth(context);
+
+      const result = await db.query.rewards.findFirst({
+        where: and(eq(rewards.id, id), eq(rewards.entityId, entity)),
+      });
+
+      return result;
+    },
+
     async getRewards(
       _: any,
       { status, search, pagination }: any,
@@ -48,6 +60,7 @@ export const rewardsResolvers = {
           isActive: rewards.isActive,
           createdAt: rewards.createdAt,
           updatedAt: rewards.updatedAt,
+          rewardMechanism: rewards.rewardMechanism,
           totalVouchers:
             sql`(SELECT count(*) FROM ${vouchers} WHERE ${vouchers.rewardId} = ${rewards.id})`.mapWith(
               Number,
@@ -83,6 +96,9 @@ export const rewardsResolvers = {
         limit,
         offset,
         orderBy: [desc(vouchers.createdAt)],
+        with: {
+          reward: true,
+        },
       });
     },
 
@@ -118,6 +134,43 @@ export const rewardsResolvers = {
       });
     },
 
+    async getVouchersByRewardMechanism(
+      _: any,
+      { mechanism, pagination }: any,
+      context: any,
+    ) {
+      const { entity, db } = await checkAuth(context);
+      const { page = 1, limit = 20 } = pagination || {};
+      const offset = (page - 1) * limit;
+
+      const results = await db
+        .select({
+          voucher: vouchers,
+          reward: rewards,
+        })
+        .from(vouchers)
+        .innerJoin(rewards, eq(vouchers.rewardId, rewards.id))
+        .where(
+          and(
+            eq(vouchers.entityId, entity),
+            sql`${mechanism} = ANY(${rewards.rewardMechanism})`,
+          ),
+        )
+        .limit(limit)
+        .offset(offset)
+        .orderBy(desc(vouchers.createdAt));
+
+      console.log({
+        results,
+        mechanism,
+      });
+
+      return results.map((row: any) => ({
+        ...row.voucher,
+        reward: row.reward,
+      }));
+    },
+
     async getRedemptions(
       _: any,
       { userId, status, pagination }: any,
@@ -143,11 +196,7 @@ export const rewardsResolvers = {
       });
     },
 
-    async getRewardStats(
-      _: any,
-      { timeRange, dateRange }: any,
-      context: any,
-    ) {
+    async getRewardStats(_: any, { timeRange, dateRange }: any, context: any) {
       const { entity, db } = await checkAuth(context);
 
       const { startDate, endDate } = getDaterangeFromInput(
@@ -250,41 +299,63 @@ export const rewardsResolvers = {
 
   Mutation: {
     async createReward(_: any, { input }: any, context: any) {
-      const { entity, db } = await checkAuth(context);
+      const { entity, db, id } = await checkAuth(context);
 
       const { imageFile, ...rest } = input;
       let imageUrl = input.image;
 
       if (imageFile) {
-        const uploaded = await uploadImageToFolder("rewards", [imageFile]);
+        const uploaded = await StorageService.uploadImages(
+          [imageFile],
+          entity,
+          "REWARDS",
+          id,
+          db,
+        );
         if (uploaded && uploaded.length > 0) {
-          imageUrl = uploaded[0].url;
+          imageUrl = uploaded[0].file;
         }
       }
 
       const [newReward] = await db
         .insert(rewards)
         .values({
-          ...rest,
+          ...(rest as any),
           image: imageUrl,
           entityId: entity,
           status: "ACTIVE",
+          rewardMechanism: rest.rewardMechanism || ["COUPON"],
         })
         .returning();
+
+      await createAuditLog(db, {
+        adminId: id,
+        entityId: entity,
+        module: "REWARDS",
+        action: "CREATE_REWARD",
+        resourceId: newReward.id,
+        newState: input,
+      });
 
       return newReward;
     },
 
     async updateReward(_: any, { id, input }: any, context: any) {
-      const { entity, db } = await checkAuth(context);
+      const { entity, db, id: userId } = await checkAuth(context);
 
       const { imageFile, ...rest } = input;
       let imageUrl = input.image;
 
       if (imageFile) {
-        const uploaded = await uploadImageToFolder("rewards", [imageFile]);
+        const uploaded = await StorageService.uploadImages(
+          [imageFile],
+          entity,
+          "REWARDS",
+          userId,
+          db,
+        );
         if (uploaded && uploaded.length > 0) {
-          imageUrl = uploaded[0].url;
+          imageUrl = uploaded[0].file;
         }
       }
 
@@ -293,9 +364,21 @@ export const rewardsResolvers = {
         .set({
           ...rest,
           image: imageUrl,
+          ...(rest.rewardMechanism && {
+            rewardMechanism: rest.rewardMechanism,
+          }),
         })
         .where(and(eq(rewards.id, id), eq(rewards.entityId, entity)))
         .returning();
+
+      await createAuditLog(db, {
+        adminId: userId,
+        entityId: entity,
+        module: "REWARDS",
+        action: "UPDATE_REWARD",
+        resourceId: id,
+        newState: input,
+      });
 
       return updatedReward;
     },
@@ -311,6 +394,16 @@ export const rewardsResolvers = {
       }));
 
       await db.insert(vouchers).values(voucherValues);
+
+      await createAuditLog(db, {
+        adminId: entity,
+        entityId: entity,
+        module: "REWARDS",
+        action: "UPLOAD_VOUCHERS",
+        resourceId: rewardId,
+        newState: { count: codes.length },
+      });
+
       return true;
     },
 
@@ -349,6 +442,38 @@ export const rewardsResolvers = {
         .where(and(eq(vouchers.id, voucherId), eq(vouchers.entityId, entity)));
 
       return true;
+    },
+
+    async claimRedemption(_: any, { redemptionId }: any, context: any) {
+      const { entity, db } = await checkAuth(context);
+
+      const [updated] = await db
+        .update(redemptions)
+        .set({
+          status: "CLAIMED",
+          claimedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(redemptions.id, redemptionId),
+            eq(redemptions.entityId, entity),
+          ),
+        )
+        .returning();
+
+      if (!updated) {
+        throw new GraphQLError("Redemption not found", {
+          extensions: { code: "NOT_FOUND" },
+        });
+      }
+
+      return await db.query.redemptions.findFirst({
+        where: eq(redemptions.id, redemptionId),
+        with: {
+          reward: true,
+          user: true,
+        },
+      });
     },
 
     ...spinResolvers.Mutation,

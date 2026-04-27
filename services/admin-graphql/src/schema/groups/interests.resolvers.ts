@@ -3,6 +3,7 @@ import { userOrg } from "../../utils/common/userOrg";
 import { GraphQLError } from "graphql";
 import { groupInterests } from "@thrico/database";
 import { and, eq } from "drizzle-orm";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 
 const interestsResolvers = {
   Query: {
@@ -62,6 +63,15 @@ const interestsResolvers = {
           })
           .returning();
 
+        await createAuditLog(db, {
+          adminId: data.id,
+          entityId: userOrgId,
+          module: "COMMUNITIES",
+          action: "ADD_GROUP_INTEREST",
+          resourceId: newGroupInterests[0]?.id,
+          newState: input,
+        });
+
         return newGroupInterests;
       } catch (error) {
         console.log(error);
@@ -78,6 +88,16 @@ const interestsResolvers = {
           .delete(groupInterests)
           .where(eq(groupInterests.id, input.id))
           .returning();
+
+        await createAuditLog(db, {
+          adminId: data.id,
+          entityId: interests[0]?.entity,
+          module: "COMMUNITIES",
+          action: "DELETE_GROUP_INTEREST",
+          resourceId: input.id,
+          previousState: interests[0],
+        });
+
         return interests[0]; // Returning object not array for delete usually
       } catch (error) {
         console.log(error);

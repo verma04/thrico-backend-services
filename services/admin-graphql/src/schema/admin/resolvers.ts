@@ -11,7 +11,8 @@ import {
 // Utilities
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import { subscriptionClient } from "@thrico/grpc";
-import uploadImageToFolder from "../../utils/upload/uploadImageToFolder.utils";
+import { StorageService } from "@thrico/services";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 
 // Define a context type if not available globally, or use any if strictly necessary but better typed
 interface Context {
@@ -120,12 +121,18 @@ export const adminResolvers: any = {
   Mutation: {
     uploadImage: async (_: any, { file }: { file: any }, context: Context) => {
       try {
-        const data = await checkAuth(context);
-        const org_id = data.entityId || "general";
+        const { id, entity, db } = await checkAuth(context);
+        const org_id = entity || "general";
 
-        const url = await uploadImageToFolder(`${org_id}`, [file]);
+        const url = await StorageService.uploadImages(
+          [file],
+          org_id,
+          "GENERAL",
+          id,
+          db,
+        );
         log.info("Image uploaded successfully", { org_id });
-        return url[0].url;
+        return url[0].file;
       } catch (error: any) {
         log.error("Upload error", { error: error.message });
         if (error instanceof GraphQLError) throw error;
@@ -152,6 +159,15 @@ export const adminResolvers: any = {
           entity,
           input,
         );
+
+        await createAuditLog(auth.db, {
+          adminId: auth.id,
+          entityId: entity,
+          module: "ADMIN",
+          action: "UPDATE_ENTITY_MODULE",
+          resourceId: entity,
+          newState: input,
+        });
 
         return subscription;
       } catch (error: any) {

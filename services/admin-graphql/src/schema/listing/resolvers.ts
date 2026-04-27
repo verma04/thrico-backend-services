@@ -8,9 +8,10 @@ import {
   marketPlaceMedia,
   userFeed,
 } from "@thrico/database";
-import uploadFeedImage from "../../utils/upload/uploadFeedImage.utils";
+import { StorageService } from "@thrico/services";
 import { entityClient } from "@thrico/grpc";
 import { log } from "@thrico/logging";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 
 export const listingResolvers = {
   Query: {
@@ -470,7 +471,14 @@ export const listingResolvers = {
 
         let media: any[] = [];
         if (input.media) {
-          media = await uploadFeedImage(entity, input.media);
+          const uploadedResults = await StorageService.uploadImages(
+            input.media,
+            entity,
+            "LISTING",
+            id,
+            db,
+          );
+          media = uploadedResults.map((res: any) => ({ url: res.file }));
         }
 
         log.info("Uploaded Media:", media);
@@ -599,6 +607,16 @@ export const listingResolvers = {
           status: "APPROVED",
           entity,
           previousState: currentListing, // JSON field
+        });
+
+        // Add centralized audit log
+        await createAuditLog(db, {
+          adminId: id,
+          entityId: entity,
+          module: "LISTING",
+          action: "EDIT_LISTING",
+          resourceId: input.id,
+          newState: input,
         });
 
         const finalResult = await db.query.marketPlace.findFirst({

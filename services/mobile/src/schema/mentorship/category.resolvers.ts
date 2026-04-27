@@ -2,13 +2,19 @@ import checkAuth from "../../utils/auth/checkAuth.utils";
 import { MentorshipService } from "@thrico/services";
 import { log } from "@thrico/logging";
 import { sendMentorshipNotification } from "../../queue/mentorship.queue";
+import { mentorshipCategory, mentorshipSkills } from "@thrico/database";
+import { eq, desc } from "drizzle-orm";
 
 const categoryResolvers = {
   Query: {
     async getAllMentorCategory(_: any, { input }: any, context: any) {
       try {
-        await checkAuth(context);
-        return MentorshipService.getAllMentorCategory();
+        const { db, entityId } = (await checkAuth(context)) as any;
+        const categories = await db.query.mentorshipCategory.findMany({
+          where: eq(mentorshipCategory.entity, entityId),
+          orderBy: [desc(mentorshipCategory.createdAt)],
+        });
+        return categories;
       } catch (error) {
         log.error(error as any);
         throw error;
@@ -17,8 +23,12 @@ const categoryResolvers = {
 
     async getAllMentorSkills(_: any, { input }: any, context: any) {
       try {
-        await checkAuth(context);
-        return MentorshipService.getAllMentorSkills();
+        const { db, entityId } = (await checkAuth(context)) as any;
+        const skills = await db.query.mentorshipSkills.findMany({
+          where: eq(mentorshipSkills.entity, entityId),
+          orderBy: [desc(mentorshipSkills.createdAt)],
+        });
+        return skills;
       } catch (error) {
         log.error(error as any);
         throw error;

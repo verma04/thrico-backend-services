@@ -9,7 +9,7 @@ import path from "path";
 // Load environment variables from .env file at the monorepo root
 dotenv.config({ path: path.resolve(__dirname, "../../../../.env") });
 
-const regions = [DatabaseRegion.IND];
+const regions = [DatabaseRegion.IND, DatabaseRegion.US, DatabaseRegion.UAE];
 
 async function runMigrations() {
   log.info("Starting database migrations for all regions");

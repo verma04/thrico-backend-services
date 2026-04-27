@@ -15,6 +15,13 @@ export const rewardsTypes = [
       NOTHING
     }
 
+    enum RewardMechanism {
+      SPIN_WHEEL
+      SCRATCH_CARD
+      MATCH_AND_WIN
+      COUPON
+    }
+
     type Reward {
       id: ID!
       title: String!
@@ -39,6 +46,7 @@ export const rewardsTypes = [
       validityDays: String
       discountType: String
       discountValue: Float
+      rewardMechanism: [RewardMechanism!]
     }
 
     type Voucher {
@@ -62,7 +70,7 @@ export const rewardsTypes = [
       totalCost: Float!
       status: String!
       metadata: JSON
-      claimedAt: Date!
+      claimedAt: Date
       user: User
       reward: Reward
     }
@@ -102,6 +110,7 @@ export const rewardsTypes = [
       blockWarnedUsers: Boolean
       cooldownPeriod: Int
       categoryId: ID
+      rewardMechanism: [RewardMechanism!]
     }
 
     input UpdateRewardInput {
@@ -119,6 +128,7 @@ export const rewardsTypes = [
       cooldownPeriod: Int
       status: String
       isActive: Boolean
+      rewardMechanism: [RewardMechanism!]
     }
 
     input UploadVouchersInput {
@@ -150,8 +160,16 @@ export const rewardsTypes = [
         status: String
         pagination: PaginationInput
       ): [Redemption!]!
-      getRewardStats(timeRange: TimeRange, dateRange: DateRangeInput): RewardStats!
+      getRewardStats(
+        timeRange: TimeRange
+        dateRange: DateRangeInput
+      ): RewardStats!
+      getRewardById(id: ID!): Reward
       getRewardSecuritySettings: RewardSecuritySettings!
+      getVouchersByRewardMechanism(
+        mechanism: RewardMechanism!
+        pagination: PaginationInput
+      ): [Voucher!]!
     }
 
     extend type Mutation {
@@ -163,6 +181,7 @@ export const rewardsTypes = [
       updateRewardSecuritySettings(
         input: UpdateRewardSecurityInput!
       ): RewardSecuritySettings!
+      claimRedemption(redemptionId: ID!): Redemption!
     }
   `,
   spinTypes,

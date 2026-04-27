@@ -8,6 +8,7 @@ export {
   type AppDatabase,
 } from "./postgres/connection";
 export * from "./postgres/schema";
+export { DatabaseRegion } from "@thrico/shared";
 
 // DynamoDB exports
 export { connectDynamo } from "./dynamodb/connection";

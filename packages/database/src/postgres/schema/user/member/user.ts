@@ -30,6 +30,7 @@ import { discussionForumComment } from "../discussion-forum";
 import { gamificationUser } from "../gamification";
 import { vector } from "../moment";
 import { cities } from "../cities";
+import { memberToIndustry } from "../industry";
 
 import { gender, userEntityStatus, userPronounsStatus } from "../enum";
 import { geometry } from "../geomtry";
@@ -236,6 +237,7 @@ export const userToEntityRelations = relations(
       fields: [userToEntity.cityId],
       references: [cities.id],
     }),
+    industries: many(memberToIndustry),
   }),
 );
 

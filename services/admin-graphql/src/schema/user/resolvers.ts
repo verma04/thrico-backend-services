@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { and, eq, sql, or, count, desc, inArray } from "drizzle-orm";
+import { and, eq, sql, or, count, desc, inArray, exists } from "drizzle-orm";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import {
   ensurePermission,
@@ -25,6 +25,7 @@ import {
   badges,
   entity as entityTable,
   moderationLogs,
+  memberToIndustry,
 } from "@thrico/database";
 import {
   GamificationQueryService,
@@ -138,6 +139,44 @@ export const userResolvers = {
         throw error;
       }
     },
+    async searchUserByName(_: any, { name }: any, context: any) {
+      try {
+        log.info(`Searching users by name: ${name}`);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.USERS, PermissionAction.READ);
+        const { db, entity } = auth;
+
+        // Use EXISTS with subquery to filter by joined user table's first/last name
+        const result = await db.query.userToEntity.findMany({
+          where: (ute: any, { eq, and, sql }: any) =>
+            and(
+              eq(ute.entityId, entity),
+              sql`EXISTS (
+                SELECT 1 FROM "thricoUser" 
+                WHERE "thricoUser"."id" = ${ute.userId} 
+                AND ("thricoUser"."firstName" ILIKE ${`%%${name}%%`} OR "thricoUser"."lastName" ILIKE ${`%%${name}%%`})
+              )`,
+            ),
+          with: {
+            user: {
+              with: {
+                profile: true,
+                about: true,
+              },
+            },
+            userKyc: true,
+            verification: true,
+          },
+          orderBy: (ute: any, { desc }: any) => [desc(ute.createdAt)],
+          limit: 20,
+        });
+
+        return result;
+      } catch (error) {
+        log.error("Error in searchUserByName:", error);
+        throw error;
+      }
+    },
     async getAllUser(_: any, { input }: any, context: any) {
       try {
         log.info(`Querying all users with status: ${input?.status}`);
@@ -145,41 +184,50 @@ export const userResolvers = {
         ensurePermission(auth, AdminModule.USERS, PermissionAction.READ);
         const { db, entity } = auth;
 
-        if (input.status === "ALL") {
-          const result = await db.query.userToEntity.findMany({
-            where: (ute: any, { eq }: any) => and(eq(ute.entityId, entity)),
-            with: {
-              user: {
-                with: {
-                  profile: true,
-                  about: true,
-                },
+        const result = await db.query.userToEntity.findMany({
+          where: (ute: any, { and, eq, exists }: any) => {
+            const conditions = [eq(ute.entityId, entity)];
+            if (input.status && input.status !== "ALL") {
+              conditions.push(eq(ute.status, input.status));
+            }
+            if (input.industryId) {
+              conditions.push(
+                exists(
+                  db
+                    .select()
+                    .from(memberToIndustry)
+                    .where(
+                      and(
+                        eq(memberToIndustry.memberId, ute.id),
+                        eq(memberToIndustry.industryId, input.industryId),
+                      ),
+                    ),
+                ),
+              );
+            }
+            return and(...conditions);
+          },
+          with: {
+            user: {
+              with: {
+                profile: true,
+                about: true,
               },
-              userKyc: true,
-              verification: true,
             },
-            orderBy: (ute: any, { desc }: any) => [desc(ute.createdAt)],
-          });
-          return result;
-        } else {
-          const result = await db.query.userToEntity.findMany({
-            where: (ute: any, { eq }: any) =>
-              and(eq(ute.entityId, entity), eq(ute.status, input.status)),
-            with: {
-              user: {
-                with: {
-                  profile: true,
-                  about: true,
-                },
+            userKyc: true,
+            verification: true,
+            industries: {
+              with: {
+                industry: true,
               },
-              userKyc: true,
-              verification: true,
             },
-            orderBy: (ute: any, { desc }: any) => [desc(ute.createdAt)],
-          });
+          },
+          orderBy: (ute: any, { desc }: any) => [desc(ute.createdAt)],
+          limit: input.limit || 50,
+          offset: input.offset || 0,
+        });
 
-          return result;
-        }
+        return result;
       } catch (error) {
         log.error("Error in getAllUser", { error });
         throw error;
@@ -204,6 +252,11 @@ export const userResolvers = {
             },
             userKyc: true,
             verification: true,
+            industries: {
+              with: {
+                industry: true,
+              },
+            },
           },
         });
 
@@ -417,6 +470,12 @@ export const userResolvers = {
   },
 
   userToEntity: {
+    industries: (parent: any) => {
+      if (parent.industries) {
+        return parent.industries.map((mi: any) => mi.industry);
+      }
+      return [];
+    },
     lastActive: (parent: any) => parent.lastActive,
     isOnline: (parent: any) => parent.isOnline,
     gamificationSummary: async (parent: any, _: any, context: any) => {
@@ -737,11 +796,11 @@ export const userResolvers = {
       const { action, reason, userId } = input;
 
       try {
-        const user = await db.query.userToEntity.findFirst({
+        const userFound = await db.query.userToEntity.findFirst({
           where: (ute: any, { eq }: any) => eq(ute.id, userId),
         });
 
-        if (!user) {
+        if (!userFound) {
           throw new Error("User not found");
         }
 
@@ -758,7 +817,7 @@ export const userResolvers = {
 
         const newStatus = statusMap[action];
         const updateData: Record<string, any> = {
-          status: newStatus || user.status,
+          status: newStatus || userFound.status,
         };
         if (
           action === "APPROVE" ||
@@ -783,14 +842,14 @@ export const userResolvers = {
             performedBy: adminId,
             status: "STATUS",
             entity,
-            previousState: user.status,
+            previousState: userFound.status,
           });
 
           if (action === "BLOCK") {
             await tx.insert(moderationLogs).values({
-              userId: user.userId,
+              userId: userFound.userId,
               entityId: entity,
-              contentId: user.userId,
+              contentId: userFound.userId,
               contentType: "USER",
               decision: "BLOCK",
               actionTaken: `User manually blocked by admin. Reason: ${
@@ -820,8 +879,8 @@ export const userResolvers = {
           module: AdminModule.USERS,
           action: "UPDATE_STATUS",
           resourceId: userId,
-          targetUserId: user.userId,
-          previousState: user,
+          targetUserId: userFound.userId,
+          previousState: userFound,
           newState: result,
           ipAddress: context.ip,
           userAgent: context.userAgent,
@@ -829,7 +888,7 @@ export const userResolvers = {
 
         if (action === "APPROVE") {
           await NotificationService.sendPushNotification({
-            userId: user.userId,
+            userId: userFound.userId,
             entityId: entity,
             title: "Account Approved",
             body: "Your account has been approved.",
@@ -962,8 +1021,16 @@ export const userResolvers = {
         const auth = await checkAuth(context);
         ensurePermission(auth, AdminModule.USERS, PermissionAction.CREATE);
         const { db, entity: entityId, id: adminId } = auth;
-        const { email, firstName, lastName, avatar, headline, about, DOB } =
-          input;
+        const {
+          email,
+          firstName,
+          lastName,
+          avatar,
+          headline,
+          about,
+          DOB,
+          industryIds,
+        } = input;
 
         // 1. Check if user already exists in thricoUser for this entity
         const existingUserInEntity = await db.query.user.findFirst({
@@ -980,9 +1047,7 @@ export const userResolvers = {
           where: (u: any, { eq }: any) => eq(u.email, email),
         });
 
-        let thricoId = existingUserGlobal
-          ? existingUserGlobal.thricoId
-          : uuidv4();
+        let thricoId = existingUserGlobal ? existingUserGlobal.thricoId : uuidv4();
 
         // 3. Create thricoUser record for this entity
         const userData: any = {
@@ -1023,6 +1088,16 @@ export const userResolvers = {
           DOB: DOB || null,
         });
 
+        // 7. Link industries
+        if (industryIds && industryIds.length > 0) {
+          await db.insert(memberToIndustry).values(
+            industryIds.map((industryId: string) => ({
+              memberId: newUserToEntity.id,
+              industryId,
+            })),
+          );
+        }
+
         // 6. Send welcome email
         try {
           // Fetch entity name for the email
@@ -1044,10 +1119,7 @@ export const userResolvers = {
             },
           });
         } catch (emailError: any) {
-          log.error(
-            "Failed to send welcome email in addNewMember:",
-            emailError,
-          );
+          log.error("Failed to send welcome email in addNewMember:", emailError);
           // We intentionally do not throw here so the member creation doesn't fail just because email failed.
         }
 
@@ -1081,12 +1153,155 @@ export const userResolvers = {
             },
             userKyc: true,
             verification: true,
+            industries: {
+              with: {
+                industry: true,
+              },
+            },
           },
         });
 
         return result;
       } catch (error) {
         log.error("Error in addNewMember:", error);
+        throw error;
+      }
+    },
+    async updateMember(_: any, { input }: any, context: any) {
+      try {
+        log.info(`Updating member with ID: ${input?.id}`);
+        const auth = await checkAuth(context);
+        ensurePermission(auth, AdminModule.USERS, PermissionAction.EDIT);
+        const { db, entity: entityId, id: adminId } = auth;
+        const {
+          id,
+          email,
+          firstName,
+          lastName,
+          avatar,
+          headline,
+          about,
+          DOB,
+          industryIds,
+        } = input;
+
+        // 1. Fetch existing userToEntity to verify ownership and get userId
+        const existingUte = await db.query.userToEntity.findFirst({
+          where: (ute: any, { eq, and }: any) =>
+            and(eq(ute.id, id), eq(ute.entityId, entityId)),
+          with: {
+            user: true,
+          },
+        });
+
+        if (!existingUte) {
+          throw new Error("Member not found in this entity");
+        }
+
+        const userId = existingUte.userId;
+
+        await db.transaction(async (tx: any) => {
+          // 2. Update thricoUser record
+          const userUpdateData: any = {};
+          if (firstName !== undefined) userUpdateData.firstName = firstName;
+          if (lastName !== undefined) userUpdateData.lastName = lastName;
+          if (email !== undefined) userUpdateData.email = email;
+          if (avatar !== undefined) userUpdateData.avatar = avatar;
+
+          if (Object.keys(userUpdateData).length > 0) {
+            await tx.update(user).set(userUpdateData).where(eq(user.id, userId));
+          }
+
+          // 3. Update aboutUser record
+          const aboutUpdateData: any = {};
+          if (headline !== undefined) aboutUpdateData.headline = headline;
+          if (about !== undefined) aboutUpdateData.about = about;
+
+          if (Object.keys(aboutUpdateData).length > 0) {
+            // Check if it exists
+            const existingAbout = await tx.query.aboutUser.findFirst({
+              where: (au: any, { eq }: any) => eq(au.userId, userId),
+            });
+            if (existingAbout) {
+              await tx
+                .update(aboutUser)
+                .set(aboutUpdateData)
+                .where(eq(aboutUser.userId, userId));
+            } else {
+              await tx.insert(aboutUser).values({ userId, ...aboutUpdateData });
+            }
+          }
+
+          // 4. Update userProfile record
+          if (DOB !== undefined) {
+            const existingProfile = await tx.query.userProfile.findFirst({
+              where: (up: any, { eq }: any) => eq(up.userId, userId),
+            });
+            if (existingProfile) {
+              await tx
+                .update(userProfile)
+                .set({ DOB: DOB || null })
+                .where(eq(userProfile.userId, userId));
+            } else {
+              await tx.insert(userProfile).values({ userId, DOB: DOB || null });
+            }
+          }
+
+          // 5. Update industries
+          if (industryIds !== undefined) {
+            // Remove old links
+            await tx.delete(memberToIndustry).where(eq(memberToIndustry.memberId, id));
+            // Add new links
+            if (industryIds.length > 0) {
+              await tx.insert(memberToIndustry).values(
+                industryIds.map((industryId: string) => ({
+                  memberId: id,
+                  industryId,
+                })),
+              );
+            }
+          }
+        });
+
+        log.info("Member updated successfully", { memberId: id });
+
+        // Optional: Audit log
+        await createAuditLog(db, {
+          adminId,
+          entityId,
+          module: AdminModule.USERS,
+          action: "UPDATE_MEMBER",
+          resourceId: id,
+          targetUserId: userId,
+          previousState: existingUte,
+          newState: { ...existingUte, ...input }, // Rough approximation for audit
+          ipAddress: context.ip,
+          userAgent: context.userAgent,
+        });
+
+        // Fetch and return the updated result
+        const result = await db.query.userToEntity.findFirst({
+          where: (ute: any, { eq }: any) => eq(ute.id, id),
+          with: {
+            user: {
+              with: {
+                profile: true,
+                about: true,
+              },
+            },
+            userKyc: true,
+            verification: true,
+            industries: {
+              with: {
+                industry: true,
+              },
+            },
+          },
+        });
+
+        return result;
+      } catch (error) {
+        log.error("Error in updateMember:", error);
         throw error;
       }
     },

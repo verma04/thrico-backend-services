@@ -21,6 +21,27 @@ export class EntityService {
       const themeData = theme.toJSON()[0] || null;
 
       log.info("Entity theme retrieved", { entityId, themeFound: !!themeData });
+
+      if (themeData === null || themeData === undefined) {
+        return {
+          backgroundColor: "#ffffff",
+          borderColor: "#313335",
+          borderRadius: 6,
+          borderStyle: "solid",
+          borderWidth: 1,
+          boxShadow: "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
+          buttonColor: "#3b82f6",
+          fontSize: 13,
+          fontWeight: "400",
+          hoverEffect: "none",
+          inputBackground: "#ffffff",
+          inputBorderColor: "#cbd5e1",
+          primaryColor: "#3b82f6",
+          secondaryColor: "#8b5cf6",
+          textColor: "#0f172a",
+        };
+      }
+
       return themeData;
     } catch (error) {
       log.error("Error in getEntityTheme", { error, entityId });

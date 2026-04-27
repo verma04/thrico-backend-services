@@ -133,6 +133,39 @@ export const feedTypes = `#graphql
     color: String
   }
 
+  type Engagement {
+    name: String
+    value: Int
+    color: String
+  }
+
+  type AgeDemographic {
+    group: String
+    percentage: Float
+  }
+
+  type LocationDemographic {
+    country: String
+    percentage: Float
+  }
+
+  type Demographics {
+    age: [AgeDemographic]
+    location: [LocationDemographic]
+  }
+
+  type ReachData {
+    total: Int
+    organic: Int
+    paid: Int
+  }
+
+  type PostAnalytics {
+    engagement: [Engagement]
+    demographics: Demographics
+    reachData: ReachData
+  }
+
   type PromotedNodeEvent {
     title: String
     date: String
@@ -155,6 +188,7 @@ export const feedTypes = `#graphql
     getFeedYieldVelocity(timeRange: TimeRange, dateRange: DateRangeInput): [FeedYieldVelocity]
     getFeedInterestMatrix(timeRange: TimeRange, dateRange: DateRangeInput): [FeedInterestMatrix]
     getPromotedNodeEvents(timeRange: TimeRange, dateRange: DateRangeInput): [PromotedNodeEvent]
+    getPostAnalytics(input: InputId): PostAnalytics
     momentsFeed(input: PaginationInput): [Feed]
     pollsFeed(input: PaginationInput): [Feed]
     feedByAdmin(input: PaginationInput): [Feed]

@@ -331,6 +331,16 @@ export const resolvers = {
         throw error;
       }
     },
+    async deleteAccount(_: any, {}: any, context: any) {
+      try {
+        const { db, userId } = context.user || (await checkAuth(context));
+        await UserService.deleteAccount({ userId, db });
+        return { success: true, message: "Account scheduled for deletion" };
+      } catch (error) {
+        log.error("Error in deleteAccount", { error });
+        throw error;
+      }
+    },
 
     async restoreAccount(_: any, {}: any, context: any) {
       try {

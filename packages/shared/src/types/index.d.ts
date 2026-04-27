@@ -1,4 +1,4 @@
-import { DatabaseRegion, UserRole, UserStatus, EntityStatus } from '../constants';
+import { DatabaseRegion, UserRole, UserStatus, EntityStatus } from "../constants";
 export interface BaseEntity {
     id: string;
     createdAt: Date;
@@ -152,5 +152,16 @@ export interface AuditLog {
     changes?: Record<string, any>;
     ipAddress?: string;
     userAgent?: string;
+}
+export interface CustomThemeColors {
+    primary?: string;
+    secondary?: string;
+    accent?: string;
+    background?: string;
+    muted?: string;
+    border?: string;
+    borderRadius?: number;
+    spacing?: number;
+    fontSize?: number;
 }
 //# sourceMappingURL=index.d.ts.map

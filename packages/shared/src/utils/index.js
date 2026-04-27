@@ -18,20 +18,20 @@ exports.formatGraphQLError = formatGraphQLError;
 exports.calculatePaginationMeta = calculatePaginationMeta;
 exports.extractBearerToken = extractBearerToken;
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
-const bcrypt_1 = __importDefault(require("bcrypt"));
+const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const constants_1 = require("../constants");
 /**
  * Hash a password using bcrypt
  */
 async function hashPassword(password) {
     const saltRounds = 10;
-    return bcrypt_1.default.hash(password, saltRounds);
+    return bcryptjs_1.default.hash(password, saltRounds);
 }
 /**
  * Verify a password against a hash
  */
 async function verifyPassword(password, hash) {
-    return bcrypt_1.default.compare(password, hash);
+    return bcryptjs_1.default.compare(password, hash);
 }
 /**
  * Generate JWT access and refresh tokens

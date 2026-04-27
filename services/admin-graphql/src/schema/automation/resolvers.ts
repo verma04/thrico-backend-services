@@ -2,6 +2,7 @@ import { AutomationService } from "@thrico/services";
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import { GraphQLError } from "graphql";
 import { logger } from "@thrico/logging";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 
 export const automationResolvers = {
   Query: {
@@ -10,7 +11,9 @@ export const automationResolvers = {
         const { db } = await checkAuth(context);
         return await AutomationService.getCampaigns(db, entityId);
       } catch (error: any) {
-        logger.error(`Error in getAutomationCampaigns: ${error.message}`, { error });
+        logger.error(`Error in getAutomationCampaigns: ${error.message}`, {
+          error,
+        });
         throw error;
       }
     },
@@ -22,7 +25,9 @@ export const automationResolvers = {
         if (!result) throw new GraphQLError("Campaign not found");
         return result;
       } catch (error: any) {
-        logger.error(`Error in getAutomationCampaign: ${error.message}`, { error });
+        logger.error(`Error in getAutomationCampaign: ${error.message}`, {
+          error,
+        });
         throw error;
       }
     },
@@ -42,7 +47,9 @@ export const automationResolvers = {
         const { db } = await checkAuth(context);
         return await AutomationService.getLogs(db, jobId);
       } catch (error: any) {
-        logger.error(`Error in getAutomationExecutionLogs: ${error.message}`, { error });
+        logger.error(`Error in getAutomationExecutionLogs: ${error.message}`, {
+          error,
+        });
         throw error;
       }
     },
@@ -52,7 +59,9 @@ export const automationResolvers = {
         const { db } = await checkAuth(context);
         return await AutomationService.getMetadata(db, entityId);
       } catch (error: any) {
-        logger.error(`Error in getAutomationMetadata: ${error.message}`, { error });
+        logger.error(`Error in getAutomationMetadata: ${error.message}`, {
+          error,
+        });
         throw error;
       }
     },
@@ -61,38 +70,83 @@ export const automationResolvers = {
   Mutation: {
     async createAutomationCampaign(_: any, input: any, context: any) {
       try {
-        const { db } = await checkAuth(context);
-        const payload = { ...input };
-        
-        // Drizzle/Postgres handles object-to-json automatically if input is object
-        return await AutomationService.createCampaign(db, payload);
+        const { db, id: adminId, entity } = await checkAuth(context);
+        const campaign = await AutomationService.createCampaign(db, input);
+
+        await createAuditLog(db, {
+          adminId,
+          entityId: entity,
+          module: "AUTOMATION",
+          action: "CREATE_CAMPAIGN",
+          resourceId: campaign.id,
+          newState: campaign,
+        });
+
+        return campaign;
       } catch (error: any) {
-        logger.error(`Error in createAutomationCampaign: ${error.message}`, { error });
+        logger.error(`Error in createAutomationCampaign: ${error.message}`, {
+          error,
+        });
         throw error;
       }
     },
 
-    async updateAutomationCampaign(_: any, { id, ...updates }: any, context: any) {
+    async updateAutomationCampaign(
+      _: any,
+      { id, ...updates }: any,
+      context: any,
+    ) {
       try {
-        const { db, entity } = await checkAuth(context);
-        const updatedCampaign = await AutomationService.updateCampaign(db, id, entity, updates);
+        const { db, entity, id: adminId } = await checkAuth(context);
+        const updatedCampaign = await AutomationService.updateCampaign(
+          db,
+          id,
+          entity,
+          updates,
+        );
 
-        if (!updatedCampaign) throw new GraphQLError("Campaign not found or not owned by entity");
+        if (!updatedCampaign)
+          throw new GraphQLError("Campaign not found or not owned by entity");
+
+        await createAuditLog(db, {
+          adminId,
+          entityId: entity,
+          module: "AUTOMATION",
+          action: "UPDATE_CAMPAIGN",
+          resourceId: id,
+          newState: updatedCampaign,
+        });
+
         return updatedCampaign;
       } catch (error: any) {
-        logger.error(`Error in updateAutomationCampaign: ${error.message}`, { error });
+        logger.error(`Error in updateAutomationCampaign: ${error.message}`, {
+          error,
+        });
         throw error;
       }
     },
 
     async deleteAutomationCampaign(_: any, { id }: any, context: any) {
       try {
-        const { db, entity } = await checkAuth(context);
-        return await AutomationService.deleteCampaign(db, id, entity);
+        const { db, entity, id: adminId } = await checkAuth(context);
+        const result = await AutomationService.deleteCampaign(db, id, entity);
+
+        await createAuditLog(db, {
+          adminId,
+          entityId: entity,
+          module: "AUTOMATION",
+          action: "DELETE_CAMPAIGN",
+          resourceId: id,
+        });
+
+        return result;
       } catch (error: any) {
-        logger.error(`Error in deleteAutomationCampaign: ${error.message}`, { error });
+        logger.error(`Error in deleteAutomationCampaign: ${error.message}`, {
+          error,
+        });
         throw error;
       }
     },
   },
 };
+

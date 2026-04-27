@@ -10,6 +10,7 @@ import {
   forumVerification,
 } from "@thrico/database";
 import generateSlug from "../../utils/slug.utils";
+import { createAuditLog } from "../../utils/audit/auditLog.utils";
 
 export const discussionResolvers = {
   Query: {
@@ -360,6 +361,15 @@ export const discussionResolvers = {
           })
           .returning();
 
+        await createAuditLog(db, {
+          adminId: id,
+          entityId: entity,
+          module: "DISCUSSION_FORUM",
+          action: "ADD_DISCUSSION_FORUM",
+          resourceId: newForum[0]?.id,
+          newState: input,
+        });
+
         return newForum[0];
       } catch (error) {
         console.log(error);
@@ -444,6 +454,15 @@ export const discussionResolvers = {
             slug: generateSlug(input.name),
           })
           .returning();
+
+        await createAuditLog(db, {
+          adminId: id,
+          entityId: entity,
+          module: "DISCUSSION_FORUM",
+          action: "ADD_DISCUSSION_CATEGORY",
+          resourceId: newCategory[0]?.id,
+          newState: input,
+        });
 
         return newCategory[0];
       } catch (error) {

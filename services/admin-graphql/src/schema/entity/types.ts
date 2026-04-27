@@ -109,6 +109,7 @@ export const entityTypes = `#graphql
     allowEntityMomentsInFeed: Boolean
    
     feedOrder: JSON
+    feedEntityName: String
   }
 
   type ModuleFaq {
@@ -232,6 +233,7 @@ export const entityTypes = `#graphql
     allowEntityFeedInFeed: Boolean
     allowAdminFeedInFeed: Boolean
     feedOrder: JSON
+    feedEntityName: String
   }
 
 
@@ -415,5 +417,6 @@ export const entityTypes = `#graphql
     updateEntityProfile(input: UpdateEntityInput!): UpdateEntityProfileResponse
     changeEntityDomain(input: ChangeEntityDomainInput!): Success
     changeEntityCurrency(currency: String!): Success
+    updateFeedEntityName(name: String!): Success
   }
 `;
