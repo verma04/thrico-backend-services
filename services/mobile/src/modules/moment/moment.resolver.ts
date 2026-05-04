@@ -22,13 +22,15 @@ export const momentResolvers = {
       try {
         const { db, entityId, userId } =
           context.user || (await checkAuth(context));
-        console.log(input);
-        return await MomentService.getAllMoments(
+
+        const data = await MomentService.getAllMoments(
           input || {},
           entityId,
           userId,
           db,
         );
+
+        return data;
       } catch (error) {
         log.error("Error in getAllMoments", { error, input });
         throw error;
@@ -137,12 +139,14 @@ export const momentResolvers = {
       try {
         const { db, entityId, userId } =
           context.user || (await checkAuth(context));
-        return await MomentService.getMyConnectionMoments(
+        const data = await MomentService.getMyConnectionMoments(
           input || {},
           entityId,
           userId,
           db,
         );
+
+        return data;
       } catch (error) {
         log.error("Error in getMyConnectionMoments", { error, input });
         throw error;
@@ -220,7 +224,7 @@ export const momentResolvers = {
     async trackMomentWatchTime(_: any, { input }: any, context: any) {
       try {
         const { db, userId } = context.user || (await checkAuth(context));
-        console.log(input);
+
         return await MomentService.trackWatchTime(input, userId, db);
       } catch (error) {
         log.error("Error in trackMomentWatchTime", { error, input });
@@ -343,7 +347,7 @@ export const momentResolvers = {
           db,
           { processImage: true },
         );
-        console.log("img", img);
+
         return `https://cdn.thrico.network/${img}`;
       } catch (error) {
         log.error("Error in uploadImage", { error });

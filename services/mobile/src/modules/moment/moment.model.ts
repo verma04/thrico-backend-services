@@ -108,6 +108,8 @@ export const momentTypes = `#graphql
   input MomentCursorInput {
     cursor: String
     limit: Int
+    initialIndex: Int
+    initialMomentId: String
   }
 
   type MomentEdge {

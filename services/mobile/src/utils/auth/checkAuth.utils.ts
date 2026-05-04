@@ -11,6 +11,9 @@ export interface middlewareUser {
   email: string;
   role: string;
   country: DatabaseRegion;
+  sessionId: string;
+  entityId: string;
+  id: string;
   iat: number;
   exp: number;
   [key: string]: any;
@@ -48,18 +51,16 @@ const checkAuth = async (context: any): Promise<any> => {
             String(ENV.JWT_SECRET),
         ) as middlewareUser;
 
-        const db = getDb(userToken.country);
-
         const sessionResult = await USER_LOGIN_SESSION.query("id")
           .eq(userToken.sessionId)
           .exec();
 
-        if (!sessionResult) {
-          log.error("Authentication failed: Session ID missing in token", {
+        if (!sessionResult || sessionResult.count === 0) {
+          log.error("Authentication failed: Session ID missing or invalid", {
             userId: userToken.userId,
-            country: userToken.country,
+            sessionId: userToken.sessionId,
           });
-          throw new GraphQLError("Permission Denied: Session ID missing", {
+          throw new GraphQLError("Permission Denied: Invalid Session", {
             extensions: {
               code: 403,
               http: { status: 403 },
@@ -67,8 +68,35 @@ const checkAuth = async (context: any): Promise<any> => {
           });
         }
 
-        // console.log("userToken", userToken);
-        const result = { ...userToken, db };
+        const db = getDb(userToken.country);
+        const userExists = await db.query.userToEntity.findFirst({
+          where: (ute: any, { eq, and, ne }: any) =>
+            and(
+              eq(ute.id, userToken.id),
+              eq(ute.entityId, userToken.entityId),
+              ne(ute.status, "DELETED"),
+            ),
+        });
+
+        if (!userExists) {
+          log.error("Authentication failed: User record missing or deleted", {
+            userId: userToken.userId,
+            id: userToken.id,
+            entityId: userToken.entityId,
+          });
+          throw new GraphQLError("Permission Denied: User not found", {
+            extensions: {
+              code: 403,
+              http: { status: 403 },
+            },
+          });
+        }
+
+        const result = {
+          ...userToken,
+          db,
+          sessionResult,
+        };
         if (context) {
           authCache.set(context, result);
         }

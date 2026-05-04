@@ -5,7 +5,7 @@ export const connectionTypes = `#graphql
     firstName: String
     avatar: String
     lastName: String
-   
+    userId: ID
     user: profileCreation
     status: connectionStatus
     isOnline: Boolean
@@ -19,6 +19,7 @@ export const connectionTypes = `#graphql
     isCloseFriend: Boolean
     currentCompany: JSON
     currentEducation: JSON
+    moments(input: MomentCursorInput): MomentConnection
   }
 
   enum connectionStatus {

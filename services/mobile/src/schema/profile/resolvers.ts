@@ -483,7 +483,6 @@ const profileResolvers: any = {
           );
         }
         if (cover) {
-          console.log("cover", cover);
           await db
             .update(user)
             .set({

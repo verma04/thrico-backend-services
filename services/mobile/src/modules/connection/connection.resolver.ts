@@ -1,7 +1,7 @@
 import checkAuth from "../../utils/auth/checkAuth.utils";
 import { log } from "@thrico/logging";
 import { GraphQLError } from "graphql";
-import { NetworkService } from "@thrico/services";
+import { NetworkService, MomentService } from "@thrico/services";
 
 export const connectionResolvers = {
   Query: {
@@ -17,6 +17,7 @@ export const connectionResolvers = {
           cursor: input?.cursor,
           search: input?.search || "",
         });
+        console.log(data?.edges[0]?.node);
 
         return data;
       } catch (error: any) {
@@ -435,6 +436,29 @@ export const connectionResolvers = {
             },
           },
         );
+      }
+    },
+  },
+
+  networkUser: {
+    async moments(parent: any, { input }: any, context: any) {
+      try {
+        const { db, entityId, id: currentUserId } =
+          context.user || (await checkAuth(context));
+        const targetUserId = parent.userId || parent.id;
+        return await MomentService.getMoments(
+          input || {},
+          entityId,
+          currentUserId,
+          db,
+          targetUserId,
+        );
+      } catch (error) {
+        log.error("Error in networkUser.moments", {
+          error,
+          parentId: parent.id,
+        });
+        return null;
       }
     },
   },

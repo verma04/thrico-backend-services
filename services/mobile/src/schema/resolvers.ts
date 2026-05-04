@@ -19,7 +19,10 @@ export const resolvers = {
         // Using getCacheUserFn = undefined for now as no cache util is imported
         return AuthService.getUser({ entityId, id, db });
       } catch (error) {
-        log.error("Error in getUser", { error });
+        log.error("Error in getUser", {
+          error,
+          sessionResult: context.user?.sessionResult,
+        });
         throw error;
       }
     },
@@ -188,6 +191,20 @@ export const resolvers = {
         return AuthService.loginWithEmail({ input, sendOtpFn: sendOtp });
       } catch (error) {
         log.error("Error in loginWithEmail", { error, email: input?.email });
+        throw error;
+      }
+    },
+    async resendOtp(_: any, { input }: any, context: any) {
+      try {
+        const result = await AuthService.resendOtp({
+          input,
+          sendOtpFn: sendOtp,
+        });
+
+        return result;
+      } catch (error) {
+        console.error("Error in resendOtp:", error);
+        log.error("Error in resendOtp", { error, email: input?.email });
         throw error;
       }
     },

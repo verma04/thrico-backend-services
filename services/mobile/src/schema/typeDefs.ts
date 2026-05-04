@@ -32,6 +32,7 @@ export const typeDefs = `#graphql
     isDeletionPending: Boolean
     deletionRequestedAt: Date
     isActive: Boolean
+ 
     theme:entityTheme
   }
   type token {
@@ -43,6 +44,7 @@ export const typeDefs = `#graphql
   type otp {
     id: ID
     user: user
+    email: String
   }
   type entity {
     id: ID
@@ -203,6 +205,7 @@ export const typeDefs = `#graphql
 
   type Mutation {
     loginWithEmail(input: inputLoginWithEmail): success
+    resendOtp(input: inputLoginWithEmail): success
     loginByOtp(input: inputLoginWithOtp): id
     chooseAccount(input: inputAccount): chooseAccount
     chooseAccountSignup(input: inputAccount): chooseAccount
